@@ -15,7 +15,8 @@
   <script src="/js/df-user-modals.js?v=3.9.693"></script>
   <script src="/js/df-subtabs.js?v=3.9.693" defer></script>
   <script src="/js/components/registratura-action-modal.js?v=3.9.693"></script>
-  <script src="/js/registratura/main.js?v=3.9.693" defer></script>
+  <script src="/js/shared/pagin.js?v=3.9.721" defer></script>
+  <script src="/js/registratura/main.js?v=3.9.721" defer></script>
 </head>
 <body>
 
@@ -166,14 +167,7 @@
             </table>
           </div>
 
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 4px;font-size:.84rem;color:var(--df-text-3);">
-            <span id="reg-total">—</span>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button class="df-action-btn" id="reg-prev" type="button" disabled>‹ Anterior</button>
-              <span id="reg-page">1</span>
-              <button class="df-action-btn" id="reg-next" type="button" disabled>Următor ›</button>
-            </div>
-          </div>
+          <div id="reg-pagination"></div>
         </div>
         <!-- /df-subview iesiri -->
 
@@ -236,14 +230,7 @@
             </table>
           </div>
 
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 4px;font-size:.84rem;color:var(--df-text-3);">
-            <span id="regin-total">—</span>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button class="df-action-btn" id="regin-prev" type="button" disabled>‹ Anterior</button>
-              <span id="regin-page">1</span>
-              <button class="df-action-btn" id="regin-next" type="button" disabled>Următor ›</button>
-            </div>
-          </div>
+          <div id="regin-pagination"></div>
         </div>
         <!-- /df-subview intrari -->
 

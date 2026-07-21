@@ -69,6 +69,29 @@
     sel.innerHTML = opts.join('');
   }
 
+  // ───── Paginare (componentă partajată DFPagin) ────────────────────────────
+  // PAGIN-7 — un SINGUR apel DFPagin.render, refolosit de renderPagOut/renderPagIn
+  // (invarianta „exact o dată" din testul de wiring se păstrează). Paginare pe
+  // SERVER: onChange schimbă pagina în state și refetch-uiește lista.
+  function renderPag(el, st, load) {
+    if (!el) return;
+    if (window.DFPagin && typeof window.DFPagin.render === 'function') {
+      window.DFPagin.render({
+        container: el,
+        total: st.total,
+        page: st.page,
+        limit: st.limit,
+        mode: 'numbered',
+        onChange: (p) => { st.page = p; load(); },
+      });
+    } else {
+      // Fail-safe: componenta nu s-a încărcat — ascunde bara, nu rupe tabelul.
+      console.error('DFPagin indisponibil — paginarea registraturii e ascunsă');
+      el.replaceChildren();
+      el.style.display = 'none';
+    }
+  }
+
   // ───── IEȘIRI (Faza 1) ────────────────────────────────────────────────────
 
   const stateOut = { page: 1, limit: 50, total: 0, an: null, q: '', status: '' };
@@ -125,15 +148,7 @@
   }
 
   function renderPagOut() {
-    const totalPages = Math.max(1, Math.ceil(stateOut.total / stateOut.limit));
-    const totalEl = $('reg-total');
-    const pageEl = $('reg-page');
-    const prev = $('reg-prev');
-    const next = $('reg-next');
-    if (totalEl) totalEl.textContent = `${stateOut.total} înregistrări`;
-    if (pageEl)  pageEl.textContent  = `Pagina ${stateOut.page} / ${totalPages}`;
-    if (prev) prev.disabled = stateOut.page <= 1;
-    if (next) next.disabled = stateOut.page >= totalPages;
+    renderPag($('reg-pagination'), stateOut, loadOut);
   }
 
   function wireOut() {
@@ -141,8 +156,6 @@
     $('reg-status').addEventListener('change', (e) => { stateOut.status = e.target.value || ''; stateOut.page = 1; loadOut(); });
     $('reg-q').addEventListener('input', debounce((e) => { stateOut.q = e.target.value.trim(); stateOut.page = 1; loadOut(); }, 300));
     $('reg-refresh').addEventListener('click', () => loadOut());
-    $('reg-prev').addEventListener('click', () => { if (stateOut.page > 1) { stateOut.page--; loadOut(); } });
-    $('reg-next').addEventListener('click', () => { stateOut.page++; loadOut(); });
     $('reg-export').addEventListener('click', () => {
       const p = new URLSearchParams();
       p.set('directie', 'iesire');
@@ -240,15 +253,7 @@
   }
 
   function renderPagIn() {
-    const totalPages = Math.max(1, Math.ceil(stateIn.total / stateIn.limit));
-    const totalEl = $('regin-total');
-    const pageEl = $('regin-page');
-    const prev = $('regin-prev');
-    const next = $('regin-next');
-    if (totalEl) totalEl.textContent = `${stateIn.total} înregistrări`;
-    if (pageEl)  pageEl.textContent  = `Pagina ${stateIn.page} / ${totalPages}`;
-    if (prev) prev.disabled = stateIn.page <= 1;
-    if (next) next.disabled = stateIn.page >= totalPages;
+    renderPag($('regin-pagination'), stateIn, loadIn);
   }
 
   // ───── Acțiuni rând (status / atașament / link) ───────────────────────────
@@ -343,8 +348,6 @@
     $('regin-status').addEventListener('change', (e) => { stateIn.status = e.target.value || ''; stateIn.page = 1; loadIn(); });
     $('regin-q').addEventListener('input', debounce((e) => { stateIn.q = e.target.value.trim(); stateIn.page = 1; loadIn(); }, 300));
     $('regin-refresh').addEventListener('click', () => loadIn());
-    $('regin-prev').addEventListener('click', () => { if (stateIn.page > 1) { stateIn.page--; loadIn(); } });
-    $('regin-next').addEventListener('click', () => { stateIn.page++; loadIn(); });
     $('regin-new').addEventListener('click', openModal);
 
     $('regin-tbody').addEventListener('click', (e) => {

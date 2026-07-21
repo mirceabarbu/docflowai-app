@@ -19,6 +19,7 @@ const readPublic = (rel) => readFileSync(join(__dir, '../../../public/', rel), '
 const adminHtmlSrc = readPublic('admin.html');
 const componentsCssSrc = readPublic('css/df/components.css');
 const adminCssSrc = readPublic('css/admin/admin.css');
+const registraturaHtmlSrc = readPublic('registratura.html');
 
 const CONSUMERS = [
   {
@@ -52,6 +53,14 @@ const CONSUMERS = [
     htmlSrc: adminHtmlSrc,
     mustContain: ['DFPagin.render(', 'window.DFPagin &&', 'PR_PAGE_SIZE', 'onChange: (p) => prLoad(p)'],
     mustNotContain: ['btnStyle', 'onclick="prLoad(', '‹ Precedent', 'pagini</span>', 'pr-info'],
+  },
+  {
+    label: 'PAGIN-7 — registratura/main.js',
+    jsPath: 'js/registratura/main.js',
+    htmlPath: 'registratura.html',
+    htmlSrc: registraturaHtmlSrc,
+    mustContain: ['DFPagin.render(', 'window.DFPagin &&', "mode: 'numbered'", 'renderPag('],
+    mustNotContain: ["$('reg-prev')", "$('reg-next')", "$('regin-prev')", "$('regin-next')", 'Pagina ${stateOut.page}', 'Pagina ${stateIn.page}'],
   },
 ];
 
@@ -135,5 +144,17 @@ describe('PAGIN-6 — admin.html container #pr-pager fără style inline + făr�
 
   it('nu mai conține id="pr-info"', () => {
     expect(adminHtmlSrc).not.toContain('id="pr-info"');
+  });
+});
+
+describe('PAGIN-7 — registratura.html containere fără prev/next static', () => {
+  it('conține <div id="reg-pagination"></div> și <div id="regin-pagination"></div>', () => {
+    expect(registraturaHtmlSrc).toContain('<div id="reg-pagination"></div>');
+    expect(registraturaHtmlSrc).toContain('<div id="regin-pagination"></div>');
+  });
+
+  it('nu mai conține butoanele statice reg-prev/regin-prev', () => {
+    expect(registraturaHtmlSrc).not.toContain('id="reg-prev"');
+    expect(registraturaHtmlSrc).not.toContain('id="regin-prev"');
   });
 });
