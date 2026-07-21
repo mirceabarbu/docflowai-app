@@ -21,6 +21,7 @@ const componentsCssSrc = readPublic('css/df/components.css');
 const adminCssSrc = readPublic('css/admin/admin.css');
 const registraturaHtmlSrc = readPublic('registratura.html');
 const formularHtmlSrc = readPublic('formular.html');
+const semdocHtmlSrc = readPublic('semdoc-initiator.html');
 
 const CONSUMERS = [
   {
@@ -78,6 +79,14 @@ const CONSUMERS = [
     htmlSrc: formularHtmlSrc,
     mustContain: ['DFPagin.render(', 'window.DFPagin &&', "mode: 'numbered'"],
     mustNotContain: ['alop-page-info', 'alop-prev', 'alop-next', 'changeAlopPage'],
+  },
+  {
+    label: 'PAGIN-10 — semdoc-initiator/main.js',
+    jsPath: 'js/semdoc-initiator/main.js',
+    htmlPath: 'semdoc-initiator.html',
+    htmlSrc: semdocHtmlSrc,
+    mustContain: ['DFPagin.render(', 'window.DFPagin &&', "mode: 'numbered'"],
+    mustNotContain: ['fluxPageInfo', 'fluxPrevBtn', 'fluxNextBtn'],
   },
 ];
 
@@ -204,5 +213,26 @@ describe('PAGIN-9 — formular.html #alop-pagination fără prev/next static', (
   });
   it('#lst-pagination (PAGIN-8) rămâne container gol', () => {
     expect(formularHtmlSrc).toContain('<div id="lst-pagination"></div>');
+  });
+});
+
+describe('PAGIN-10 — semdoc-initiator.html #fluxPagination fără prev/next static', () => {
+  it('conține <div id="fluxPagination"></div>', () => {
+    expect(semdocHtmlSrc).toContain('<div id="fluxPagination"></div>');
+  });
+  it('nu mai conține butoanele statice fluxPrevBtn/fluxNextBtn/fluxPageInfo', () => {
+    expect(semdocHtmlSrc).not.toContain('id="fluxPrevBtn"');
+    expect(semdocHtmlSrc).not.toContain('id="fluxNextBtn"');
+    expect(semdocHtmlSrc).not.toContain('id="fluxPageInfo"');
+  });
+  it('NU atinge contorul #fluxCounter', () => {
+    expect(semdocHtmlSrc).toContain('id="fluxCounter"');
+  });
+  it('semdoc-initiator.html încarcă /js/shared/pagin.js ÎNAINTEA main.js', () => {
+    const paginIdx = semdocHtmlSrc.indexOf('js/shared/pagin.js');
+    const mainIdx = semdocHtmlSrc.indexOf('js/semdoc-initiator/main.js');
+    expect(paginIdx).toBeGreaterThan(-1);
+    expect(mainIdx).toBeGreaterThan(-1);
+    expect(paginIdx).toBeLessThan(mainIdx);
   });
 });
