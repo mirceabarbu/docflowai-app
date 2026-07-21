@@ -71,6 +71,14 @@ const CONSUMERS = [
     mustContain: ['DFPagin.render(', 'window.DFPagin &&', "mode: 'numbered'"],
     mustNotContain: ['lst-page-info', 'lst-prev', 'lst-next', 'changeLstPage'],
   },
+  {
+    label: 'PAGIN-9 — formular/alop.js',
+    jsPath: 'js/formular/alop.js',
+    htmlPath: 'formular.html',
+    htmlSrc: formularHtmlSrc,
+    mustContain: ['DFPagin.render(', 'window.DFPagin &&', "mode: 'numbered'"],
+    mustNotContain: ['alop-page-info', 'alop-prev', 'alop-next', 'changeAlopPage'],
+  },
 ];
 
 describe.each(CONSUMERS)('$label', (consumer) => {
@@ -182,5 +190,19 @@ describe('PAGIN-8 — formular.html #lst-pagination fără prev/next static', ()
   });
   it('NU atinge contorul #lst-count (feature #90)', () => {
     expect(formularHtmlSrc).toContain('id="lst-count"');
+  });
+});
+
+describe('PAGIN-9 — formular.html #alop-pagination fără prev/next static', () => {
+  it('conține <div id="alop-pagination"></div>', () => {
+    expect(formularHtmlSrc).toContain('<div id="alop-pagination"></div>');
+  });
+  it('nu mai conține butoanele statice alop-prev/alop-next + onclick changeAlopPage', () => {
+    expect(formularHtmlSrc).not.toContain('id="alop-prev"');
+    expect(formularHtmlSrc).not.toContain('id="alop-next"');
+    expect(formularHtmlSrc).not.toContain('onclick="changeAlopPage(');
+  });
+  it('#lst-pagination (PAGIN-8) rămâne container gol', () => {
+    expect(formularHtmlSrc).toContain('<div id="lst-pagination"></div>');
   });
 });
