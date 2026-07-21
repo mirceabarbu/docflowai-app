@@ -359,11 +359,7 @@
             <div style="text-align:center; color:var(--muted); padding:32px;">Se încarcă...</div>
           </div>
           <!-- Paginare -->
-          <div id="fluxPagination" style="display:none;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap;gap:8px;">
-            <button id="fluxPrevBtn" class="df-action-btn sm" onclick="loadMyFlows(_fluxPage - 1)"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.693#ico-arrow-left"/></svg>Anterior</button>
-            <span id="fluxPageInfo" style="color:var(--muted);font-size:.85rem;"></span>
-            <button id="fluxNextBtn" class="df-action-btn sm" onclick="loadMyFlows(_fluxPage + 1)">Următor<svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.693#ico-arrow-right"/></svg></button>
-          </div>
+          <div id="fluxPagination"></div>
         </div>
       </section>
     </main>
@@ -372,7 +368,8 @@
 
     <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>
     <script src="/js/shared/file-item.js?v=3.9.693" defer></script>
-    <script src="/js/semdoc-initiator/main.js?v=3.9.710" defer></script>
+    <script src="/js/shared/pagin.js?v=3.9.724" defer></script>
+    <script src="/js/semdoc-initiator/main.js?v=3.9.724" defer></script>
   <script src="/notif-widget.js?v=3.9.708"></script>
 
 <!-- Modal incarcare document revizuit -->

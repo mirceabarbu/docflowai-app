@@ -238,21 +238,23 @@ async function loadAlop(){
   }
 }
 function _renderAlopPagin(total,page,limit){
+  // PAGIN-9 — componentă partajată DFPagin (paginare pe SERVER: onChange refetch).
   const pg=document.getElementById('alop-pagination');
-  const info=document.getElementById('alop-page-info');
-  const prev=document.getElementById('alop-prev');
-  const next=document.getElementById('alop-next');
   if(!pg)return;
-  const totalPages=Math.ceil(total/limit)||1;
-  if(totalPages<=1){pg.style.display='none';return;}
-  pg.style.display='flex';
-  if(info)info.textContent=`Pagina ${page} din ${totalPages} (${total} total)`;
-  if(prev)prev.disabled=page<=1;
-  if(next)next.disabled=page>=totalPages;
-}
-function changeAlopPage(dir){
-  _alopState.page=Math.max(1,_alopState.page+dir);
-  loadAlop();
+  if(window.DFPagin && typeof window.DFPagin.render==='function'){
+    window.DFPagin.render({
+      container:pg,
+      total,
+      page,
+      limit,
+      mode: 'numbered',
+      onChange:(p)=>{_alopState.page=p;loadAlop();},
+    });
+  }else{
+    console.error('DFPagin indisponibil — paginarea listei ALOP e ascunsă');
+    pg.replaceChildren();
+    pg.style.display='none';
+  }
 }
 
 // ── Wizard modal ──────────────────────────────────────────────────────────────
@@ -1188,7 +1190,6 @@ async function alopRevizuiesteDF(alopId,dfId){
   // -- Export onclick global + cross-module ---------------------------------
   window.loadAlopStats              = loadAlopStats;
   window.loadAlop                   = loadAlop;
-  window.changeAlopPage             = changeAlopPage;
   window.openAlopModal              = openAlopModal;
   window.closeAlopModal             = closeAlopModal;
   window.createAlop                 = createAlop;

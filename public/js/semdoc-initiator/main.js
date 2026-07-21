@@ -1611,16 +1611,18 @@ async function signFromFluxuri(flowId) {
               counter.style.color = "rgba(234,240,255,.5)";
             }
           }
-          // Actualizeaza paginarea
-          const pg = $("fluxPagination");
-          if (pg) {
-            pg.style.display = (!isClientSearch && pages > 1) ? "flex" : "none";
-            const info = $("fluxPageInfo");
-            if (info) info.textContent = isClientSearch
-              ? (total + " fluxuri găsite")
-              : ("Pagina " + page + " din " + pages + " (" + total + " fluxuri)");
-            const prev = $("fluxPrevBtn"); if (prev) prev.disabled = isClientSearch || page <= 1;
-            const next = $("fluxNextBtn"); if (next) next.disabled = isClientSearch || page >= pages;
+          // Actualizeaza paginarea — DFPagin numerotat. În mod căutare (isClientSearch)
+          // bara se ascunde: rezultatele filtrate client-side sunt deja toate pe o
+          // pagină, iar numărul apare în contorul #fluxCounter.
+          if (window.DFPagin && typeof window.DFPagin.render === 'function') {
+            window.DFPagin.render({
+              container: 'fluxPagination',
+              total: isClientSearch ? 0 : total,
+              page,
+              limit: 50,
+              mode: 'numbered',
+              onChange: (p) => loadMyFlows(p),
+            });
           }
         } catch(e) {
           el.innerHTML = '<div style="color:#ffaaaa;padding:20px;">Eroare de retea.</div>';
