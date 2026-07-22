@@ -8,6 +8,7 @@ import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getU
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { isFlowAccessAllowed } from '../../services/flow-access.mjs';
 import { logger } from '../../middleware/logger.mjs';
+import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../../services/authz-scope.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -59,7 +60,7 @@ router.post('/flows/:flowId/attachments', _largePdf, async (req, res) => {
     if (!data) return res.status(404).json({ error: 'not_found' });
     // Doar inițiatorul sau admin poate atașa documente
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
     if (!isInit && !isAdmin) return res.status(403).json({ error: 'forbidden' });
     if (data.status === 'cancelled') return res.status(409).json({ error: 'flow_cancelled' });
 
@@ -173,7 +174,7 @@ router.delete('/flows/:flowId/attachments/:attId', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
     if (!isInit && !isAdmin) return res.status(403).json({ error: 'forbidden' });
     const { rowCount } = await pool.query('DELETE FROM flow_attachments WHERE id=$1 AND flow_id=$2', [parseInt(attId), flowId]);
     if (!rowCount) return res.status(404).json({ error: 'not_found' });

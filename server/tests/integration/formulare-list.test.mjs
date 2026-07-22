@@ -266,3 +266,68 @@ describe('GET /api/formulare/list', () => {
     });
   });
 });
+
+// ── #105d — contract org-scope (platform-admin vs. org-scoped) ────────────────
+function tok105d(role, orgId, userId = 77) {
+  return jwt.sign({ userId, email: `${role}@x.ro`, role, orgId, nume: role }, JWT_SECRET, { expiresIn: '2h' });
+}
+
+describe('#105d — org-scope /api/formulare/list (shared)', () => {
+  beforeEach(() => { dbModule.pool.query.mockReset(); });
+
+  it('platform-admin (admin fără org_id) → fără scopare org (vede tot)', async () => {
+    const { getSql } = captureListQuery();
+    await request(app).get('/api/formulare/list?type=df')
+      .set('Cookie', `auth_token=${tok105d('admin', null, 99)}`).expect(200);
+    expect(getSql()).not.toContain('fd.org_id=$');
+  });
+
+  it('admin CU org_id → platform, FĂRĂ scopare org (role-only, vede tot)', async () => {
+    const { getSql } = captureListQuery();
+    await request(app).get('/api/formulare/list?type=df')
+      .set('Cookie', `auth_token=${tok105d('admin', 1, 5)}`).expect(200);
+    expect(getSql()).not.toContain('fd.org_id=$');
+  });
+
+  it('org_admin → scopat pe org, fără compartiment', async () => {
+    const { getSql, getParams } = captureListQuery();
+    await request(app).get('/api/formulare/list?type=df')
+      .set('Cookie', `auth_token=${tok105d('org_admin', 2, 6)}`).expect(200);
+    expect(getSql()).toContain('fd.org_id=$1');
+    expect(getParams()).toContain(2);
+    expect(getSql()).not.toContain('TRIM(uc.compartiment)');
+  });
+
+  it('user obișnuit → scopat pe org (non-manager)', async () => {
+    const { getSql, getParams } = captureListQuery();
+    await request(app).get('/api/formulare/list?type=df')
+      .set('Cookie', `auth_token=${tok105d('user', 2, 7)}`).expect(200);
+    expect(getSql()).toContain('fd.org_id=$1');
+    expect(getParams()).toContain(2);
+  });
+});
+
+describe('#105d — org-scope /api/formulare-df (listă paralelă)', () => {
+  beforeEach(() => { dbModule.pool.query.mockReset(); });
+
+  it('platform-admin → orgFilter gol (fără fd.org_id = $1)', async () => {
+    const { getSql } = captureListQuery();
+    await request(app).get('/api/formulare-df')
+      .set('Cookie', `auth_token=${tok105d('admin', null, 99)}`).expect(200);
+    expect(getSql()).not.toContain('fd.org_id = $1');
+  });
+
+  it('admin CU org_id → platform, orgFilter gol (role-only)', async () => {
+    const { getSql } = captureListQuery();
+    await request(app).get('/api/formulare-df')
+      .set('Cookie', `auth_token=${tok105d('admin', 1, 5)}`).expect(200);
+    expect(getSql()).not.toContain('fd.org_id = $1');
+  });
+
+  it('user obișnuit → ramura compartiment (u_p1.compartiment prezent)', async () => {
+    const { getSql } = captureListQuery();
+    await request(app).get('/api/formulare-df')
+      .set('Cookie', `auth_token=${tok105d('user', 2, 7)}`).expect(200);
+    expect(getSql()).toContain('u_p1.compartiment');
+  });
+});

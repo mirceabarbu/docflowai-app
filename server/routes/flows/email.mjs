@@ -7,6 +7,7 @@ import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml 
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
+import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../../services/authz-scope.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -360,8 +361,9 @@ router.get('/flows/:flowId/email-stats', async (req, res) => {
   try {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
-    // Verificare acces: inițiator, semnatar sau admin/org_admin
-    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    // Verificare acces: inițiator, semnatar sau admin/org_admin CU acces la org-ul fluxului
+    // #105b: platform-admin (fără org_id) vede tot; org_admin/admin doar pe același org (fail-closed)
+    const isAdmin = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
     const isInitiator = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     const isSigner = (data.signers || []).some(s => (s.email || '').toLowerCase() === actor.email.toLowerCase());
     if (!isAdmin && !isInitiator && !isSigner) return res.status(403).json({ error: 'forbidden' });

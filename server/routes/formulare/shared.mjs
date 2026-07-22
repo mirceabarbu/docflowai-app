@@ -18,6 +18,7 @@ import { logger } from '../../middleware/logger.mjs';
 import { pool } from '../../db/index.mjs';
 import { listFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import { isAdminOrOrgAdmin } from '../admin/_helpers.mjs';
+import { isPlatformAdmin } from '../../services/authz-scope.mjs';
 import { loadActorCompAndCab, isCabDept, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
 import { requireDb } from './_helpers.mjs';
 
@@ -311,7 +312,10 @@ router.get('/api/formulare/utilizatori-org', async (req, res) => {
     );
     const actorComp = (actorRows[0]?.compartiment || '').trim();
     const { rows } = await pool.query(
-      `SELECT id, email, nume, functie, compartiment
+      `SELECT id, email, nume, functie, compartiment,
+              leave_start, leave_end,
+              (leave_start IS NOT NULL AND leave_end IS NOT NULL
+               AND leave_start <= CURRENT_DATE AND leave_end >= CURRENT_DATE) AS on_leave
        FROM users
        WHERE org_id=$1 AND id != $2
        ORDER BY
@@ -394,8 +398,9 @@ router.get('/api/formulare/list', async (req, res) => {
   const actor = requireAuth(req, res);
   if (!actor) return;
 
-  const isAdmin    = actor.role === 'admin';
-  const isOrgAdmin = actor.role === 'org_admin';
+  // #105d: două predicate — scopare pe org (doar platform-admin sare) vs. vizibilitate în-org (pe rol)
+  const isPlatform   = isPlatformAdmin(actor);
+  const isOrgManager = isAdminOrOrgAdmin(actor);
 
   const { type = 'df', status, from, to, comp, init, p2, nr, page = '1', limit = '20' } = req.query;
   const lim  = Math.min(parseInt(limit) || 20, 100);
@@ -407,11 +412,11 @@ router.get('/api/formulare/list', async (req, res) => {
       const params = [];
       const conds  = ['fd.deleted_at IS NULL'];
 
-      if (!isAdmin) {
+      if (!isPlatform) {
         conds.push(`fd.org_id=$${params.push(actor.orgId)}`);
-        if (!isOrgAdmin) {
+        if (!isOrgManager) {
           // FEAT ALOP-CAB: membrul CAB al org-ului vede TOT org-ul (doar scoparea fd.org_id de mai
-          // sus, fără filtru de compartiment/inițiator). isAdmin rămâne NEATINS (inconsistența #105).
+          // sus, fără filtru de compartiment/inițiator). #105d: org-scope=isPlatform, vizibilitate în-org=isOrgManager.
           const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
           if (!isCabDept(actorComp, cabComp)) {
             const u1 = params.push(actor.userId);
@@ -510,7 +515,7 @@ router.get('/api/formulare/list', async (req, res) => {
           COALESCE(u2.nume, u2.email) AS p2,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (
-            ${(isAdmin || isOrgAdmin) ? 'TRUE' : `fd.created_by = $${params.push(actor.userId)}`}
+            ${isOrgManager ? 'TRUE' : `fd.created_by = $${params.push(actor.userId)}`}
             AND fd.flow_id IS NULL
             AND NOT EXISTS (
               SELECT 1 FROM formulare_ord fo_chk
@@ -537,11 +542,11 @@ router.get('/api/formulare/list', async (req, res) => {
       const params = [];
       const conds  = ['fo.deleted_at IS NULL'];
 
-      if (!isAdmin) {
+      if (!isPlatform) {
         conds.push(`fo.org_id=$${params.push(actor.orgId)}`);
-        if (!isOrgAdmin) {
+        if (!isOrgManager) {
           // FEAT ALOP-CAB: membrul CAB al org-ului vede TOT org-ul (doar scoparea fo.org_id de mai
-          // sus, fără filtru de compartiment/inițiator). isAdmin rămâne NEATINS (inconsistența #105).
+          // sus, fără filtru de compartiment/inițiator). #105d: org-scope=isPlatform, vizibilitate în-org=isOrgManager.
           const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
           if (!isCabDept(actorComp, cabComp)) {
             const u1 = params.push(actor.userId);
@@ -627,7 +632,7 @@ router.get('/api/formulare/list', async (req, res) => {
           COALESCE(u2.nume, u2.email) AS p2,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (
-            ${(isAdmin || isOrgAdmin) ? 'TRUE' : `fo.created_by = $${params.push(actor.userId)}`}
+            ${isOrgManager ? 'TRUE' : `fo.created_by = $${params.push(actor.userId)}`}
             AND fo.flow_id IS NULL
           ) AS can_delete,
           (fo.created_by = $${params.push(actor.userId)}) AS "isP1",

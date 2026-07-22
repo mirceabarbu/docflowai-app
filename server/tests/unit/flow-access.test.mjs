@@ -45,4 +45,13 @@ describe('canActorReadFlow (pur)', () => {
   it('anonim fără token → false', () => {
     expect(canActorReadFlow(null, makeData(), null)).toBe(false);
   });
+  it('platform-admin (admin fără org_id) cross-org → true (lockout reparat)', () => {
+    expect(canActorReadFlow(actor('super@z.ro', 'admin', null), makeData(), null)).toBe(true);
+  });
+  it('admin CU org_id, cross-org → true (role-only: admin = platform)', () => {
+    expect(canActorReadFlow(actor('admin@y.ro', 'admin', 99), makeData(), null)).toBe(true);
+  });
+  it('admin CU org_id, same-org → true', () => {
+    expect(canActorReadFlow(actor('admin@x.ro', 'admin', 1), makeData(), null)).toBe(true);
+  });
 });

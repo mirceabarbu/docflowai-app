@@ -11,6 +11,7 @@
 import { Router }   from 'express';
 import { getFlowData, pool } from '../db/index.mjs';
 import { requireAuth } from '../middleware/auth.mjs';
+import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../services/authz-scope.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { generateTrustReport } from '../services/sign-trust-report.mjs';
 
@@ -26,8 +27,9 @@ router.get('/api/flows/:flowId/report', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
 
-    // Verificăm că actorul e inițiatorul sau admin
-    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
+    // Verificăm accesul: inițiator, semnatar sau admin/org_admin CU acces la org-ul fluxului
+    // #105b: platform-admin (fără org_id) vede tot; org_admin/admin doar pe același org (fail-closed)
+    const isAdmin = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
     const isInit  = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     const isSigner = (data.signers || []).some(s => (s.email || '').toLowerCase() === actor.email.toLowerCase());
     if (!isAdmin && !isInit && !isSigner)
@@ -139,7 +141,8 @@ router.get('/api/flows/:flowId/report/json', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
 
-    const isAdmin  = actor.role === 'admin' || actor.role === 'org_admin';
+    // #105b: platform-admin (fără org_id) vede tot; org_admin/admin doar pe același org (fail-closed)
+    const isAdmin  = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
     const isInit   = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     const isSigner = (data.signers || []).some(s => (s.email||'').toLowerCase() === actor.email.toLowerCase());
     if (!isAdmin && !isInit && !isSigner)
@@ -165,6 +168,14 @@ router.get('/api/flows/:flowId/report/status', async (req, res) => {
   try {
     const actor = requireAuth(req, res); if (!actor) return;
     const { flowId } = req.params;
+    const data = await getFlowData(flowId);
+    if (!data) return res.json({ exists: false });
+    // #105e: același contract de acces ca /report/json (platform-admin/same-org/init/semnatar)
+    const isAdmin  = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
+    const isInit   = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
+    const isSigner = (data.signers || []).some(s => (s.email||'').toLowerCase() === actor.email.toLowerCase());
+    if (!isAdmin && !isInit && !isSigner)
+      return res.status(403).json({ error: 'forbidden' });
     const { rows } = await pool.query(
       `SELECT generated_at, conclusion FROM trust_reports WHERE flow_id = $1`, [flowId]
     ).catch(() => ({ rows: [] }));

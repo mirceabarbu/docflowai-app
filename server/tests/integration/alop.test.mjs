@@ -1283,3 +1283,48 @@ describe('POST endpoint-uri ALOP — P2-comp via slot responsabil_cab pur (făr�
     expect(res.body.error).toBe('forbidden');
   });
 });
+
+// ── #105g — org-scope vizibilitate ALOP (platform-admin vs. org-scoped) ────────
+function app105g() {
+  const a = express();
+  a.use(cookieParser());
+  a.use(alopRouter);
+  return a;
+}
+function tok105g(role, orgId, userId = 90) {
+  return jwt.sign({ userId, email: `${role}@x.ro`, role, orgId, nume: role }, JWT_SECRET, { expiresIn: '2h' });
+}
+function captureAlop() {
+  const calls = [];
+  dbModule.pool.query.mockImplementation((sql, params) => {
+    calls.push({ sql: String(sql), params: params || [] });
+    // COUNT(*) → un rând valid (handlerul citește cnt[0].count); restul → gol
+    if (/COUNT\(\*\)/i.test(String(sql))) return Promise.resolve({ rows: [{ count: 0 }] });
+    return Promise.resolve({ rows: [] });
+  });
+  return { list: () => calls.find(c => c.sql.includes('FROM alop_instances a')) || { sql: '', params: [] } };
+}
+
+describe('#105g — org-scope /api/alop (listă)', () => {
+  beforeEach(() => { dbModule.pool.query.mockReset(); });
+
+  it('platform-admin (admin fără org_id) → $1 null-tolerant + params[0]=null (vede tot)', async () => {
+    const cap = captureAlop();
+    await request(app105g()).get('/api/alop').set('Cookie', `auth_token=${tok105g('admin', null, 99)}`).expect(200);
+    const c = cap.list();
+    expect(c.sql).toContain('$1::int IS NULL');
+    expect(c.params[0]).toBe(null);
+  });
+
+  it('admin CU org_id → platform, params[0]=null (role-only)', async () => {
+    const cap = captureAlop();
+    await request(app105g()).get('/api/alop').set('Cookie', `auth_token=${tok105g('admin', 1, 5)}`).expect(200);
+    expect(cap.list().params[0]).toBe(null);
+  });
+
+  it('org_admin → params[0]=org (scopat)', async () => {
+    const cap = captureAlop();
+    await request(app105g()).get('/api/alop').set('Cookie', `auth_token=${tok105g('org_admin', 2, 6)}`).expect(200);
+    expect(cap.list().params[0]).toBe(2);
+  });
+});
