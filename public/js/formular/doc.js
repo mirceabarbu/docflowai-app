@@ -1463,6 +1463,9 @@ function _renderP2FilterToggle(){
   cb.checked=!!ST.p2FilterByComp;
 }
 function closeModal(){document.getElementById('modal-p2').classList.remove('show');}
+function _fmtLeaveDate(d){
+  try{ const s=String(d).slice(0,10); const p=s.split('-'); return (p.length===3)?`${p[2]}.${p[1]}.${p[0]}`:s; }catch(_){ return String(d||''); }
+}
 function filterModalUsers(){
   const q=(document.getElementById('modal-search')?.value||'').toLowerCase();
   const listEl=document.getElementById('modal-user-list');
@@ -1480,15 +1483,24 @@ function filterModalUsers(){
     const otherCompBadge=actComp && uComp && uComp!==actComp
       ? ` <span style="font-size:.66rem;padding:1px 6px;border-radius:8px;background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.25);margin-left:4px">alt compartiment</span>`
       : '';
-    return `<div class="modal-user${ST.selectedP2Id===u.id?' sel':''}" onclick="selectP2(${u.id})">
+    const onLeave=!!u.on_leave;
+    const coBadge=onLeave
+      ? ` <span style="font-size:.66rem;padding:1px 6px;border-radius:8px;background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25);margin-left:4px">În CO${u.leave_end?` până la ${_fmtLeaveDate(u.leave_end)}`:''}</span>`
+      : '';
+    const rowAttrs=onLeave
+      ? ` style="opacity:.5;cursor:not-allowed" title="Utilizator în concediu — indisponibil, alegeți alt responsabil"`
+      : ` onclick="selectP2(${u.id})"`;
+    return `<div class="modal-user${ST.selectedP2Id===u.id?' sel':''}"${rowAttrs}>
       <div style="flex:1">
-        <div class="modal-u-name">${(u.nume||u.email||'').replace(/</g,'&lt;')}${otherCompBadge}</div>
+        <div class="modal-u-name">${(u.nume||u.email||'').replace(/</g,'&lt;')}${otherCompBadge}${coBadge}</div>
         <div class="modal-u-sub">${(u.email||'').replace(/</g,'&lt;')}${u.compartiment?` · ${u.compartiment.replace(/</g,'&lt;')}`:''}</div>
       </div>
     </div>`;
   }).join('');
 }
 function selectP2(id){
+  const u=(ST.orgUsers||[]).find(x=>x.id===id);
+  if(u&&u.on_leave) return; // În CO — neselectabil
   ST.selectedP2Id=id;
   document.getElementById('modal-confirm').disabled=false;
   filterModalUsers();

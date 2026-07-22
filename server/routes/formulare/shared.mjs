@@ -312,7 +312,10 @@ router.get('/api/formulare/utilizatori-org', async (req, res) => {
     );
     const actorComp = (actorRows[0]?.compartiment || '').trim();
     const { rows } = await pool.query(
-      `SELECT id, email, nume, functie, compartiment
+      `SELECT id, email, nume, functie, compartiment,
+              leave_start, leave_end,
+              (leave_start IS NOT NULL AND leave_end IS NOT NULL
+               AND leave_start <= CURRENT_DATE AND leave_end >= CURRENT_DATE) AS on_leave
        FROM users
        WHERE org_id=$1 AND id != $2
        ORDER BY
