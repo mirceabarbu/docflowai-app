@@ -25,6 +25,7 @@ import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorCompAndCab, isCabDept, canEditAlop, canDestroyOnly, loadOrgCabComp } from '../services/authz-formular.mjs';
 import { sendNotif } from '../services/formular-shared.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
+import { isPlatformAdmin } from '../services/authz-scope.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
@@ -291,8 +292,8 @@ router.get('/api/alop/stats', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const params = [actor.orgId];
-    let where = 'a.org_id=$1 AND a.cancelled_at IS NULL';
+    const params = [isPlatformAdmin(actor) ? null : actor.orgId];
+    let where = '($1::int IS NULL OR a.org_id=$1) AND a.cancelled_at IS NULL';
     where += await buildAlopVisibilityWhere(actor, params);
     const { rows } = await pool.query(`
       SELECT
@@ -319,8 +320,8 @@ router.get('/api/alop', async (req, res) => {
     const { status, page = 1, limit = 20 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
-    const params = [actor.orgId];
-    let where = 'a.org_id = $1 AND a.cancelled_at IS NULL';
+    const params = [isPlatformAdmin(actor) ? null : actor.orgId];
+    let where = '($1::int IS NULL OR a.org_id = $1) AND a.cancelled_at IS NULL';
     where += await buildAlopVisibilityWhere(actor, params);
     if (status) {
       params.push(status);
@@ -480,14 +481,14 @@ router.get('/api/alop/facturi', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const params = [actor.orgId];
+    const params = [isPlatformAdmin(actor) ? null : actor.orgId];
     // CTE cu ALOP-urile vizibile actorului (aceeași regulă ca lista ALOP)
     const visWhere = await buildAlopVisibilityWhere(actor, params); // '' sau ' AND (...)'
     const sql = `
       WITH visible_alop AS (
         SELECT a.id
           FROM alop_instances a
-         WHERE a.org_id = $1 AND a.cancelled_at IS NULL${visWhere}
+         WHERE ($1::int IS NULL OR a.org_id = $1) AND a.cancelled_at IS NULL${visWhere}
       )
       SELECT
         t.*,
