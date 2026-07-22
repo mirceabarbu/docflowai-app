@@ -133,7 +133,10 @@ function makeToken(overrides = {}) {
 }
 
 function makeAdminToken() {
-  return makeToken({ role: 'admin', email: 'admin@primaria.ro', orgId: 999 });
+  // #105h: „admin global" = platform-admin (fără org_id) sub contractul authz-scope.
+  // Un admin CU org_id e org-scoped (fail-closed cross-org); orgId:null modelează
+  // corect admin-ul de platformă care poate acționa cross-org.
+  return makeToken({ role: 'admin', email: 'admin@primaria.ro', orgId: null });
 }
 
 /** Flux minimal valid pentru mock getFlowData */
