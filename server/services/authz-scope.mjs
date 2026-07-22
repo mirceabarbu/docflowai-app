@@ -16,12 +16,14 @@
  */
 
 /**
- * Platform-admin = admin de platformă, fără org_id. Singurul care vede tot cross-org.
- * @param {{role?:string, orgId?:number|string|null}} actor
+ * Platform-admin = orice actor cu role==='admin' (contract ROLE-ONLY, 22.07.2026).
+ * La DocFlowAI role='admin' e DOAR contul bootstrap de platformă; primăriile folosesc
+ * org_admin. INVARIANT: nu atribui NICIODATĂ role='admin' unui client (ar deveni superuser).
+ * @param {{role?:string}} actor
  * @returns {boolean}
  */
 export function isPlatformAdmin(actor) {
-  return actor?.role === 'admin' && !actor?.orgId;
+  return actor?.role === 'admin';
 }
 
 /**

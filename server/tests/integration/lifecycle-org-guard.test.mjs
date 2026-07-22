@@ -63,9 +63,9 @@ describe('#105h — POST /flows/:id/cancel org guard', () => {
     CURRENT_ACTOR = { email: 'oa@y.ro', role: 'org_admin', orgId: 2, userId: 9 };
     expect((await request(app).post('/flows/F1/cancel').send({})).status).toBe(403);
   });
-  it('admin CU org_id, ALT org (2) → 403 (fail-closed până la flip)', async () => {
+  it('admin CU org_id, ALT org (2) → NU 403 (role-only: admin = platform)', async () => {
     CURRENT_ACTOR = { email: 'admin@y.ro', role: 'admin', orgId: 2, userId: 1 };
-    expect((await request(app).post('/flows/F1/cancel').send({})).status).toBe(403);
+    expect((await request(app).post('/flows/F1/cancel').send({})).status).not.toBe(403);
   });
   it('platform-admin (fără org_id) → NU 403 (cross-org permis)', async () => {
     CURRENT_ACTOR = { email: 'super@z.ro', role: 'admin', orgId: null, userId: 1 };

@@ -282,13 +282,11 @@ describe('#105d — org-scope /api/formulare/list (shared)', () => {
     expect(getSql()).not.toContain('fd.org_id=$');
   });
 
-  it('admin CU org_id → scopat pe org, DAR fără filtru de compartiment (vede tot org-ul)', async () => {
-    const { getSql, getParams } = captureListQuery();
+  it('admin CU org_id → platform, FĂRĂ scopare org (role-only, vede tot)', async () => {
+    const { getSql } = captureListQuery();
     await request(app).get('/api/formulare/list?type=df')
       .set('Cookie', `auth_token=${tok105d('admin', 1, 5)}`).expect(200);
-    expect(getSql()).toContain('fd.org_id=$1');
-    expect(getParams()).toContain(1);
-    expect(getSql()).not.toContain('TRIM(uc.compartiment)');
+    expect(getSql()).not.toContain('fd.org_id=$');
   });
 
   it('org_admin → scopat pe org, fără compartiment', async () => {
@@ -319,12 +317,11 @@ describe('#105d — org-scope /api/formulare-df (listă paralelă)', () => {
     expect(getSql()).not.toContain('fd.org_id = $1');
   });
 
-  it('admin CU org_id → scopat pe org (ca org_admin)', async () => {
-    const { getSql, getParams } = captureListQuery();
+  it('admin CU org_id → platform, orgFilter gol (role-only)', async () => {
+    const { getSql } = captureListQuery();
     await request(app).get('/api/formulare-df')
       .set('Cookie', `auth_token=${tok105d('admin', 1, 5)}`).expect(200);
-    expect(getSql()).toContain('fd.org_id = $1');
-    expect(getParams()).toContain(1);
+    expect(getSql()).not.toContain('fd.org_id = $1');
   });
 
   it('user obișnuit → ramura compartiment (u_p1.compartiment prezent)', async () => {

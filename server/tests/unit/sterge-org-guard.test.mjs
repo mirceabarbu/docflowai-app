@@ -43,10 +43,9 @@ describe('#105e — stergeFormular tenant guard', () => {
     expect(r.body.error).not.toBe('forbidden');
   });
 
-  it('admin CU org_id, ALT org → 403 forbidden (fail-closed)', async () => {
+  it('admin CU org_id, ALT org → sare peste tenant guard (role-only: admin = platform)', async () => {
     mockDoc(1);
     const r = await stergeFormular({ type: 'df', id: 'x', actor: { role: 'admin', orgId: 2, userId: 1 } });
-    expect(r.status).toBe(403);
-    expect(r.body.error).toBe('forbidden');
+    expect(r.body.error).not.toBe('forbidden');
   });
 });

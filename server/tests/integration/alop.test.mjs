@@ -1316,10 +1316,10 @@ describe('#105g — org-scope /api/alop (listă)', () => {
     expect(c.params[0]).toBe(null);
   });
 
-  it('admin CU org_id → params[0]=org (scopat)', async () => {
+  it('admin CU org_id → platform, params[0]=null (role-only)', async () => {
     const cap = captureAlop();
     await request(app105g()).get('/api/alop').set('Cookie', `auth_token=${tok105g('admin', 1, 5)}`).expect(200);
-    expect(cap.list().params[0]).toBe(1);
+    expect(cap.list().params[0]).toBe(null);
   });
 
   it('org_admin → params[0]=org (scopat)', async () => {

@@ -10,9 +10,9 @@ describe('actorOrgFilter (#105c)', () => {
     expect(actorOrgFilter({ role: 'admin', orgId: null })).toBe(null);
     expect(actorOrgFilter({ role: 'admin' })).toBe(null);
   });
-  it('admin CU org_id ⇒ scopat la propriul org (NU null) — fixul central', () => {
-    expect(actorOrgFilter({ role: 'admin', orgId: 1 })).toBe(1);
-    expect(actorOrgFilter({ role: 'admin', orgId: 2 })).toBe(2);
+  it('admin CU org_id ⇒ platform, fără filtru (null) — role-only', () => {
+    expect(actorOrgFilter({ role: 'admin', orgId: 1 })).toBe(null);
+    expect(actorOrgFilter({ role: 'admin', orgId: 2 })).toBe(null);
   });
   it('org_admin ⇒ propriul org', () => {
     expect(actorOrgFilter({ role: 'org_admin', orgId: 5 })).toBe(5);

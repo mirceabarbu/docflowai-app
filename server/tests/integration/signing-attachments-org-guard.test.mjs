@@ -59,9 +59,9 @@ describe('#105i — signing/attachments org guard', () => {
     CURRENT_ACTOR = { email: 'oa@y.ro', role: 'org_admin', orgId: 2, userId: 9 };
     expect((await request(app).delete('/flows/F1/attachments/1')).status).toBe(403);
   });
-  it('DELETE attachment: admin CU org_id cross-org → 403 (fail-closed)', async () => {
+  it('DELETE attachment: admin CU org_id cross-org → NU 403 (role-only: admin = platform)', async () => {
     CURRENT_ACTOR = { email: 'admin@y.ro', role: 'admin', orgId: 2, userId: 1 };
-    expect((await request(app).delete('/flows/F1/attachments/1')).status).toBe(403);
+    expect((await request(app).delete('/flows/F1/attachments/1')).status).not.toBe(403);
   });
   it('DELETE attachment: platform-admin (fără org_id) → NU 403', async () => {
     CURRENT_ACTOR = { email: 'super@z.ro', role: 'admin', orgId: null, userId: 1 };

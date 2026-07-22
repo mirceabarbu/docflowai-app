@@ -68,10 +68,10 @@ describe('#105b tenant isolation — /report/json (flux org 1)', () => {
     const res = await request(app()).get(URL).set('Cookie', makeAuth('admin@docflowai.ro', 1, 'admin', 1));
     expect(res.status).not.toBe(403);
   });
-  it('admin CU org_id=1 pe flux ALT org (2) → 403 (fail-closed până la null org_id)', async () => {
+  it('admin CU org_id=1 pe flux ALT org (2) → NU 403 (role-only: admin = platform)', async () => {
     dbModule.getFlowData.mockResolvedValue(makeFlowData(2));
     const res = await request(app()).get(URL).set('Cookie', makeAuth('admin@docflowai.ro', 1, 'admin', 1));
-    expect(res.status).toBe(403);
+    expect(res.status).not.toBe(403);
   });
   it('inițiator (chiar din alt org) → nu 403', async () => {
     dbModule.getFlowData.mockResolvedValue(makeFlowData(1));

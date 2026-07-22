@@ -11,8 +11,8 @@ describe('isPlatformAdmin', () => {
     expect(isPlatformAdmin({ role: 'admin', orgId: null })).toBe(true);
     expect(isPlatformAdmin({ role: 'admin' })).toBe(true);
   });
-  it('admin CU org_id ⇒ false (admin instituțional, org-scoped)', () => {
-    expect(isPlatformAdmin({ role: 'admin', orgId: 1 })).toBe(false);
+  it('admin CU org_id ⇒ true (role-only: role=admin ⟺ platform)', () => {
+    expect(isPlatformAdmin({ role: 'admin', orgId: 1 })).toBe(true);
   });
   it('org_admin / user ⇒ false indiferent de org_id', () => {
     expect(isPlatformAdmin({ role: 'org_admin', orgId: null })).toBe(false);
@@ -46,11 +46,11 @@ describe('orgScopeSql', () => {
     expect(sql).toBe(' AND fd.org_id = $2');
     expect(params).toEqual(['x', 7]);
   });
-  it('admin CU org_id ⇒ tratat ca org-scoped (nu platform)', () => {
+  it('admin CU org_id ⇒ platform, fără filtru (role-only)', () => {
     const params = [];
     const sql = orgScopeSql({ role: 'admin', orgId: 1 }, 'a', params);
-    expect(sql).toBe(' AND a.org_id = $1');
-    expect(params).toEqual([1]);
+    expect(sql).toBe('');
+    expect(params).toEqual([]);
   });
   it('non-platform fără org_id ⇒ = NULL (fail-closed, 0 rânduri), NU fără filtru', () => {
     const params = [];
@@ -71,8 +71,8 @@ describe('actorCanAccessOrg', () => {
   it('org diferit ⇒ false', () => {
     expect(actorCanAccessOrg({ role: 'org_admin', orgId: 3 }, 4)).toBe(false);
   });
-  it('admin CU org_id ⇒ doar propriul org (nu platform)', () => {
-    expect(actorCanAccessOrg({ role: 'admin', orgId: 1 }, 2)).toBe(false);
+  it('admin CU org_id ⇒ platform, acces la orice org (role-only)', () => {
+    expect(actorCanAccessOrg({ role: 'admin', orgId: 1 }, 2)).toBe(true);
     expect(actorCanAccessOrg({ role: 'admin', orgId: 1 }, 1)).toBe(true);
   });
   it('org_id lipsă (și non-platform) ⇒ false, fără excepție', () => {
