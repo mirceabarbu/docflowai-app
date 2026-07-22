@@ -168,6 +168,14 @@ router.get('/api/flows/:flowId/report/status', async (req, res) => {
   try {
     const actor = requireAuth(req, res); if (!actor) return;
     const { flowId } = req.params;
+    const data = await getFlowData(flowId);
+    if (!data) return res.json({ exists: false });
+    // #105e: același contract de acces ca /report/json (platform-admin/same-org/init/semnatar)
+    const isAdmin  = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
+    const isInit   = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
+    const isSigner = (data.signers || []).some(s => (s.email||'').toLowerCase() === actor.email.toLowerCase());
+    if (!isAdmin && !isInit && !isSigner)
+      return res.status(403).json({ error: 'forbidden' });
     const { rows } = await pool.query(
       `SELECT generated_at, conclusion FROM trust_reports WHERE flow_id = $1`, [flowId]
     ).catch(() => ({ rows: [] }));

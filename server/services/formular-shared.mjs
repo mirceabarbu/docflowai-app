@@ -13,6 +13,7 @@
  */
 
 import { pool } from '../db/index.mjs';
+import { isPlatformAdmin } from './authz-scope.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import { computeDocCapabilities } from './formular-capabilities.mjs';
@@ -693,7 +694,7 @@ export async function stergeFormular({ type, id, actor }) {
     );
     if (!rows.length) return { status: 404, body: { error: 'not_found' } };
     const doc = rows[0];
-    if (actor.role !== 'admin' && doc.org_id !== actor.orgId)
+    if (!isPlatformAdmin(actor) && doc.org_id !== actor.orgId)
       return { status: 403, body: { error: 'forbidden' } };
     {
       const authz = canDestroyOnly(actor, doc);

@@ -89,3 +89,27 @@ describe('#105b tenant isolation — /report/json (flux org 1)', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('#105e tenant isolation — /report/status (flux org 1)', () => {
+  const SURL = `/api/flows/${FLOW_ID}/report/status`;
+  it('org_admin din ALT org (2) → 403', async () => {
+    dbModule.getFlowData.mockResolvedValue(makeFlowData(1));
+    const res = await request(app()).get(SURL).set('Cookie', makeAuth('oa@b.ro', 9, 'org_admin', 2));
+    expect(res.status).toBe(403);
+  });
+  it('org_admin din ACELAȘI org (1) → nu 403', async () => {
+    dbModule.getFlowData.mockResolvedValue(makeFlowData(1));
+    const res = await request(app()).get(SURL).set('Cookie', makeAuth('oa@a.ro', 8, 'org_admin', 1));
+    expect(res.status).not.toBe(403);
+  });
+  it('platform-admin (fără org_id) → nu 403', async () => {
+    dbModule.getFlowData.mockResolvedValue(makeFlowData(1));
+    const res = await request(app()).get(SURL).set('Cookie', makeAuth('admin@docflowai.ro', 1, 'admin', null));
+    expect(res.status).not.toBe(403);
+  });
+  it('inițiator → nu 403', async () => {
+    dbModule.getFlowData.mockResolvedValue(makeFlowData(1));
+    const res = await request(app()).get(SURL).set('Cookie', makeAuth('init@a.ro', 7, 'user', 2));
+    expect(res.status).not.toBe(403);
+  });
+});
