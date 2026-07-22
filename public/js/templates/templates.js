@@ -303,7 +303,8 @@ function buildCard(t,idx) {
     <button class="df-action-btn sm" onclick="toggleShared(${t.id},${t.shared})">${shareBtnContent}</button>
     <button class="df-action-btn danger sm" onclick="deleteTemplate(${t.id},'${esc(t.name)}')"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-trash"/></svg>Șterge</button>
     <button class="df-action-btn sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clipboard"/></svg>Copiază</button>`
-  : `<button class="df-action-btn success sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clipboard"/></svg>Copiază ca al meu</button>`;
+  : `<button class="df-action-btn success sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clipboard"/></svg>Copiază ca al meu</button>${t.canDelete ? `
+    <button class="df-action-btn danger sm" onclick="deleteTemplate(${t.id},'${esc(t.name)}')"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-trash"/></svg>Șterge</button>` : ''}`;
   div.innerHTML=`
     <div class="tmpl-name">${esc(t.name)} ${badge}</div>
     <div class="tmpl-meta">${(t.signers||[]).length} semnatari · ${dt}</div>

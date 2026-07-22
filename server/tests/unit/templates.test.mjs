@@ -98,13 +98,13 @@ describe('GET /api/templates', () => {
     expect(res.status).toBe(401);
   });
 
-  it('200 — returnează lista cu isOwner calculat corect', async () => {
+  it('200 — returnează lista cu isOwner/canDelete calculat corect (user simplu)', async () => {
     const app = createTestApp();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [mockUserRow()] })          // SELECT institutie, org_id
       .mockResolvedValueOnce({ rows: [                           // SELECT templates
         mockTemplateRow({ user_email: 'owner@test.ro' }),
-        mockTemplateRow({ id: 99, user_email: 'altul@test.ro', shared: true }),
+        mockTemplateRow({ id: 99, user_email: 'altul@test.ro', shared: true, org_id: 1 }),
       ]});
 
     const res = await request(app).get('/api/templates')
@@ -113,7 +113,28 @@ describe('GET /api/templates', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(2);
     expect(res.body[0].isOwner).toBe(true);
+    expect(res.body[0].canDelete).toBe(true);   // owner
     expect(res.body[1].isOwner).toBe(false);
+    expect(res.body[1].canDelete).toBe(false);  // user simplu pe shared al altcuiva
+  });
+
+  it('200 — org_admin: canDelete pe shared same-org, dar nu pe alt org / privat', async () => {
+    const app = createTestApp();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ email: 'admin@test.ro', role: 'org_admin', org_id: 1 })] })
+      .mockResolvedValueOnce({ rows: [
+        mockTemplateRow({ id: 10, user_email: 'coleg@test.ro', shared: true,  org_id: 1 }),  // shared same-org
+        mockTemplateRow({ id: 11, user_email: 'strain@x.ro',   shared: true,  org_id: 2 }),  // shared alt org
+        mockTemplateRow({ id: 12, user_email: 'coleg@test.ro', shared: false, org_id: 1 }),  // privat al altcuiva
+      ]});
+
+    const res = await request(app).get('/api/templates')
+      .set('Cookie', makeAuthCookie('admin@test.ro', 'org_admin'));
+
+    expect(res.status).toBe(200);
+    expect(res.body[0].canDelete).toBe(true);   // shared same-org → manager
+    expect(res.body[1].canDelete).toBe(false);  // shared alt org → nu
+    expect(res.body[2].canDelete).toBe(false);  // privat (nu shared) → nu
   });
 
 });
@@ -219,30 +240,104 @@ describe('PUT /api/templates/:id', () => {
 
 describe('DELETE /api/templates/:id', () => {
 
-  it('400 — id invalid', async () => {
+  it('401 — fără auth', async () => {
+    const res = await request(createTestApp()).delete('/api/templates/42');
+    expect(res.status).toBe(401);
+  });
+
+  it('400 — id invalid (NaN)', async () => {
+    mockResolvedActor(); // resolveActorOr rulează înaintea parseInt
     const res = await request(createTestApp()).delete('/api/templates/xyz')
       .set('Cookie', makeAuthCookie());
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('invalid_id');
   });
 
-  it('404 — șablon inexistent sau alt proprietar', async () => {
+  it('404 — șablon inexistent (contract nou: not_found)', async () => {
     const app = createTestApp();
-    dbModule.pool.query.mockResolvedValueOnce({ rowCount: 0 });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow()] })   // resolveActorOr
+      .mockResolvedValueOnce({ rows: [] });               // SELECT template → gol
 
     const res = await request(app).delete('/api/templates/99')
       .set('Cookie', makeAuthCookie());
     expect(res.status).toBe(404);
+    expect(res.body.error).toBe('not_found');
   });
 
-  it('200 — ștergere reușită', async () => {
+  it('200 — owner șterge propriul șablon (privat)', async () => {
     const app = createTestApp();
-    dbModule.pool.query.mockResolvedValueOnce({ rowCount: 1 });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ email: 'owner@test.ro', role: 'user', org_id: 1 })] })
+      .mockResolvedValueOnce({ rows: [mockTemplateRow({ user_email: 'owner@test.ro', shared: false, org_id: 1 })] })
+      .mockResolvedValueOnce({ rowCount: 1 });             // DELETE
 
     const res = await request(app).delete('/api/templates/42')
       .set('Cookie', makeAuthCookie('owner@test.ro'));
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
+  });
+
+  it('200 — org_admin șterge șablon SHARED din org-ul lui (proprietar altul)', async () => {
+    const app = createTestApp();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ email: 'admin@x.ro', role: 'org_admin', org_id: 1 })] })
+      .mockResolvedValueOnce({ rows: [mockTemplateRow({ user_email: 'sters@old.ro', shared: true, org_id: 1 })] })
+      .mockResolvedValueOnce({ rowCount: 1 });
+
+    const res = await request(app).delete('/api/templates/42')
+      .set('Cookie', makeAuthCookie('admin@x.ro', 'org_admin'));
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('403 — org_admin pe șablon shared din ALT org', async () => {
+    const app = createTestApp();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ email: 'admin@x.ro', role: 'org_admin', org_id: 1 })] })
+      .mockResolvedValueOnce({ rows: [mockTemplateRow({ user_email: 'strain@y.ro', shared: true, org_id: 2 })] });
+
+    const res = await request(app).delete('/api/templates/42')
+      .set('Cookie', makeAuthCookie('admin@x.ro', 'org_admin'));
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('forbidden');
+  });
+
+  it('403 — org_admin pe șablon NEshared al altcuiva (același org)', async () => {
+    const app = createTestApp();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ email: 'admin@x.ro', role: 'org_admin', org_id: 1 })] })
+      .mockResolvedValueOnce({ rows: [mockTemplateRow({ user_email: 'coleg@x.ro', shared: false, org_id: 1 })] });
+
+    const res = await request(app).delete('/api/templates/42')
+      .set('Cookie', makeAuthCookie('admin@x.ro', 'org_admin'));
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('forbidden');
+  });
+
+  it('200 — admin platformă (role=admin) pe șablon shared din alt org', async () => {
+    const app = createTestApp();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ email: 'admin@plat.ro', role: 'admin', org_id: 1 })] })
+      .mockResolvedValueOnce({ rows: [mockTemplateRow({ user_email: 'strain@y.ro', shared: true, org_id: 2 })] })
+      .mockResolvedValueOnce({ rowCount: 1 });
+
+    const res = await request(app).delete('/api/templates/42')
+      .set('Cookie', makeAuthCookie('admin@plat.ro', 'admin'));
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+  });
+
+  it('403 — user oarecare (nu owner, nu manager) pe șablon shared', async () => {
+    const app = createTestApp();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ email: 'user@x.ro', role: 'user', org_id: 1 })] })
+      .mockResolvedValueOnce({ rows: [mockTemplateRow({ user_email: 'other@x.ro', shared: true, org_id: 1 })] });
+
+    const res = await request(app).delete('/api/templates/42')
+      .set('Cookie', makeAuthCookie('user@x.ro', 'user'));
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('forbidden');
   });
 
 });

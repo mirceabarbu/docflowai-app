@@ -16,6 +16,7 @@ import { requireAuth } from '../middleware/auth.mjs';
 import { pool, requireDb } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { resolveActorOr } from '../services/actor-identity.mjs';
+import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../services/authz-scope.mjs';
 
 const router = Router();
 
@@ -32,7 +33,13 @@ router.get('/api/templates', async (req, res) => {
        ORDER BY user_email=$1 DESC, name ASC`,
       [actor.email.toLowerCase(), orgId]
     );
-    res.json(rows.map(t => ({ ...t, isOwner: t.user_email === actor.email.toLowerCase() })));
+    const accessActor = { role: actor.role, orgId: actor.org_id };
+    res.json(rows.map(t => {
+      const isOwner = t.user_email === actor.email.toLowerCase();
+      const canDelete = isOwner
+        || (isAdminOrOrgAdmin(actor) && t.shared === true && actorCanAccessOrg(accessActor, t.org_id));
+      return { ...t, isOwner, canDelete };
+    }));
   } catch(e) { res.status(500).json({ error: 'server_error' }); }
 });
 
@@ -87,16 +94,36 @@ router.put('/api/templates/:id', async (req, res) => {
 });
 
 // ── DELETE /api/templates/:id ─────────────────────────────────────────────
+// Owner: își șterge orice șablon propriu (privat sau shared).
+// Admin / org_admin: pot șterge orice șablon SHARED din propria organizație
+// (curățare de șabloane instituție, inclusiv orfane — proprietar șters din DB).
 router.delete('/api/templates/:id', async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid_id' });
   try {
-    const { rowCount } = await pool.query('DELETE FROM templates WHERE id=$1 AND user_email=$2', [id, actor.email.toLowerCase()]);
-    if (!rowCount) return res.status(404).json({ error: 'not_found_or_not_owner' });
+    const { rows } = await pool.query(
+      'SELECT id, user_email, shared, org_id FROM templates WHERE id=$1',
+      [id]
+    );
+    const tmpl = rows[0];
+    if (!tmpl) return res.status(404).json({ error: 'not_found' });
+
+    const isOwner = tmpl.user_email === actor.email.toLowerCase();
+    const accessActor = { role: actor.role, orgId: actor.org_id };
+    const isOrgManager = isAdminOrOrgAdmin(actor)
+      && tmpl.shared === true
+      && actorCanAccessOrg(accessActor, tmpl.org_id);
+
+    if (!isOwner && !isOrgManager) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    await pool.query('DELETE FROM templates WHERE id=$1', [id]);
     res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: 'server_error' }); }
+  } catch(e) { logger.error({ err: e }, 'DELETE /api/templates error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 export default router;
