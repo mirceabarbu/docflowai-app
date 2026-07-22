@@ -10,6 +10,7 @@ import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
 import { recordFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
+import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../../services/authz-scope.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -483,7 +484,7 @@ router.post('/flows/:flowId/resend', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     // admin: acces global; org_admin: doar fluxuri din propria instituție; inițiator: flux propriu
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate retrimite notificarea.' });
     const current = (data.signers || []).find(s => s.status === 'current');
@@ -505,7 +506,7 @@ router.post('/flows/:flowId/regenerate-token', async (req, res) => {
     const data = await getFlowData(flowId);
     if (!data) return res.status(404).json({ error: 'not_found' });
     // admin: acces global; org_admin: doar fluxuri din propria instituție
-    const isAdmin = actor.role === 'admin' || (actor.role === 'org_admin' && data.orgId != null && actor.orgId != null && Number(data.orgId) === Number(actor.orgId));
+    const isAdmin = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
     if (!isAdmin) return res.status(403).json({ error: 'forbidden', message: 'Doar un administrator poate regenera token-ul.' });
     const signers = Array.isArray(data.signers) ? data.signers : [];
     const idx = signers.findIndex(s => (s.email || '').toLowerCase() === signerEmail.toLowerCase());
