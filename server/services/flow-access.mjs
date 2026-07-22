@@ -11,6 +11,7 @@
 // existe IDOR pe documentele financiare de flux.
 // ─────────────────────────────────────────────────────────────────────────────
 import { isFlowRecipient } from './flow-transmit.mjs';
+import { isPlatformAdmin } from './authz-scope.mjs';
 
 // Mutat din routes/flows/crud.mjs (v3.9.502) — semantică IDENTICĂ.
 // v3.9.502 (A-3 P0): înainte GET /flows/:flowId permitea citire pentru ORICE
@@ -24,7 +25,8 @@ export function canActorReadFlow(actor, data, signerToken) {
   const isSigner = (data.signers || []).some(s => String(s.email || '').toLowerCase() === email);
   const sameOrg = actor.orgId && data.orgId && String(actor.orgId) === String(data.orgId);
   const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
-  return isInit || isSigner || (isAdmin && sameOrg);
+  // #105f: platform-admin (admin fără org_id) vede tot cross-org; altfel same-org (fail-closed)
+  return isInit || isSigner || (isAdmin && (isPlatformAdmin(actor) || sameOrg));
 }
 
 // Poarta la nivel de obiect pentru vizualizare flux + conținut (signed-pdf/pdf/attachments).
