@@ -7,6 +7,7 @@
 
 import { Router } from 'express';
 import { requireAuth } from '../../middleware/auth.mjs';
+import { isPlatformAdmin, isAdminOrOrgAdmin } from '../../services/authz-scope.mjs';
 import { csrfMiddleware } from '../../middleware/csrf.mjs';
 import { requireModule } from '../../middleware/require-module.mjs';
 import { logger } from '../../middleware/logger.mjs';
@@ -42,10 +43,10 @@ router.get('/api/formulare-ord', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     let orgFilter, params;
-    if (actor.role === 'admin') {
+    if (isPlatformAdmin(actor)) {          // #105d: doar platform-admin (fără org_id) vede tot
       orgFilter = '';
       params = [];
-    } else if (actor.role === 'org_admin') {
+    } else if (isAdminOrOrgAdmin(actor)) { // admin-cu-org SAU org_admin → org-scoped (tot org-ul)
       orgFilter = 'AND fo.org_id = $1';
       params = [actor.orgId];
     } else {
