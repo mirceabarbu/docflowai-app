@@ -290,8 +290,7 @@
       const candidates = _lvAllUsers.filter(u => {
         if (u.id === _lvMeUserId) return false;
         if (u.org_id !== me?.org_id) return false;
-        if (u.leave?.delegate) return false;
-        return true;
+        return true;   // #delegat: toți utilizatorii org (mai puțin tu); fără excludere pe delegare
       });
       candidates.sort((a, b) => (a.nume || '').localeCompare(b.nume || '', 'ro'));
       candidates.forEach(u => {
