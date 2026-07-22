@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../../middleware/auth.mjs';
 import { pool, requireDb } from '../../db/index.mjs';
 import { logger } from '../../middleware/logger.mjs';
+import { isPlatformAdmin } from '../../services/authz-scope.mjs';
 
 const router = Router();
 
@@ -16,7 +17,7 @@ router.get('/admin/audit-events/types', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (await requireAdmin(req, res)) return;
   try {
-    const orgId  = actor.role === 'admin' ? null : actor.orgId;
+    const orgId  = isPlatformAdmin(actor) ? null : (actor.orgId ?? null);
     const { rows } = await pool.query(
       `SELECT DISTINCT event_type FROM audit_log
        WHERE ($1::int IS NULL OR org_id = $1)
@@ -33,7 +34,7 @@ router.get('/admin/audit-events', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   if (await requireAdmin(req, res)) return;
   try {
-    const orgId    = actor.role === 'admin' ? null : actor.orgId;
+    const orgId    = isPlatformAdmin(actor) ? null : (actor.orgId ?? null);
     const flowId   = req.query.flow_id   || null;
     const evType   = req.query.event_type || null;
     const from     = req.query.from       || null;
