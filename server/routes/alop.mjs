@@ -843,7 +843,10 @@ router.get('/api/alop/:id', async (req, res) => {
       try {
         const { rows: fo } = await pool.query(`
           SELECT fo.flow_id,
-            (f.data->>'status' = 'cancelled') AS flow_cancelled,
+            (   f.id IS NULL
+             OR f.deleted_at IS NOT NULL
+             OR f.data->>'status' = 'cancelled'
+             OR f.data->>'status' = 'refused' ) AS flow_dead,
             CASE WHEN fo.flow_id IS NOT NULL AND (
               f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
             ) THEN true ELSE false END AS aprobat
@@ -852,10 +855,13 @@ router.get('/api/alop/:id', async (req, res) => {
           WHERE fo.id=$1 AND fo.org_id=$2 AND fo.deleted_at IS NULL
         `, [alop.ord_id, alop.org_id]);
 
-        // NU re-popula ord_flow_id dintr-un flux ANULAT (fix 9): la cancelul fluxului ORD,
-        // lifecycle.mjs eliberează intenționat ord_flow_id pe ALOP, dar formulare_ord.flow_id
-        // rămâne (paritate DF). Fără acest guard, self-heal #2 ar resuscita pointerul mort.
-        if (fo[0]?.flow_id && !fo[0].flow_cancelled) {
+        // NU re-popula ord_flow_id dintr-un flux MORT (fix 9 + #114): la cancelul SAU
+        // refuzul fluxului ORD, lifecycle.mjs / handlerul de refuz (#77) eliberează
+        // intenționat ord_flow_id pe ALOP, dar formulare_ord.flow_id rămâne (paritate DF).
+        // Fără acest guard, self-heal #2 ar resuscita pointerul mort. „Mort" = flux
+        // anulat, refuzat, soft-șters (deleted_at) SAU inexistent (f.id IS NULL — pointer
+        // spre un flux șters fizic cândva). Doar un flux VIU (activ sau completat) repopulează.
+        if (fo[0]?.flow_id && !fo[0].flow_dead) {
           const sets = ['ord_flow_id = $1', 'updated_at = NOW()', 'updated_by = $2'];
           const vals = [fo[0].flow_id, actor.userId];
           const willTransitionToPlata = !!fo[0].aprobat;

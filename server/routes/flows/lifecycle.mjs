@@ -56,6 +56,22 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     if (refusedSigner && (refusedSigner.rol || '').toUpperCase() === 'APROBAT') {
       return res.status(409).json({ error: 'aprobat_refused', message: 'Fluxul a fost refuzat de APROBATOR. Reinițializarea nu este permisă — contactați inițiatorul pentru un flux nou.' });
     }
+    // #114 (varianta B): blochează reinițierea pe fluxuri legate de un formular (DF/ORD).
+    // Reinițierea NU relinkează formularul (nu atinge formulare_{ord,df}.flow_id), deci
+    // fluxul nou ar fi orfan: semnarea lui n-ar actualiza formularul, iar anularea lui
+    // n-ar curăța ALOP-ul. Traseul corect după refuz e prin ALOP („Generează + Lansează
+    // flux ORD" / „Completează DF"), care leagă formularul corect. A duplica logica de
+    // legare aici ar crea o a doua cale divergentă (tipar eliminat în #111a).
+    const { rows: linkedOrd } = await pool.query('SELECT id FROM formulare_ord WHERE flow_id=$1', [flowId]);
+    const { rows: linkedDf }  = await pool.query('SELECT id FROM formulare_df  WHERE flow_id=$1', [flowId]);
+    if (linkedOrd.length || linkedDf.length) {
+      return res.status(409).json({
+        error: 'formular_linked_flow',
+        message: linkedOrd.length
+          ? 'Acest flux aparține unei Ordonanțări de Plată. Relansează-l din ALOP („Generează + Lansează flux ORD"), nu prin reinițiere.'
+          : 'Acest flux aparține unui Document de Fundamentare. Relansează-l din ALOP („Completează DF"), nu prin reinițiere.'
+      });
+    }
     const remainingSigners = (data.signers || []).filter(s => s.status !== 'refused').map((s, i) => ({
       ...s,
       token: crypto.randomBytes(16).toString('hex'),

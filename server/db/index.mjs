@@ -2427,6 +2427,31 @@ export const MIGRATIONS = [
       -- ⛔ Fără DROP/CREATE TRIGGER: trigger-ul trg_alop_status_guard (094) rămâne legat de
       -- această funcție (CREATE OR REPLACE păstrează legătura). alop_instances neatins.
     `
+  },
+  {
+    // #114 — VINDECARE UNICĂ de date (NU operație recurentă). Eliberează ALOP-urile
+    // rămase blocate cu ord_flow_id spre un flux MORT (refuzat/anulat/soft-șters), din
+    // cauza bug-ului de self-heal #2 corectat la Pasul 1 (alop.mjs). Include ORD 41011
+    // din producție. Idempotentă prin propriul WHERE (a doua rulare atinge 0 rânduri).
+    // ⛔ NU atinge formulare_ord.flow_id (proveniență istorică, paritate DF — self-heal-ul
+    // corectat nu-l mai învie). ⛔ Doar status='ordonantare', necancelate. ⛔ Zero DELETE.
+    id: '104_alop_clear_dead_ord_pointers',
+    sql: `
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='alop_instances') THEN RETURN; END IF;
+
+        UPDATE alop_instances a
+           SET ord_flow_id = NULL, ord_completed_at = NULL, updated_at = NOW()
+          FROM flows f
+         WHERE f.id::text = a.ord_flow_id
+           AND a.status = 'ordonantare'
+           AND a.cancelled_at IS NULL
+           AND ( f.deleted_at IS NOT NULL
+              OR f.data->>'status' = 'cancelled'
+              OR f.data->>'status' = 'refused' );
+      END $g$;
+    `
   }
 ];
 
