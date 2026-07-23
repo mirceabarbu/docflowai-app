@@ -1,5 +1,22 @@
 # ALOP — Matricea REALĂ de tranziții de status
 
+> **Addendum #113a (2026-07-23, v3.9.741):** matricea porții (migrația **103**, care face
+> `CREATE OR REPLACE` pe `alop_status_guard()`) a fost extinsă cu O SINGURĂ tranziție nouă:
+> **`plata → ordonantare`**, permisă EXCLUSIV pentru admin-cancel pe ORD
+> (`POST /flows/:flowId/admin-cancel` — undo administrativ al unui flux FINALIZAT). Matricea
+> completă actuală:
+> ```
+> draft       → angajare, lichidare, cancelled
+> angajare    → lichidare, plata, cancelled
+> lichidare   → ordonantare, cancelled
+> ordonantare → plata, cancelled
+> plata       → completed, cancelled, ordonantare   ← + ordonantare (#113a)
+> completed   → lichidare
+> cancelled   → (terminal)
+> ```
+> Poarta rămâne în MOD OBSERVARE (RAISE WARNING + log, apoi RETURN NEW) — #113a NU face flipul
+> spre RAISE EXCEPTION. Trigger-ul de audit (093) continuă să înregistreze tranziția.
+
 > **Recon read-only pentru #92.** Extrasă din cod, nu din `VALID_TRANSITIONS`.
 > Codul ALOP este specificația (validat manual în producție, OMF 1140/2025 mod. 2037/2025).
 > **Acest document NU judecă și NU repară nicio tranziție.** Îl folosim la #92 pentru poartă
