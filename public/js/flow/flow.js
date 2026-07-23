@@ -721,6 +721,41 @@
         };
       }
 
+      // Buton Anulare administrativă — vizibil doar pentru admin/org_admin pe fluxuri FINALIZATE
+      const btnAdminCancelFlow = $("btnAdminCancelFlow");
+      const canAdminCancel = !!data.completed && computedStatus !== 'cancelled' && isAdmin;
+      if (btnAdminCancelFlow) {
+        btnAdminCancelFlow.style.display = canAdminCancel ? "" : "none";
+        btnAdminCancelFlow.onclick = async () => {
+          const reasonRaw = prompt('Motiv anulare administrativă (minim 10 caractere):');
+          if (reasonRaw === null) return; // user a dat Cancel la prompt
+          const reason = reasonRaw.trim();
+          if (reason.length < 10) { setMsg('error', 'Motivul trebuie să aibă minim 10 caractere.'); return; }
+          if (!confirm(`Fluxul „${data.docName || flowId}" este FINALIZAT și conține un document semnat digital.\n\nAnularea administrativă îl deconectează de la ALOP/DF/ORD și permite relansarea semnării. Documentul semnat NU se șterge, dar fluxul devine inactiv.\n\nContinui?`)) return;
+          btnAdminCancelFlow.disabled = true; btnAdminCancelFlow.textContent = '⏳ Se anulează...';
+          try {
+            const r = await _apiFetch(`/flows/${encodeURIComponent(flowId)}/admin-cancel`, {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({ reason })
+            });
+            const j = await r.json();
+            if (j.ok) { setMsg('ok', '✅ Flux anulat administrativ. Documentul poate fi relansat.'); setTimeout(() => loadFlow(), 800); }
+            else {
+              const ERR_MESSAGES = {
+                payment_confirmed: 'Nu se poate anula: ALOP-ul are deja o plată confirmată. Pentru corecție folosește o nouă lichidare (ciclu nou), nu anularea.',
+                has_archived_cycles: 'Nu se poate anula: ALOP-ul are cicluri arhivate. Anularea ar rescrie istoricul.',
+                not_completed: 'Fluxul nu este finalizat — folosește butonul «Anulează».',
+                already_cancelled: 'Fluxul este deja anulat.',
+                reason_required: 'Motivul este obligatoriu (minim 10 caractere).',
+                forbidden: 'Nu ai drepturi de administrare pe acest flux.'
+              };
+              setMsg('error', esc(ERR_MESSAGES[j.error] || j.message || j.error || 'Eroare la anularea administrativă.'));
+            }
+          } catch(e) { setMsg('error', 'Eroare rețea.'); }
+          finally { btnAdminCancelFlow.disabled = false; btnAdminCancelFlow.textContent = 'Anulare administrativă'; }
+        };
+      }
+
       // Card info revizuire
       let reviewCard = $("reviewInfoCard");
       if (isReviewRequested) {
