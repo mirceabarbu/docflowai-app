@@ -303,7 +303,8 @@ function buildCard(t,idx) {
     <button class="df-action-btn sm" onclick="toggleShared(${t.id},${t.shared})">${shareBtnContent}</button>
     <button class="df-action-btn danger sm" onclick="deleteTemplate(${t.id},'${esc(t.name)}')"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-trash"/></svg>Șterge</button>
     <button class="df-action-btn sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clipboard"/></svg>Copiază</button>`
-  : `<button class="df-action-btn success sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clipboard"/></svg>Copiază ca al meu</button>`;
+  : `<button class="df-action-btn success sm" onclick="copyTemplate(${t.id})"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-clipboard"/></svg>Copiază ca al meu</button>${t.canDelete ? `
+    <button class="df-action-btn danger sm" onclick="deleteTemplate(${t.id},'${esc(t.name)}')"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-trash"/></svg>Șterge</button>` : ''}`;
   div.innerHTML=`
     <div class="tmpl-name">${esc(t.name)} ${badge}</div>
     <div class="tmpl-meta">${(t.signers||[]).length} semnatari · ${dt}</div>
@@ -347,8 +348,9 @@ async function toggleShared(id,currentShared) {
   const t=allTemplates.find(x=>x.id===id); if(!t)return;
   try {
     const r=await _apiFetch('/api/templates/'+id,{method:'PUT',headers:hdrs(),body:JSON.stringify({name:t.name,signers:t.signers,shared:!currentShared})});
-    if(!r.ok) throw new Error(); loadTemplates();
-  } catch(e){alert('Eroare la actualizare.');}
+    if(!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.message || j.error || ''); }
+    loadTemplates();
+  } catch(e){alert(e.message ? ('Eroare la actualizare: '+e.message) : 'Eroare la actualizare.');}
 }
 
 async function deleteTemplate(id,name) {

@@ -897,12 +897,11 @@ router.get('/my-flows/:flowId/download', async (req, res) => {
     const d = await getFlowData(req.params.flowId);
     if (!d) return res.status(404).json({ error: 'not_found' });
 
-    const email = (actor.email || '').toLowerCase();
-    const isInit = (d.initEmail || '').toLowerCase() === email;
-    const isSigner = (d.signers || []).some(s => (s.email || '').toLowerCase() === email);
-    const sameOrg = actor.orgId && d.orgId && String(actor.orgId) === String(d.orgId);
-    const isAdmin = actor.role === 'admin' || actor.role === 'org_admin';
-    if (!isInit && !isSigner && !(isAdmin && sameOrg)) {
+    // #111a: aceeași poartă ca GET /flows/:flowId, signed-pdf, pdf, attachments și audit.
+    // Checkul inline de dinainte era un duplicat divergent: rata ramura „destinatar
+    // repartizat" (un repartizat vedea documentul, dar primea 403 la download) și ramura
+    // platform-admin (#105f). signerToken = null: ruta NU acceptă token din query (SEC-88.2).
+    if (!(await isFlowAccessAllowed(pool, actor, d, null, req.params.flowId))) {
       return res.status(403).json({ error: 'forbidden' });
     }
 
