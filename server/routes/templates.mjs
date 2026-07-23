@@ -75,7 +75,8 @@ router.post('/api/templates', async (req, res) => {
 // ── PUT /api/templates/:id ────────────────────────────────────────────────
 router.put('/api/templates/:id', async (req, res) => {
   if (requireDb(res)) return;
-  const actor = requireAuth(req, res); if (!actor) return;
+  const tokenActor = requireAuth(req, res); if (!tokenActor) return;
+  const actor = await resolveActorOr(res, tokenActor, req); if (!actor) return;
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: 'invalid_id' });
   const { name, signers, shared } = req.body || {};
@@ -83,10 +84,18 @@ router.put('/api/templates/:id', async (req, res) => {
   if (name.trim().length > 200) return res.status(400).json({ error: 'name_too_long', max: 200 });
   if (!Array.isArray(signers) || signers.length === 0) return res.status(400).json({ error: 'signers_required' });
   if (signers.length > 50) return res.status(400).json({ error: 'too_many_signers', max: 50 });
+  const orgId = actor.org_id || null;
+  // Aceeași gardă ca la POST: nu poți partaja un șablon dacă nu ai organizație —
+  // ar deveni invizibil pentru toți (shared=TRUE + org_id NULL).
+  if (shared && !orgId) {
+    return res.status(409).json({ error: 'user_without_org', message: 'Contul nu este asociat unei organizații.' });
+  }
   try {
+    // COALESCE(org_id, $6): vindecă rândurile vechi cu org_id NULL, dar NU re-pointează
+    // un șablon care are deja un org (deliberat — evităm mutarea tăcută între organizații).
     const { rows } = await pool.query(
-      'UPDATE templates SET name=$1,signers=$2,shared=$3,updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
-      [name?.trim(), JSON.stringify(signers), !!shared, id, actor.email.toLowerCase()]
+      'UPDATE templates SET name=$1,signers=$2,shared=$3,org_id=COALESCE(org_id,$6),updated_at=NOW() WHERE id=$4 AND user_email=$5 RETURNING *',
+      [name?.trim(), JSON.stringify(signers), !!shared, id, actor.email.toLowerCase(), orgId]
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found_or_not_owner' });
     res.json({ ...rows[0], isOwner: true });

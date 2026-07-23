@@ -2331,6 +2331,44 @@ export const MIGRATIONS = [
         ('chat', 'Chat (mesagerie internă)', 'comunicare', TRUE, 80)
       ON CONFLICT (module_key) DO NOTHING;
     `
+  },
+  {
+    // v3.9.739 (#TMPL-ORG): un șablon shared nu poate rămâne fără org.
+    // Un rând `shared=TRUE AND org_id IS NULL` e invizibil în GET /api/templates
+    // pentru toți în afară de proprietar (rând-fantomă dacă proprietarul e șters).
+    // ORDINEA CONTEAZĂ: vindecă rândurile ÎNAINTE de ADD CONSTRAINT, altfel
+    // migrația eșuează la boot pe orice bază cu date murdare.
+    // (ID 102 — nu 100/101, ocupate de migrațiile de chat.)
+    id: '102_templates_org_invariant',
+    sql: `
+      DO $g$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_schema='public' AND table_name='templates'
+        ) THEN RETURN; END IF;
+
+        -- 1) Vindecare: derivă org_id din proprietarul activ, acolo unde lipsește.
+        UPDATE templates t
+           SET org_id = u.org_id
+          FROM users u
+         WHERE lower(u.email) = lower(t.user_email)
+           AND u.deleted_at IS NULL
+           AND u.org_id IS NOT NULL
+           AND t.org_id IS NULL;
+
+        -- 2) Rândurile rămase fără org derivabil: le facem PRIVATE, NU le ștergem.
+        --    Rămân vizibile proprietarului (ramura user_email din GET) și devin
+        --    conforme cu invariantul. ⛔ Nicio ștergere de date într-o migrație.
+        UPDATE templates
+           SET shared = FALSE
+         WHERE shared = TRUE AND org_id IS NULL;
+
+        -- 3) Invariantul, abia acum.
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'templates_shared_needs_org') THEN
+          ALTER TABLE templates ADD CONSTRAINT templates_shared_needs_org
+            CHECK (NOT (shared AND org_id IS NULL));
+        END IF;
+      END $g$;
+    `
   }
 ];
 

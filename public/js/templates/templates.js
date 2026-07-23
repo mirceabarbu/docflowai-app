@@ -348,8 +348,9 @@ async function toggleShared(id,currentShared) {
   const t=allTemplates.find(x=>x.id===id); if(!t)return;
   try {
     const r=await _apiFetch('/api/templates/'+id,{method:'PUT',headers:hdrs(),body:JSON.stringify({name:t.name,signers:t.signers,shared:!currentShared})});
-    if(!r.ok) throw new Error(); loadTemplates();
-  } catch(e){alert('Eroare la actualizare.');}
+    if(!r.ok) { const j = await r.json().catch(()=>({})); throw new Error(j.message || j.error || ''); }
+    loadTemplates();
+  } catch(e){alert(e.message ? ('Eroare la actualizare: '+e.message) : 'Eroare la actualizare.');}
 }
 
 async function deleteTemplate(id,name) {

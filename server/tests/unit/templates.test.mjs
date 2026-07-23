@@ -202,7 +202,15 @@ describe('POST /api/templates', () => {
 
 describe('PUT /api/templates/:id', () => {
 
+  // PUT folosește ACUM resolveActorOr → prima interogare mock e user lookup, apoi UPDATE.
+  // Cookie cu org_id NULL: token-ul TREBUIE să poarte orgId null ca să treacă de garda
+  // session_org_stale din resolveActor (token orgId == db org_id).
+  function noOrgCookie(email = 'owner@test.ro', role = 'user') {
+    return `auth_token=${jwt.sign({ userId: 1, email, role, orgId: null, tv: 1 }, TEST_JWT_SECRET, { expiresIn: '1h' })}`;
+  }
+
   it('400 — id invalid (NaN)', async () => {
+    mockResolvedActor(); // resolveActorOr rulează înaintea parseInt
     const res = await request(createTestApp()).put('/api/templates/abc')
       .set('Cookie', makeAuthCookie())
       .send({ name: 'X', signers: validSigners });
@@ -212,7 +220,9 @@ describe('PUT /api/templates/:id', () => {
 
   it('404 — șablon nu aparține utilizatorului', async () => {
     const app = createTestApp();
-    dbModule.pool.query.mockResolvedValueOnce({ rows: [] }); // UPDATE returnează 0 rânduri
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow()] })  // resolveActorOr
+      .mockResolvedValueOnce({ rows: [] });              // UPDATE returnează 0 rânduri
 
     const res = await request(app).put('/api/templates/42')
       .set('Cookie', makeAuthCookie())
@@ -222,15 +232,49 @@ describe('PUT /api/templates/:id', () => {
     expect(res.body.error).toBe('not_found_or_not_owner');
   });
 
-  it('200 — actualizare reușită', async () => {
+  it('200 — actualizare reușită (owner cu org, shared:true) — SQL COALESCE + $6=org', async () => {
     const app = createTestApp();
-    dbModule.pool.query.mockResolvedValueOnce({
-      rows: [mockTemplateRow({ name: 'Modificat' })]
-    });
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ org_id: 1 })] })  // resolveActorOr
+      .mockResolvedValueOnce({ rows: [mockTemplateRow({ name: 'Modificat', shared: true, org_id: 1 })] });
 
     const res = await request(app).put('/api/templates/42')
       .set('Cookie', makeAuthCookie('owner@test.ro'))
       .send({ name: 'Modificat', signers: validSigners, shared: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.isOwner).toBe(true);
+
+    // Al doilea apel (UPDATE): SQL conține COALESCE(org_id, iar $6 = org-ul actorului.
+    const updateCall = dbModule.pool.query.mock.calls[1];
+    expect(updateCall[0]).toContain('COALESCE(org_id,$6)');
+    expect(updateCall[1][5]).toBe(1); // $6 = org_id actor
+  });
+
+  it('409 — owner FĂRĂ org, shared:true → user_without_org, fără UPDATE', async () => {
+    const app = createTestApp();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ org_id: null })] }); // doar resolveActorOr
+
+    const res = await request(app).put('/api/templates/42')
+      .set('Cookie', noOrgCookie('owner@test.ro'))
+      .send({ name: 'Modificat', signers: validSigners, shared: true });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('user_without_org');
+    // Nicio interogare UPDATE — doar user lookup.
+    expect(dbModule.pool.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('200 — owner FĂRĂ org, shared:false → permis (nu se partajează)', async () => {
+    const app = createTestApp();
+    dbModule.pool.query
+      .mockResolvedValueOnce({ rows: [mockUserRow({ org_id: null })] })  // resolveActorOr
+      .mockResolvedValueOnce({ rows: [mockTemplateRow({ shared: false, org_id: null })] });
+
+    const res = await request(app).put('/api/templates/42')
+      .set('Cookie', noOrgCookie('owner@test.ro'))
+      .send({ name: 'Privat', signers: validSigners, shared: false });
 
     expect(res.status).toBe(200);
     expect(res.body.isOwner).toBe(true);
