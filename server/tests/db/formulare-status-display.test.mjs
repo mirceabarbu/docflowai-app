@@ -131,6 +131,16 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       diag: (row) => { expect(row.aprobat).toBe(false); },
     },
     {
+      // #115: flux REFUZAT e TERMINAL, la fel ca 'cancelled' — aliniere cu ALOP (alop.mjs deja corect).
+      name: 'completed + flux refuzat → completed (NU transmis_flux)',
+      seed: async () => {
+        const flowId = await seedFlowX('flow-ord-refused', { status: 'refused' });
+        return seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+      },
+      expectedBadge: 'completed',
+      diag: (row) => { expect(row.aprobat).toBe(false); },
+    },
+    {
       // Flux soft-șters: deleted_at IS NULL în CASE → condiția eșuează → badge_status = fo.status.
       name: 'completed + flux activ șters (soft-delete) → completed (NU transmis_flux)',
       seed: async () => {
@@ -226,6 +236,19 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       },
     },
     {
+      // #115: flux REFUZAT e TERMINAL, la fel ca 'cancelled' — aliniere cu ALOP (alop.mjs deja corect).
+      name: 'completed + flux refuzat → completed (NU transmis_flux)',
+      seed: async () => {
+        const flowId = await seedFlowX('flow-df-refused', { status: 'refused' });
+        return seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+      },
+      expectedBadge: 'completed',
+      diag: (row) => {
+        expect(row).toHaveProperty('badge_status', 'completed');
+        expect(row.aprobat).toBe(false);
+      },
+    },
+    {
       name: 'returnat + flux șters → returnat din status brut',
       seed: async () => {
         const flowId = await seedFlowX('flow-df-deleted', {
@@ -295,6 +318,24 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       expect(res.status).toBe(200);
       expect(findRow(res.body, id)).toBeFalsy();
     });
+
+    // #115: dovada că fragmentul (_dfTransmis/_foTransmis) și badge_status au fost schimbate ÎMPREUNĂ —
+    // dacă doar badge-ul ar fi fost aliniat la 'refused', filtrul ar fi întors totuși documentul.
+    it('DF completed + flux refuzat → NU apare la filtru transmis_flux (fragment ⟺ badge)', async () => {
+      const flowId = await seedFlowX('flow-df-filter-refused', { status: 'refused' });
+      const id = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+      const res = await request(app).get('/api/formulare/list?type=df&status=transmis_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(findRow(res.body, id)).toBeFalsy();
+    });
+
+    it('ORD completed + flux refuzat → NU apare la filtru transmis_flux (fragment ⟺ badge)', async () => {
+      const flowId = await seedFlowX('flow-ord-filter-refused', { status: 'refused' });
+      const id = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+      const res = await request(app).get('/api/formulare/list?type=ord&status=transmis_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(findRow(res.body, id)).toBeFalsy();
+    });
   });
 
   // ─── Filtru ⟺ badge_status: partiție exactă {aprobat, completed, transmis_flux} (prompt 81) ───
@@ -344,6 +385,51 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
             if (idBadge.has(r.id)) expect(r.badge_status).toBe(V);
           }
         }
+      });
+    }
+  });
+
+  // ─── flow_active pe detaliu DF/ORD — flux refuzat e TERMINAL (#115, aliniere cu ALOP) ─────────
+  d('flow_active (GET detaliu) — flux refuzat nu mai ține documentul pe flux', () => {
+    const DETAIL_CASES = [
+      {
+        name: 'flux refuzat → flow_active=false (cazul central)',
+        flow: { status: 'refused' },
+        expectedActive: false,
+      },
+      {
+        name: 'flux anulat → flow_active=false (non-regresie)',
+        flow: { status: 'cancelled' },
+        expectedActive: false,
+      },
+      {
+        name: 'flux activ nefinalizat → flow_active=true (comportament legitim neatins)',
+        flow: { status: 'pending' },
+        expectedActive: true,
+      },
+    ];
+
+    for (const type of ['df', 'ord']) {
+      const seedDoc = type === 'df' ? seedDf : seedOrd;
+      const detailPath = type === 'df' ? '/api/formulare-df' : '/api/formulare-ord';
+
+      for (const { name, flow, expectedActive } of DETAIL_CASES) {
+        it(`${type.toUpperCase()}: ${name}`, async () => {
+          const flowId = await seedFlowX(`flow-detail-${type}-${flow.status}`, flow);
+          const id = await seedDoc({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+          const res = await request(app).get(`${detailPath}/${id}`).set('Cookie', cookie());
+          expect(res.status).toBe(200);
+          expect(res.body.document.flow_active).toBe(expectedActive);
+        });
+      }
+
+      it(`${type.toUpperCase()}: flux completat → aprobat=true (neatins de acest fix)`, async () => {
+        const flowId = await seedFlowX(`flow-detail-${type}-completed`, { completed: true });
+        const id = await seedDoc({ orgId: 1, createdBy: 1, status: 'completed', flowId });
+        const res = await request(app).get(`${detailPath}/${id}`).set('Cookie', cookie());
+        expect(res.status).toBe(200);
+        expect(res.body.document.aprobat).toBe(true);
+        expect(res.body.document.flow_active).toBe(false);
       });
     }
   });

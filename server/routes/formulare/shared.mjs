@@ -443,7 +443,7 @@ router.get('/api/formulare/list', async (req, res) => {
       // Fragmente = EXACT condițiile din badge_status (COALESCE ~495-505) — sursă unică, fără drift.
       // badge = 'transmis_flux' dacă _dfTransmis; altfel 'aprobat' dacă (_dfAprobat OR status='aprobat');
       // altfel status brut. Filtrele de mai jos sunt inversa algebrică a acestei derivări (filtru ⟺ badge).
-      const _dfTransmis = `fd.status='completed' AND fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled'`;
+      const _dfTransmis = `fd.status='completed' AND fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled' AND (f.data->>'status') IS DISTINCT FROM 'refused'`;
       const _dfAprobat  = `fd.flow_id IS NOT NULL AND ((f.data->>'status')='completed' OR (f.data->>'completed')::boolean=true)`;
 
       if (status && status !== 'all') {
@@ -505,6 +505,7 @@ router.get('/api/formulare/list', async (req, res) => {
                       AND f.deleted_at IS NULL
                       AND (f.data->>'completed') IS DISTINCT FROM 'true'
                       AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
+                      AND (f.data->>'status')    IS DISTINCT FROM 'refused'
                  THEN 'transmis_flux' END,
             CASE WHEN fd.flow_id IS NOT NULL
                       AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
@@ -572,7 +573,7 @@ router.get('/api/formulare/list', async (req, res) => {
 
       // Fragmente = EXACT condițiile din badge_status (COALESCE ~612-622) — sursă unică, fără drift.
       // Inversa algebrică a derivării badge (filtru ⟺ badge), identic cu blocul DF dar cu aliasul `fo`.
-      const _foTransmis = `fo.status='completed' AND fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled'`;
+      const _foTransmis = `fo.status='completed' AND fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled' AND (f.data->>'status') IS DISTINCT FROM 'refused'`;
       const _foAprobat  = `fo.flow_id IS NOT NULL AND ((f.data->>'status')='completed' OR (f.data->>'completed')::boolean=true)`;
 
       if (status && status !== 'all') {
@@ -620,6 +621,7 @@ router.get('/api/formulare/list', async (req, res) => {
                       AND f.deleted_at IS NULL
                       AND (f.data->>'completed') IS DISTINCT FROM 'true'
                       AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
+                      AND (f.data->>'status')    IS DISTINCT FROM 'refused'
                  THEN 'transmis_flux' END,
             CASE WHEN fo.flow_id IS NOT NULL
                       AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
