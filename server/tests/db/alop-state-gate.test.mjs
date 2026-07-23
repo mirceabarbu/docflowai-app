@@ -30,8 +30,9 @@ const VALID = [
   ['lichidare', 'ordonantare'], ['lichidare', 'cancelled'],
   ['ordonantare', 'plata'], ['ordonantare', 'cancelled'],
   ['plata', 'completed'], ['plata', 'cancelled'],
+  ['plata', 'ordonantare'], // #113a — admin-cancel pe ORD (migrația 103)
   ['completed', 'lichidare'],
-]; // 13 tranziții valide
+]; // 14 tranziții valide (13 + plata→ordonantare)
 
 d('#95 — poarta de stări ALOP (trigger real pe Postgres)', () => {
   beforeAll(migrate);
@@ -74,6 +75,24 @@ d('#95 — poarta de stări ALOP (trigger real pe Postgres)', () => {
     expect(audit.length).toBe(1);
     expect(viol[0].from_status).toBe('draft');
     expect(viol[0].to_status).toBe('completed');
+  });
+
+  // 3b — #113a: plata → ordonantare NU mai e violare (adăugată în matrice de migrația 103),
+  // dar plata → draft (tranziție inventată) ÎNCĂ e violare. Dovedește că 103 a extins matricea
+  // EXACT cu o singură intrare, fără să slăbească restul porții.
+  it('#113a: plata → ordonantare NU scrie violation; plata → draft ÎNCĂ scrie violation', async () => {
+    const idOk = await seedAlop({ orgId: 1, createdBy: 1, status: 'plata' });
+    await pool.query('UPDATE alop_instances SET status=$1, updated_by=1 WHERE id=$2', ['ordonantare', idOk]);
+    expect((await getAlop(idOk)).status).toBe('ordonantare');
+    const okRows = await logFor(idOk);
+    // Doar auditul (violation=FALSE), zero violări.
+    expect(okRows.filter(r => r.violation === true).length).toBe(0);
+    expect(okRows.filter(r => r.violation === false).length).toBe(1);
+
+    const idBad = await seedAlop({ orgId: 1, createdBy: 1, status: 'plata' });
+    await pool.query('UPDATE alop_instances SET status=$1, updated_by=1 WHERE id=$2', ['draft', idBad]);
+    const badRows = await logFor(idBad);
+    expect(badRows.filter(r => r.violation === true).length).toBe(1);
   });
 
   // 4 — self-loop → zero rânduri

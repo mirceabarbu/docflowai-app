@@ -8,6 +8,8 @@ import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getU
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../../services/authz-scope.mjs';
+import { undoCompletedFlowLinks } from '../../services/flow-undo.mjs';
+import { recordFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
@@ -575,6 +577,118 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     logger.info(`🚫 Flow ${flowId} anulat de ${actor.email}`);
     return res.json({ ok: true, flowId, cancelledAt: now });
   } catch(e) { logger.error({ err: e }, 'cancel flow error:'); return res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── POST /flows/:flowId/admin-cancel ───────────────────────────────────────
+// #113a — undo administrativ al unui flux FINALIZAT (ORD/DF semnat greșit, ajuns
+// aprobat/neconform). Operație SUPORTATĂ, cu motiv obligatoriu + audit, care înlocuiește
+// reparația manuală din 23.07.2026 (recon + script + backup). NU e `cancel`-ul normal:
+// acela refuză 409 `already_completed` pe fluxuri finalizate — INTENȚIONAT, și rămâne așa.
+// Efect: soft-delete flux (documentul QES NU se distruge, doar se deconectează) +
+// desfacere legături DF/ORD↔ALOP (undoCompletedFlowLinks). ALOP ORD revine plata→ordonantare
+// (tranziție legitimată de migrația 103). ⛔ NU pentru fluxuri cu plată confirmată — acolo e
+// corecție financiară, se face prin ciclu nou („noua lichidare"), nu prin rescrierea istoricului.
+router.post('/flows/:flowId/admin-cancel', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const actor = requireAuth(req, res); if (!actor) return;
+    const { flowId } = req.params;
+    const reason = String((req.body && req.body.reason) || '').trim();
+    // Citim rândul DIRECT (nu getFlowData, care filtrează deleted_at IS NULL): un al doilea
+    // apel pe un flux deja desfăcut (soft-deleted) trebuie să vadă data.status='cancelled' și
+    // să întoarcă 409 already_cancelled — nu 404. `data` e JSONB → obiect JS direct.
+    const { rows: flowRows } = await pool.query(`SELECT data FROM flows WHERE id=$1`, [flowId]);
+    if (!flowRows.length) return res.status(404).json({ error: 'not_found' });
+    const data = flowRows[0].data || {};
+
+    // Gardă 1 — DOAR admin/org_admin cu acces la org. ⛔ NU inițiatorul (operație administrativă).
+    if (!(isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId))) {
+      return res.status(403).json({ error: 'forbidden', message: 'Doar un administrator poate desface un flux finalizat.' });
+    }
+    // Gardă 2 — motiv obligatoriu (min 10 caractere): singura urmă a raționamentului uman.
+    if (reason.length < 10) {
+      return res.status(400).json({ error: 'reason_required', message: 'Motivul este obligatoriu (minim 10 caractere).' });
+    }
+    // Gardă 3 — DOAR fluxuri finalizate. Pentru fluxuri în derulare există `cancel`-ul normal.
+    if (!data.completed) return res.status(409).json({ error: 'not_completed', message: 'Fluxul nu este finalizat — folosește anularea obișnuită.' });
+    // Gardă 4 — idempotență.
+    if (data.status === 'cancelled') return res.status(409).json({ error: 'already_cancelled', message: 'Fluxul este deja anulat.' });
+
+    // Gărzi 5+6 — financiare/istorice, dacă fluxul e legat de un ORD (prin ALOP).
+    // Încarcă ALOP-ul asociat ORD-ului acestui flux (pe formulare_ord.flow_id sau ord_flow_id).
+    const { rows: alopRows } = await pool.query(
+      `SELECT a.id, a.plata_confirmed_at, a.plata_suma_efectiva, a.suma_totala_platita
+         FROM alop_instances a
+         JOIN formulare_ord fo ON fo.id = a.ord_id
+        WHERE fo.flow_id = $1 AND a.cancelled_at IS NULL
+        LIMIT 1`,
+      [flowId]
+    );
+    const alopFin = alopRows[0] || null;
+    if (alopFin) {
+      // Gardă 5 — plată confirmată ⇒ corecție financiară, nu curățare de dată. Blocat.
+      if (alopFin.plata_confirmed_at != null
+          || Number(alopFin.plata_suma_efectiva || 0) > 0
+          || Number(alopFin.suma_totala_platita || 0) > 0) {
+        return res.status(409).json({ error: 'payment_confirmed', message: 'ALOP-ul are plată confirmată — corecția se face prin ciclu nou, nu prin anulare.' });
+      }
+      // Gardă 6 — cicluri arhivate ⇒ istoric multi-ORD, nu se rescrie.
+      const { rows: cyc } = await pool.query(
+        `SELECT 1 FROM alop_ord_cicluri WHERE alop_id=$1 LIMIT 1`,
+        [alopFin.id]
+      );
+      if (cyc.length) return res.status(409).json({ error: 'has_archived_cycles', message: 'ALOP-ul are cicluri arhivate — nu poate fi desfăcut administrativ.' });
+    }
+
+    // Efect — o singură tranzacție (model noua-lichidare din alop.mjs).
+    const now = new Date().toISOString();
+    const client = await pool.connect();
+    let undo = { dfId: null, ordId: null, alopId: null, statusChanged: false };
+    try {
+      await client.query('BEGIN');
+
+      // (a) Flux: marchează cancelled + soft-delete (documentul semnat NU se distruge).
+      data.status = 'cancelled';
+      data.cancelledAt = now;
+      data.cancelledBy = actor.email;
+      data.cancelReason = reason.slice(0, 500);
+      data.adminCancelled = true;
+      data.updatedAt = now;
+      if (!Array.isArray(data.events)) data.events = [];
+      data.events.push({ at: now, type: 'FLOW_ADMIN_CANCELLED', by: actor.email, reason: data.cancelReason });
+      await client.query(`UPDATE flows SET data=$2::jsonb, updated_at=NOW() WHERE id=$1`, [flowId, JSON.stringify(data)]);
+      await client.query(`UPDATE flows SET deleted_at=NOW(), deleted_by=$2 WHERE id=$1`, [flowId, actor.email]);
+
+      // (b) Desface legăturile DF/ORD↔ALOP (golește AMBELE pointere ORD — vezi flow-undo.mjs).
+      undo = await undoCompletedFlowLinks(client, flowId);
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      logger.error({ err: txErr, flowId }, 'admin-cancel tx error');
+      return res.status(500).json({ error: 'server_error' });
+    } finally {
+      client.release();
+    }
+
+    // Audit (best-effort, în afara tranzacției).
+    writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_ADMIN_CANCELLED', actorIp: _getIp(req), actorEmail: actor.email,
+      payload: { reason: data.cancelReason, dfId: undo.dfId, ordId: undo.ordId, alopId: undo.alopId } });
+    if (undo.dfId) {
+      recordFormularAudit({ orgId: data.orgId, formType: 'df', formId: undo.dfId, actorId: actor.userId, actorEmail: actor.email,
+        eventType: 'FLOW_ADMIN_CANCELLED', meta: { flowId, reason: data.cancelReason, alopId: undo.alopId } });
+    }
+    if (undo.ordId) {
+      recordFormularAudit({ orgId: data.orgId, formType: 'ord', formId: undo.ordId, actorId: actor.userId, actorEmail: actor.email,
+        eventType: 'FLOW_ADMIN_CANCELLED', meta: { flowId, reason: data.cancelReason, alopId: undo.alopId } });
+    }
+
+    // Șterge notificările active pentru fluxul desfăcut.
+    await pool.query("DELETE FROM notifications WHERE flow_id=$1 AND type IN ('YOUR_TURN','REMINDER')", [flowId]).catch(() => {});
+
+    logger.info({ flowId, actor: actor.email, ...undo }, '🛠️ Flux FINALIZAT desfăcut administrativ (admin-cancel)');
+    return res.json({ ok: true, flowId, cancelledAt: now, ...undo });
+  } catch(e) { logger.error({ err: e }, 'admin-cancel flow error:'); return res.status(500).json({ error: 'server_error' }); }
 });
 
 // ── F-06: Documente suport ────────────────────────────────────────────────

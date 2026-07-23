@@ -22,6 +22,7 @@
     FLOW_CREATED:                   'Flux inițiat',
     FLOW_COMPLETED:                 'Flux finalizat',
     FLOW_CANCELLED:                 'Flux anulat',
+    FLOW_ADMIN_CANCELLED:           'Flux finalizat desfăcut administrativ',
     FLOW_TRANSMITTED:               'Document repartizat intern',
     FLOW_ACKNOWLEDGED:              'Confirmare luare la cunoștință',
     FLOW_REINITIATED:               'Flux reinițiat după refuz',
@@ -96,7 +97,7 @@
   const OP_COLORS = {
     FLOW_CREATED: '#7c5cff', SIGNED_PDF_UPLOADED: '#2dd4bf', REFUSED: '#ff5050',
     REVIEW_REQUESTED: '#ffd580', FLOW_REINITIATED: '#ff9955', FLOW_REINITIATED_AFTER_REVIEW: '#ff9955',
-    FLOW_COMPLETED: '#26d07c', FLOW_CANCELLED: '#888888', DELEGATE: '#9db0ff', YOUR_TURN: '#aaa',
+    FLOW_COMPLETED: '#26d07c', FLOW_CANCELLED: '#888888', FLOW_ADMIN_CANCELLED: '#ff5050', DELEGATE: '#9db0ff', YOUR_TURN: '#aaa',
     REINITIATED_AFTER_REVIEW: '#ffaaaa', EMAIL_SENT: '#2dd4bf',
     DELEGATION_SET: '#9db0ff', DELEGATION_REMOVED: '#888888', AUTO_DELEGATED_LEAVE: '#ffd580',
     EMAIL_OPENED: '#7c5cff', PDF_DOWNLOADED: '#26d07c', ATTACHMENT_ADDED: '#aaa',
@@ -110,7 +111,7 @@
   const OP_ICONS = {
     FLOW_CREATED: '📝', SIGNED_PDF_UPLOADED: '✅', REFUSED: '⛔',
     REVIEW_REQUESTED: '🔄', FLOW_REINITIATED: '🔁', FLOW_REINITIATED_AFTER_REVIEW: '🔁',
-    FLOW_COMPLETED: '🏁', FLOW_CANCELLED: '🚫', DELEGATE: '👥', YOUR_TURN: '🔔',
+    FLOW_COMPLETED: '🏁', FLOW_CANCELLED: '🚫', FLOW_ADMIN_CANCELLED: '🛠️', DELEGATE: '👥', YOUR_TURN: '🔔',
     REINITIATED_AFTER_REVIEW: '🔁', EMAIL_SENT: '📧',
     DELEGATION_SET: '🔗', DELEGATION_REMOVED: '🔓', AUTO_DELEGATED_LEAVE: '🏖️',
     EMAIL_OPENED: '👁️', PDF_DOWNLOADED: '⬇️', ATTACHMENT_ADDED: '📎',

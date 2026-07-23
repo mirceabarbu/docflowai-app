@@ -2369,6 +2369,64 @@ export const MIGRATIONS = [
         END IF;
       END $g$;
     `
+  },
+  {
+    // v3.9.741 (#113a): extinde matricea porții ALOP (094) cu O SINGURĂ tranziție:
+    //   plata → ordonantare
+    // Permisă EXCLUSIV pentru admin-cancel pe ORD (undo administrativ al unui flux
+    // FINALIZAT — vezi POST /flows/:flowId/admin-cancel din lifecycle.mjs). Un flux ORD
+    // finalizat greșit (ex. semnat doar de inițiator, ajuns aprobat/neconform) trebuie
+    // desfăcut: fluxul se soft-șterge, iar ALOP-ul revine `plata → ordonantare` ca să
+    // poată reintra pe traseul corect. Fără această intrare în matrice, tranziția e o
+    // VIOLARE tolerată azi (mod observare), dar ar fi RESPINSĂ după flipul spre
+    // RAISE EXCEPTION — deci funcția de admin-cancel s-ar rupe. O adăugăm STRICT ÎNAINTE.
+    //
+    // ⛔ NU e flipul porții: corpul funcției rămâne IDENTIC cu 094 (RAISE WARNING + INSERT
+    // violation=TRUE + RETURN NEW). Trigger-ul de audit (trg_alop_status_audit, 093) continuă
+    // să înregistreze tranziția în alop_status_log — deci `plata → ordonantare` rămâne trasabilă
+    // chiar dacă nu mai e marcată `violation`. ⛔ NU recreăm trigger-ul, DOAR funcția.
+    // ⛔ NU adăuga alte tranziții „ca să fie" — fiecare adăugire slăbește poarta.
+    //
+    // ⚠️ ORDINE OBLIGATORIE FAȚĂ DE 094: această migrare TREBUIE să ruleze DUPĂ 094 (care
+    // creează funcția). În migrateForTests, 094 e deferred (re-rulat în faza 3, după 014_alop.sql)
+    // fiindcă SQL-ul lui conține tokenul `alop_instances`; dacă 103 NU ar fi la fel deferred, ar
+    // rula în faza 1 iar re-rularea lui 094 din faza 3 ar REPLACE funcția înapoi la matricea VECHE
+    // (fără plata→ordonantare). De aceea SQL-ul de mai jos conține INTENȚIONAT tokenul
+    // `alop_instances` (în comentariul de închidere) — forțează același deferral (V4_ONLY regex),
+    // deci 103 re-rulează în faza 3 DUPĂ 094, iar CREATE OR REPLACE-ul lui aterizează ultimul.
+    // ⛔ NU șterge acel token din SQL. În producție 103 rulează normal, după 094 (deja applied).
+    id: '103_alop_matrix_admin_cancel',
+    sql: `
+      CREATE OR REPLACE FUNCTION alop_status_guard() RETURNS TRIGGER AS $fn$
+      DECLARE
+        allowed TEXT[];
+      BEGIN
+        IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+          RETURN NEW;
+        END IF;
+
+        allowed := CASE OLD.status
+          WHEN 'draft'       THEN ARRAY['angajare','lichidare','cancelled']
+          WHEN 'angajare'    THEN ARRAY['lichidare','plata','cancelled']
+          WHEN 'lichidare'   THEN ARRAY['ordonantare','cancelled']
+          WHEN 'ordonantare' THEN ARRAY['plata','cancelled']
+          WHEN 'plata'       THEN ARRAY['completed','cancelled','ordonantare']
+          WHEN 'completed'   THEN ARRAY['lichidare']
+          WHEN 'cancelled'   THEN ARRAY[]::TEXT[]
+          ELSE ARRAY[]::TEXT[]
+        END;
+
+        IF NOT (NEW.status = ANY(allowed)) THEN
+          RAISE WARNING 'ALOP transition violation: % -> % (alop_id=%)', OLD.status, NEW.status, NEW.id;
+          INSERT INTO alop_status_log (alop_id, org_id, from_status, to_status, changed_by, violation)
+          VALUES (NEW.id, NEW.org_id, OLD.status, NEW.status, NEW.updated_by, TRUE);
+        END IF;
+
+        RETURN NEW;
+      END $fn$ LANGUAGE plpgsql;
+      -- ⛔ Fără DROP/CREATE TRIGGER: trigger-ul trg_alop_status_guard (094) rămâne legat de
+      -- această funcție (CREATE OR REPLACE păstrează legătura). alop_instances neatins.
+    `
   }
 ];
 
