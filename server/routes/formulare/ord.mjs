@@ -142,6 +142,7 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
               AND f.deleted_at IS NULL              -- fluxul șters (soft-delete) nu mai e activ (fix D)
               AND (f.data->>'completed') IS DISTINCT FROM 'true'
               AND (f.data->>'status') IS DISTINCT FROM 'cancelled'
+              AND (f.data->>'status') IS DISTINCT FROM 'refused'
              THEN true ELSE false END AS flow_active,
         (SELECT a.id FROM alop_instances a
          WHERE a.ord_id = fo.id AND a.cancelled_at IS NULL
