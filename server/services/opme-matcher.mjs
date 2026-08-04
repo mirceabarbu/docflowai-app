@@ -14,12 +14,16 @@
  *
  *   • 0 candidați → 'unmatched'
  *   • >1 candidați → 'ambiguous'
- *   • 1 candidat → grupează TOATE liniile pending/unmatched din aceeași org cu
- *     același (alop, cod, indicator, cif) și agregă:
- *       expected = SUM(rows.suma_ordonantata_plata) pe rândurile ORD ale
- *                  candidatului care matchează tripletul
- *       actual   = SUM(opme_lines.suma_op) pe grup
- *       (c1) actual === expected  → confirmă ALOP (apel applyPlataConfirmedSideEffects)
+ *   • 1 candidat → confirmarea e ATOMICĂ pe ALOP-ul ÎNTREG (fix v3.9.745, prompt
+ *     #115), nu pe triplet: un ORD cu mai mulți indicatori de angajament (mai
+ *     multe rânduri) e plătit de mai multe OP-uri, iar ALOP-ul se închide când
+ *     suma TUTUROR OP-urilor == valoarea TOTALĂ a ORD-ului. `_processAlop`
+ *     grupează TOATE liniile pending/unmatched/partial din aceeași org cu
+ *     CIF-ul ORD-ului (filtrate în JS la tripletele ORD-ului) și agregă:
+ *       expected = SUM(rows.suma_ordonantata_plata) pe TOATE rândurile ORD-ului
+ *       actual   = SUM(opme_lines.suma_op) pe toate liniile matchate
+ *       (c1) actual === expected  → confirmă ALOP O SINGURĂ DATĂ, cu suma
+ *                                    TOTALĂ (apel applyPlataConfirmedSideEffects)
  *       (c2) actual <  expected   → 'partial' (rămâne în plata)
  *       (c3) actual >  expected   → 'partial' (overpay) — NU confirmă
  *
@@ -146,33 +150,26 @@ export async function matchImport(importId, opts = {}) {
       }
     }
 
-    // ── 4. Grupare pe (alop, triplet) — include liniile pending VECHI din
-    //      alte import-uri pentru aceeași org (absorbție retro).
-    const groups = new Map(); // key = alop|cod|ind|cif → { alopId, triplet, lineIds, sumLocal }
+    // ── 4. Grupare pe ALOP (nu pe triplet): un ORD cu mai mulți indicatori se
+    //      confirmă ATOMIC per-ALOP când suma tuturor OP-urilor == total ORD.
+    //      Colectăm liniile-candidat pe ALOP; _processAlop reia CIF-ul + tripletele
+    //      din ORD și absoarbe și liniile pending vechi (retro) ale aceluiași ORD.
+    const groups = new Map(); // key = alopId → { alopId, lineIds }
     for (const line of lines) {
       const alopId = lineCandidates.get(line.id);
       if (!alopId) continue;
-      const cif = (line.cif_beneficiar || '').trim();
-      const cod = (line.cod_angajament || '').trim();
-      const ind = (line.indicator_angajament || '').trim();
-      const key = `${alopId}|${cod}|${ind}|${cif}`;
-      if (!groups.has(key)) {
-        groups.set(key, { alopId, cif, cod, ind, lineIds: [], sumLocal: 0 });
-      }
-      const g = groups.get(key);
-      g.lineIds.push(line.id);
-      g.sumLocal += Number(line.suma_op || 0);
+      if (!groups.has(alopId)) groups.set(alopId, { alopId, lineIds: [] });
+      groups.get(alopId).lineIds.push(line.id);
     }
 
-    // ── 5. Pentru fiecare grup, propria tranzacție scurtă. Un grup picat face
+    // ── 5. Pentru fiecare ALOP, propria tranzacție scurtă. Un ALOP picat face
     //      ROLLBACK doar pe el, se înregistrează în errors[] și bucla continuă.
     for (const g of groups.values()) {
       try {
         if (ownClient) await client.query('BEGIN');
-        const out = await _processGroup(client, {
+        const out = await _processAlop(client, {
           alopId: g.alopId,
           org_id: imp.org_id,
-          triplet: { cod: g.cod, ind: g.ind, cif: g.cif },
           primaryLineIds: g.lineIds,
           actorUserId: imp.uploaded_by,
           importNrDocument: imp.nr_document,
@@ -187,18 +184,17 @@ export async function matchImport(importId, opts = {}) {
         } else if (out.result === 'partial' || out.result === 'overpay') {
           report.partial += out.line_count;
         } else if (out.result === 'already_confirmed') {
-          // re-marchează liniile ca matched_alop_id pentru consistență vizuală,
-          // dar nu intră în contor matched (nu am produs confirmarea aici)
+          // liniile sunt marcate matched, dar nu am produs confirmarea aici → nu contorizăm.
         }
       } catch (groupErr) {
         if (ownClient) { try { await client.query('ROLLBACK'); } catch {} }
         const reason = groupErr?.message || String(groupErr);
         logger.error({ err: groupErr, alop_id: g.alopId, importId },
-          'opme-matcher: group failed (non-fatal, lines stay pending)');
+          'opme-matcher: alop group failed (non-fatal, lines stay pending)');
         report.errors.push({ alop_id: g.alopId, reason });
         report.error_count++;
-        report.details.push({ alop_id: g.alopId, triplet: { cod: g.cod, ind: g.ind, cif: g.cif }, result: 'error', reason });
-        // continuă bucla — un grup picat NU abortează importul.
+        report.details.push({ alop_id: g.alopId, result: 'error', reason });
+        // continuă bucla — un ALOP picat NU abortează importul.
       }
     }
 
@@ -256,40 +252,34 @@ export async function tryAutoConfirmAlop(alopId, opts = {}) {
       return { confirmed: false, reason: 'ord_missing' };
     }
 
-    // 2. Extrage triplet-urile (cod, indicator) din rândurile ORD
+    // 2. Verifică că ORD-ul are cel puțin un triplet valid (cod+indicator).
     const ordRows = Array.isArray(alop.ord_rows) ? alop.ord_rows : [];
-    const triplete = [];
-    for (const r of ordRows) {
-      const cod = (r?.cod_angajament || '').trim();
-      const ind = (r?.indicator_angajament || '').trim();
-      if (cod && ind) triplete.push({ cod, ind });
-    }
-    if (triplete.length === 0) {
+    const hasTriplet = ordRows.some(r =>
+      (r?.cod_angajament || '').trim() && (r?.indicator_angajament || '').trim());
+    if (!hasTriplet) {
       if (ownClient) await client.query('COMMIT');
       return { confirmed: false, reason: 'no_triplets_in_ord' };
     }
 
-    // 3. Pentru fiecare triplet din ORD, încearcă o procesare.
-    //    În practică majoritatea ALOP-urilor au un singur triplet pe ORD.
-    const details = [];
-    for (const t of triplete) {
-      const out = await _processGroup(client, {
-        alopId,
-        org_id: alop.org_id,
-        triplet: { cod: t.cod, ind: t.ind, cif: alop.cif_beneficiar },
-        primaryLineIds: [], // doar absorbție retro
-        actorUserId: optActor || alop.created_by,
-        importNrDocument: null,
-        importDataOp: null,
-      });
-      details.push(out);
-      if (out.result === 'matched') {
-        if (ownClient) await client.query('COMMIT');
-        return { confirmed: true, reason: 'matched', details };
-      }
-    }
+    // 3. Procesează ALOP-ul ÎNTREG (toate tripletele ORD-ului) o singură dată.
+    //    _processAlop re-citește cif + rândurile ORD și agregă suma tuturor OP-urilor.
+    const out = await _processAlop(client, {
+      alopId,
+      org_id: alop.org_id,
+      primaryLineIds: [],   // doar absorbție retro
+      actorUserId: optActor || alop.created_by,
+      importNrDocument: null,
+      importDataOp: null,
+    });
     if (ownClient) await client.query('COMMIT');
-    return { confirmed: false, reason: 'no_match', details };
+    if (out.result === 'matched') {
+      return { confirmed: true, reason: 'matched', details: [out] };
+    }
+    return {
+      confirmed: false,
+      reason: out.result === 'already_confirmed' ? 'already_confirmed' : 'no_match',
+      details: [out],
+    };
   } catch (e) {
     if (ownClient) { try { await client.query('ROLLBACK'); } catch {} }
     logger.error({ err: e, alopId }, 'opme-matcher: tryAutoConfirmAlop failed');
@@ -299,68 +289,91 @@ export async function tryAutoConfirmAlop(alopId, opts = {}) {
   }
 }
 
-// ── Helper privat: procesează un grup (alopId + triplet) ────────────────────
-async function _processGroup(client, args) {
+// ── Helper privat: procesează UN ALOP întreg (toate tripletele ORD-ului) ─────
+// Confirmarea plății e un eveniment ATOMIC per-ALOP: un ORD cu mai mulți
+// indicatori de angajament (mai multe rânduri) e plătit de mai multe OP-uri, iar
+// ALOP-ul se închide când SUMA tuturor OP-urilor == valoarea TOTALĂ a ORD-ului.
+// (Fix v3.9.745: înainte se confirma per-triplet și primul triplet bloca restul
+//  prin garda plata_confirmed_at → plata_suma_efectiva conținea doar primul OP.)
+async function _processAlop(client, args) {
   const {
-    alopId, org_id, triplet, primaryLineIds,
+    alopId, org_id, primaryLineIds,
     actorUserId, importNrDocument, importDataOp,
   } = args;
-  const { cod, ind, cif } = triplet;
 
-  // P0.2: lock rândul ALOP înainte de read-modify-write-ul confirmării. Punct unic de
-  // choke pentru AMBII apelanți (matchImport + tryAutoConfirmAlop), care rulează deja
-  // într-o tranzacție. Astfel confirmarea OPME se serializează cu confirma-plata manuală
-  // (care blochează același rând FOR UPDATE) → o singură confirmare câștigă; cealaltă vede
-  // plata_confirmed_at setat prin garda din applyPlataConfirmedSideEffects.
+  // P0.2: lock rândul ALOP înainte de read-modify-write-ul confirmării — același
+  // punct de choke ca înainte (serializează cu confirma-plata manuală FOR UPDATE).
   await client.query('SELECT id FROM alop_instances WHERE id=$1 FOR UPDATE', [alopId]);
 
-  // (a) calc expected din rândurile ORD ale ALOP-ului care matchează tripletul.
+  // (0) ORD-ul ALOP-ului: cif + setul de triplete (cod,indicator) din rânduri.
+  const { rows: aRows } = await client.query(`
+    SELECT TRIM(o.cif_beneficiar) AS cif, o.rows AS ord_rows
+      FROM alop_instances a
+      JOIN formulare_ord  o ON o.id = a.ord_id
+     WHERE a.id = $1
+  `, [alopId]);
+  if (!aRows[0]) {
+    return { alop_id: alopId, result: 'ord_missing', expected: 0, actual: 0, line_count: 0 };
+  }
+  const cif = aRows[0].cif;
+  const ordRows = Array.isArray(aRows[0].ord_rows) ? aRows[0].ord_rows : [];
+  const tripSet = new Set();
+  for (const r of ordRows) {
+    const cod = (r?.cod_angajament || '').trim();
+    const ind = (r?.indicator_angajament || '').trim();
+    if (cod && ind) tripSet.add(`${cod}||${ind}`);
+  }
+  if (tripSet.size === 0 || !cif) {
+    return { alop_id: alopId, result: 'no_triplets', expected: 0, actual: 0, line_count: 0 };
+  }
+
+  // (a) expected = SUM(suma_ordonantata_plata) pe TOATE rândurile ORD (valoarea totală ORD).
   const { rows: expRows } = await client.query(`
     SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata','')::numeric), 0) AS expected
       FROM alop_instances a
       JOIN formulare_ord  o ON o.id = a.ord_id
       LEFT JOIN jsonb_array_elements(COALESCE(o.rows,'[]'::jsonb)) AS r ON true
      WHERE a.id = $1
-       AND r->>'cod_angajament' = $2
-       AND r->>'indicator_angajament' = $3
-  `, [alopId, cod, ind]);
+  `, [alopId]);
   const expected = Number(expRows[0]?.expected || 0);
 
-  // (b) adună toate liniile pending+unmatched din această org cu tripletul,
-  //     plus orice linii din primaryLineIds (care încă pot fi 'pending').
+  // (b) toate liniile pending/unmatched/partial ale org-ului cu CIF-ul ORD-ului,
+  //     filtrate în JS la tripletele ORD-ului (evită liniile altui ALOP cu alt
+  //     cod/indicator la același beneficiar). Garda matched_alop_id protejează
+  //     liniile deja legate de alt ALOP.
   const { rows: poolLines } = await client.query(`
-    SELECT id, suma_op, nr_op, opme_import_id
+    SELECT id, cod_angajament, indicator_angajament, suma_op, nr_op, opme_import_id
       FROM opme_lines
      WHERE org_id = $1
-       AND TRIM(cod_angajament) = $2
-       AND TRIM(indicator_angajament) = $3
-       AND TRIM(cif_beneficiar) = $4
+       AND TRIM(cif_beneficiar) = $2
        AND match_status IN ('pending','unmatched','partial')
-       AND (matched_alop_id IS NULL OR matched_alop_id = $5)
-  `, [org_id, cod, ind, cif, alopId]);
+       AND (matched_alop_id IS NULL OR matched_alop_id = $3)
+  `, [org_id, cif, alopId]);
 
   const lineIds = new Set();
   let actual = 0;
   const nrOps = [];
   const importIds = new Set();
   for (const ln of poolLines) {
+    const cod = (ln.cod_angajament || '').trim();
+    const ind = (ln.indicator_angajament || '').trim();
+    if (!tripSet.has(`${cod}||${ind}`)) continue;   // doar tripletele ORD-ului
     lineIds.add(ln.id);
     actual += Number(ln.suma_op || 0);
     if (ln.nr_op) nrOps.push(ln.nr_op);
     if (ln.opme_import_id) importIds.add(ln.opme_import_id);
   }
-  for (const id of primaryLineIds) lineIds.add(id);
+  for (const id of (primaryLineIds || [])) lineIds.add(id);
 
   const lineCount = lineIds.size;
   const lineArr = Array.from(lineIds);
 
   if (lineCount === 0) {
-    return { alop_id: alopId, triplet, result: 'no_lines', expected, actual: 0, line_count: 0 };
+    return { alop_id: alopId, result: 'no_lines', expected, actual: 0, line_count: 0 };
   }
 
-  // (c1) actual === expected → confirmă
+  // (c1) actual === expected → confirmă O SINGURĂ DATĂ cu suma TOTALĂ a OP-urilor.
   if (_eq(actual, expected)) {
-    // determină nr_ordin (primul + restul) + data_op (cea mai veche)
     let nrOrdin = null;
     let dataOp = null;
     let observ;
@@ -390,15 +403,13 @@ async function _processGroup(client, args) {
     });
 
     if (!row) {
-      // race: alt apel a confirmat între timp → marchează liniile drept matched
-      // dar raportează already_confirmed.
+      // race: alt apel a confirmat între timp → marchează liniile drept matched.
       await _bulkMarkMatched(client, lineArr, alopId, 'auto');
-      return { alop_id: alopId, triplet, result: 'already_confirmed', expected, actual, line_count: lineCount };
+      return { alop_id: alopId, result: 'already_confirmed', expected, actual, line_count: lineCount };
     }
 
     await _bulkMarkMatched(client, lineArr, alopId, 'auto');
-
-    logger.info({ alop_id: alopId, suma: actual, lines_count: lineCount, triplet: { cod, ind, cif } }, 'opme.match.confirmed');
+    logger.info({ alop_id: alopId, suma: actual, lines_count: lineCount }, 'opme.match.confirmed');
 
     try {
       await client.query(`
@@ -412,18 +423,17 @@ async function _processGroup(client, args) {
         suma_efectiva: actual,
         data_op: importDataOp,
         cif_beneficiar: cif,
-        cod_angajament: cod,
         actor_user_id: actorUserId,
       })]);
     } catch (_auditErr) {
       logger.warn({ err: _auditErr, alop_id: alopId }, 'opme.match.audit_log insert failed (non-fatal)');
     }
 
-    return { alop_id: alopId, triplet, result: 'matched', expected, actual, line_count: lineCount };
+    return { alop_id: alopId, result: 'matched', expected, actual, line_count: lineCount };
   }
 
-  // (c2/c3) partial / overpay → marchează liniile, NU confirmă
-  logger.warn({ alop_id: alopId, expected, actual, lines_count: lineCount, triplet: { cod, ind, cif } }, 'opme.match.partial');
+  // (c2/c3) partial / overpay → marchează TOATE liniile ORD-ului ca partial, NU confirmă.
+  logger.warn({ alop_id: alopId, expected, actual, lines_count: lineCount }, 'opme.match.partial');
   const partialNote = actual < expected
     ? `Plată parțială ${actual.toFixed(2)} din ${expected.toFixed(2)} RON`
     : `Suma OPME (${actual.toFixed(2)}) depășește valoarea ORD (${expected.toFixed(2)} RON)`;
@@ -438,11 +448,8 @@ async function _processGroup(client, args) {
   }
   return {
     alop_id: alopId,
-    triplet,
     result: actual < expected ? 'partial' : 'overpay',
-    expected,
-    actual,
-    line_count: lineCount,
+    expected, actual, line_count: lineCount,
   };
 }
 
