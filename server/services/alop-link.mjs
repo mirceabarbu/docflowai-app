@@ -75,3 +75,29 @@ export async function selfHealAlopDfLink(pool, flowId) {
     logger.warn({ err: e, flowId }, '[ALOP] self-heal relink failed (non-fatal)');
   }
 }
+
+/**
+ * finalizeDfOnFlowCompleted — pașii care TREBUIE să ruleze la finalizarea ORICĂRUI
+ * flux de semnare DF, indiferent de calea de semnare (upload manual / STS poll /
+ * STS callback). Înainte de v3.9.746 existau DOAR pe calea `upload-signed-pdf`,
+ * deci fluxurile semnate prin cloud lăsau `formulare_df.status='completed'` și nu
+ * declanșau niciodată self-heal-ul legăturii DF↔ALOP.
+ * Idempotentă și non-fatală (nu propagă erori — semnarea nu trebuie să pice din cauza asta).
+ */
+export async function finalizeDfOnFlowCompleted(pool, flowId) {
+  if (!pool || !flowId) return;
+  try {
+    await pool.query(
+      `UPDATE formulare_df SET status='aprobat', updated_at=NOW()
+        WHERE flow_id=$1 AND deleted_at IS NULL AND status IS DISTINCT FROM 'aprobat'`,
+      [flowId]
+    );
+  } catch (e) {
+    logger.error({ err: e, flowId }, 'finalizeDfOnFlowCompleted: marcare aprobat esuata (non-fatal)');
+  }
+  try {
+    await selfHealAlopDfLink(pool, flowId);
+  } catch (e) {
+    logger.error({ err: e, flowId }, 'finalizeDfOnFlowCompleted: self-heal esuat (non-fatal)');
+  }
+}

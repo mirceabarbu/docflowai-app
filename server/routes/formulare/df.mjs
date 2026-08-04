@@ -548,7 +548,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
     // Tranzacție: INSERT revizie + copiere atașamente/capturi + relink ALOP — totul
     // sau nimic (fix v3.9.555: revizia anterioară pornea fără anexele R0).
     const client = await pool.connect();
-    let nou, atasameCopiate, capturiCopiate;
+    let nou, atasameCopiate, capturiCopiate, relinkRows, relinkFallback;
     try {
       await client.query('BEGIN');
 
@@ -609,11 +609,27 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       capturiCopiate = capCount;
 
       // Actualizează linkul ALOP → df_id la noua revizie
-      await client.query(
+      const { rowCount: relinkCount } = await client.query(
         `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$3
          WHERE df_id=$2 AND cancelled_at IS NULL`,
         [nou.id, req.params.id, actor.userId]
       );
+      // Fallback: legătura era deja ruptă (df_id NULL după ștergerea unei revizii
+      // sau după un refuz) — reataşează prin proveniență, ca self-heal-ul.
+      relinkFallback = 0;
+      relinkRows = relinkCount;
+      if (relinkCount === 0 && nou.source_alop_id) {
+        const { rowCount } = await client.query(
+          `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$3
+            WHERE id=$2 AND df_id IS NULL AND cancelled_at IS NULL`,
+          [nou.id, nou.source_alop_id, actor.userId]
+        );
+        relinkFallback = rowCount;
+        if (rowCount === 0) {
+          logger.warn({ dfNou: nou.id, parent: req.params.id, sourceAlopId: nou.source_alop_id },
+            'revizuieste: ALOP nerelegat (df_id ocupat de alt document sau ALOP anulat)');
+        }
+      }
 
       await client.query('COMMIT');
     } catch (e) {
@@ -623,7 +639,7 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       client.release();
     }
 
-    logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, isAnUrmator, atasameCopiate, capturiCopiate, actor: actor.email }, 'formulare-df revizie creata');
+    logger.info({ id: nou.id, parent: req.params.id, revizie: nouaRevizie, isAnUrmator, atasameCopiate, capturiCopiate, relinkCount: relinkRows, relinkFallback, actor: actor.email }, 'formulare-df revizie creata');
     await recordFormularAudit({ orgId: actor.orgId, formType: 'df', formId: req.params.id,
       actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
       meta: { version_nou: nouaRevizie, revizie_id: nou.id } });

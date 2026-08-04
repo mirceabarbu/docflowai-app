@@ -174,11 +174,23 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
           logger.info({ dfId: refDf.id, flowId }, '[ALOP] DF R0 refuzat → neaprobat, ALOP „DF în lucru" (df_id păstrat)');
         } else {
           // R1+: restore la parent APROBAT (existent)
+          // v3.9.746: „aprobat" = condiția DERIVATĂ (flux finalizat & viu), nu coloana stocată
+          // (pe calea cloud rămânea 'completed' → părintele nu se restaura niciodată). Ambele acceptate.
           const { rows: parentRows } = await pool.query(
-            `SELECT id, flow_id, status FROM formulare_df WHERE id=$1 AND deleted_at IS NULL LIMIT 1`,
+            `SELECT fd.id, fd.flow_id, fd.status,
+                    (fd.flow_id IS NOT NULL
+                     AND f.deleted_at IS NULL
+                     AND f.data->>'status' IS DISTINCT FROM 'cancelled'
+                     AND f.data->>'status' IS DISTINCT FROM 'refused'
+                     AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+                    ) AS aprobat
+               FROM formulare_df fd
+               LEFT JOIN flows f ON f.id = fd.flow_id
+              WHERE fd.id=$1 AND fd.deleted_at IS NULL LIMIT 1`,
             [refDf.parent_df_id]
           );
-          if (parentRows.length && parentRows[0].status === 'aprobat' && parentRows[0].flow_id) {
+          if (parentRows.length && parentRows[0].flow_id
+              && (parentRows[0].aprobat === true || parentRows[0].status === 'aprobat')) {
             const parent = parentRows[0];
             await pool.query(
               `UPDATE alop_instances SET df_id=$1, df_flow_id=$2, df_completed_at=NOW(), updated_at=NOW()

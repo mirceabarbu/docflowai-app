@@ -71,7 +71,9 @@ function installQueryRouter({ dfRow = null, parentRow = null, dfSelectThrows = f
     }
     if (s.includes("UPDATE formulare_df SET status='neaprobat'")) return { rowCount: 1, rows: [] };
     if (s.includes('INSERT INTO formulare_audit')) return { rows: [] };
-    if (s.includes('SELECT id, flow_id, status FROM formulare_df WHERE id=$1')) {
+    // v3.9.746: SELECT-ul părintelui derivă `aprobat` din flux (LEFT JOIN flows) —
+    // coloana stocată `status` rămâne acceptată ca alternativă.
+    if (s.includes('FROM formulare_df fd') && s.includes('LEFT JOIN flows f')) {
       return { rows: parentRow ? [parentRow] : [] };
     }
     if (s.includes('UPDATE alop_instances')) return { rowCount: 1, rows: [] };
@@ -169,7 +171,7 @@ describe('R1+ refuzat → restore la parent aprobat', () => {
     dbModule.getFlowData.mockResolvedValue(flowData);
     installQueryRouter({
       dfRow: { id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID, status: 'transmis_flux' },
-      parentRow: { id: DF_R0_ID, flow_id: PARENT_FLOW_ID, status: 'aprobat' },
+      parentRow: { id: DF_R0_ID, flow_id: PARENT_FLOW_ID, status: 'aprobat', aprobat: true },
     });
 
     const res = await request(createTestApp())
@@ -183,6 +185,27 @@ describe('R1+ refuzat → restore la parent aprobat', () => {
     expect(update[1][0]).toBe(DF_R0_ID);       // df_id ← parent.id
     expect(update[1][1]).toBe(PARENT_FLOW_ID); // df_flow_id ← parent.flow_id
     expect(update[1][2]).toBe(DF_R1_ID);       // WHERE df_id=R1.id
+  });
+
+  // #117: calea CLOUD lasă coloana `status` pe 'completed' — restore-ul trebuie să decidă
+  // pe condiția DERIVATĂ (flux finalizat & viu), altfel părintele nu se restaurează niciodată.
+  it('parent semnat cloud (status=completed, aprobat derivat=true) → restore identic', async () => {
+    const flowData = makeFlowData();
+    dbModule.getFlowData.mockResolvedValue(flowData);
+    installQueryRouter({
+      dfRow: { id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_R0_ID, status: 'transmis_flux' },
+      parentRow: { id: DF_R0_ID, flow_id: PARENT_FLOW_ID, status: 'completed', aprobat: true },
+    });
+
+    const res = await request(createTestApp())
+      .post(`/flows/${FLOW_ID}/refuse`)
+      .send({ token: flowData.signers[0].token, reason: 'cloud' });
+
+    expect(res.status).toBe(200);
+    const update = alopCalls().find(c => String(c[0]).includes('df_id=$1') && String(c[0]).includes('df_flow_id=$2'));
+    expect(update).toBeDefined();
+    expect(update[1][0]).toBe(DF_R0_ID);
+    expect(update[1][1]).toBe(PARENT_FLOW_ID);
   });
 });
 

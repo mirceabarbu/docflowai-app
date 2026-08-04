@@ -645,11 +645,24 @@ async function relinkAlopOnDfDelete(doc, id, actor) {
         [id, actor.userId]
       );
     } else {
+      // v3.9.746: „aprobat" se decide pe condiția DERIVATĂ (flux finalizat & viu), NU pe
+      // coloana stocată — pe calea de semnare cloud aceasta rămânea 'completed', iar ramura
+      // `else` de mai jos golea df_id (incidentul 04.08.2026). Se acceptă ambele.
       const { rows: parentRows } = await pool.query(
-        `SELECT id, flow_id, status FROM formulare_df WHERE id=$1 AND deleted_at IS NULL LIMIT 1`,
+        `SELECT fd.id, fd.flow_id, fd.status,
+                (fd.flow_id IS NOT NULL
+                 AND f.deleted_at IS NULL
+                 AND f.data->>'status' IS DISTINCT FROM 'cancelled'
+                 AND f.data->>'status' IS DISTINCT FROM 'refused'
+                 AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+                ) AS aprobat
+           FROM formulare_df fd
+           LEFT JOIN flows f ON f.id = fd.flow_id
+          WHERE fd.id=$1 AND fd.deleted_at IS NULL LIMIT 1`,
         [doc.parent_df_id]
       );
-      if (parentRows.length && parentRows[0].status === 'aprobat' && parentRows[0].flow_id) {
+      if (parentRows.length && parentRows[0].flow_id
+          && (parentRows[0].aprobat === true || parentRows[0].status === 'aprobat')) {
         await pool.query(
           `UPDATE alop_instances
              SET df_id=$1, df_flow_id=$2, df_completed_at=NOW(), updated_at=NOW(), updated_by=$4
