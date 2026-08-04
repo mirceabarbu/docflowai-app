@@ -8,6 +8,7 @@ import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getU
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
+import { finalizeDfOnFlowCompleted } from '../../services/alop-link.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -547,6 +548,9 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED',
       actorEmail: signer.email, payload: { provider: 'sts-cloud', via: 'sts-poll' } });
 
+    // v3.9.746: DF aprobat + self-heal DF↔ALOP — și pe calea cloud (non-fatal, idempotent)
+    if (allDone) await finalizeDfOnFlowCompleted(pool, flowId);
+
     res.json({ status: 'signed', completed: allDone, flowId });
 
     // Notificări async
@@ -844,6 +848,8 @@ router.post('/flows/:flowId/signing-callback', async (req, res) => {
     const nextSigner = signers.find(s => s.status === 'current' && !s.emailSent);
     if (nextSigner) { nextSigner.emailSent = true; nextSigner.notifiedAt = new Date().toISOString(); }
     await saveFlow(flowId, data);
+    // v3.9.746: DF aprobat + self-heal DF↔ALOP — și pe calea cloud (non-fatal, idempotent)
+    if (allDone) await finalizeDfOnFlowCompleted(pool, flowId);
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED_PDF_UPLOADED',
                       actorEmail: signers[idx].email, actorIp: _getIp(req),
                       payload: { provider: providerId, via: 'cloud-callback' } });

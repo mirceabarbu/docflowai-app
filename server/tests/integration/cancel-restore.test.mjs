@@ -154,8 +154,9 @@ describe('cancel cu DF în transmis_flux → DF=completed, ALOP df_flow_id=NULL'
     // df_id rămâne R1 (NU parent R0 — cancel păstrează revizia curentă)
     expect(alopUpdate[1]).toEqual([DF_R1_ID]);
     // În contrast cu refuse, cancel NU caută parent_df_id
+    // v3.9.746: SELECT-ul de părinte din refuse e acum derivat (formulare_df fd LEFT JOIN flows f)
     const parentSelect = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('SELECT id, flow_id, status FROM formulare_df')
+      String(c[0]).includes('FROM formulare_df fd') && String(c[0]).includes('LEFT JOIN flows f')
     );
     expect(parentSelect, 'cancel NU trebuie să caute parent_df_id').toBeUndefined();
   });

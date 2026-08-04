@@ -433,4 +433,52 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       });
     }
   });
+
+  // ─── #117: calea cloud scrie acum status='aprobat' — AFIȘAREA trebuie să rămână IDENTICĂ ───
+  // Pe un flux FINALIZAT, un DF cu status='completed' (starea produsă de calea cloud înainte de
+  // v3.9.746) și unul cu status='aprobat' (după fix) trebuie să producă ACELAȘI badge_status și
+  // să cadă în ACELEAȘI filtre. `_dfAprobat OR fd.status='aprobat'` acoperă ambele, iar
+  // `_dfTransmis` cere flux NEfinalizat ⇒ diferența e ZERO.
+  d('#117: status completed vs aprobat pe flux finalizat → afișare identică', () => {
+    it('DF: același badge_status („aprobat") pentru ambele stări brute', async () => {
+      const f1 = await seedFlowX('flow-df-117-before', { completed: true });
+      const f2 = await seedFlowX('flow-df-117-after', { completed: true });
+      const before = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId: f1, nrUnic: 'DF-117-A' });
+      const after  = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat',   flowId: f2, nrUnic: 'DF-117-B' });
+
+      const res = await request(app).get('/api/formulare/list?type=df').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(findRow(res.body, before).badge_status).toBe('aprobat');
+      expect(findRow(res.body, after).badge_status).toBe(findRow(res.body, before).badge_status);
+      expect(findRow(res.body, after).aprobat).toBe(findRow(res.body, before).aprobat);
+    });
+
+    it('DF: aceleași filtre — ambele la status=aprobat, niciunul la transmis_flux/completed', async () => {
+      const f1 = await seedFlowX('flow-df-117f-before', { completed: true });
+      const f2 = await seedFlowX('flow-df-117f-after', { completed: true });
+      const before = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId: f1, nrUnic: 'DF-117-C' });
+      const after  = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat',   flowId: f2, nrUnic: 'DF-117-D' });
+
+      for (const [V, prezent] of [['aprobat', true], ['transmis_flux', false], ['completed', false]]) {
+        const res = await request(app).get(`/api/formulare/list?type=df&status=${V}`).set('Cookie', cookie());
+        expect(res.status).toBe(200);
+        expect(!!findRow(res.body, before)).toBe(prezent);
+        expect(!!findRow(res.body, after)).toBe(prezent);
+      }
+    });
+
+    it('DF: detaliu — aprobat/flow_active identice pentru ambele stări brute', async () => {
+      const f1 = await seedFlowX('flow-df-117d-before', { completed: true });
+      const f2 = await seedFlowX('flow-df-117d-after', { completed: true });
+      const before = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId: f1, nrUnic: 'DF-117-E' });
+      const after  = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat',   flowId: f2, nrUnic: 'DF-117-F' });
+
+      const rb = await request(app).get(`/api/formulare-df/${before}`).set('Cookie', cookie());
+      const ra = await request(app).get(`/api/formulare-df/${after}`).set('Cookie', cookie());
+      expect(rb.status).toBe(200); expect(ra.status).toBe(200);
+      expect(ra.body.document.aprobat).toBe(rb.body.document.aprobat);
+      expect(ra.body.document.flow_active).toBe(rb.body.document.flow_active);
+      expect(rb.body.document.aprobat).toBe(true);
+    });
+  });
 });
