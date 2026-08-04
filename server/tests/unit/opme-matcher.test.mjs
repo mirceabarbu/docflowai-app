@@ -100,11 +100,17 @@ describe('matchImport — 1 candidat, sumă egală, 1 linie', () => {
       H(s => s.includes('FROM alop_instances') && s.includes("a.status = 'plata'") && s.includes('alop_id'), async () => ({
         rows: [{ alop_id: 'alop-1' }]
       })),
+      H(s => s.includes('AS cif, o.rows AS ord_rows'), async () => ({
+        rows: [{ cif: '12345', ord_rows: [
+          { cod_angajament: 'AAB2F', indicator_angajament: 'AAB', suma_ordonantata_plata: 4061.00 }
+        ] }]
+      })),
       H(s => s.includes("SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata'")
             , async () => ({ rows: [{ expected: 4061.00 }] })),
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async (_sql, _params) => ({ rows: [
-          { id: 'line-1', suma_op: 4061.00, nr_op: '1310', opme_import_id: 'imp-1' }
+          { id: 'line-1', cod_angajament: 'AAB2F', indicator_angajament: 'AAB',
+            suma_op: 4061.00, nr_op: '1310', opme_import_id: 'imp-1' }
         ] })),
       H(s => s.includes('FROM opme_imports\n         WHERE id = ANY'),
         async () => ({ rows: [{ data_op: new Date('2026-05-06'), nr_documents: '0130' }] })),
@@ -144,12 +150,17 @@ describe('matchImport — 1 candidat, 2 linii pe același triplet (sumă egală)
       H(s => s.includes('FROM alop_instances') && s.includes("a.status = 'plata'") && s.includes('alop_id'), async () => ({
         rows: [{ alop_id: 'alop-1' }]
       })),
+      H(s => s.includes('AS cif, o.rows AS ord_rows'), async () => ({
+        rows: [{ cif: '12', ord_rows: [
+          { cod_angajament: 'AAB', indicator_angajament: 'AAB', suma_ordonantata_plata: 300 }
+        ] }]
+      })),
       H(s => s.includes("SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata'"),
         async () => ({ rows: [{ expected: 300 }] })),
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async () => ({ rows: [
-          { id: 'L1', suma_op: 100, nr_op: '1310', opme_import_id: 'imp-1' },
-          { id: 'L2', suma_op: 200, nr_op: '1311', opme_import_id: 'imp-1' },
+          { id: 'L1', cod_angajament: 'AAB', indicator_angajament: 'AAB', suma_op: 100, nr_op: '1310', opme_import_id: 'imp-1' },
+          { id: 'L2', cod_angajament: 'AAB', indicator_angajament: 'AAB', suma_op: 200, nr_op: '1311', opme_import_id: 'imp-1' },
         ] })),
       H(s => s.includes('FROM opme_imports\n         WHERE id = ANY'),
         async () => ({ rows: [{ data_op: new Date('2026-05-06'), nr_documents: '0130' }] })),
@@ -187,10 +198,15 @@ describe('matchImport — sumă mai mică (partial)', () => {
       })),
       H(s => s.includes('FROM alop_instances') && s.includes("a.status = 'plata'") && s.includes('alop_id'),
         async () => ({ rows: [{ alop_id: 'alop-1' }] })),
+      H(s => s.includes('AS cif, o.rows AS ord_rows'), async () => ({
+        rows: [{ cif: '12', ord_rows: [
+          { cod_angajament: 'A', indicator_angajament: 'A', suma_ordonantata_plata: 100 }
+        ] }]
+      })),
       H(s => s.includes("SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata'"),
         async () => ({ rows: [{ expected: 100 }] })),
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
-        async () => ({ rows: [{ id: 'L1', suma_op: 50, nr_op: '1310', opme_import_id: 'imp-1' }] })),
+        async () => ({ rows: [{ id: 'L1', cod_angajament: 'A', indicator_angajament: 'A', suma_op: 50, nr_op: '1310', opme_import_id: 'imp-1' }] })),
       H(s => s.includes('UPDATE alop_instances') && s.includes('plata_confirmed_at=NOW()'),
         async () => { confirmCalled = true; return { rows: [{ id: 'alop-1' }] }; }),
       H(s => s.includes('UPDATE opme_lines') && s.includes("match_status='partial'"),
@@ -218,10 +234,15 @@ describe('matchImport — overpay', () => {
                                  cif_beneficiar: '12', suma_op: 200, nr_op: '1310' }] })),
       H(s => s.includes('FROM alop_instances') && s.includes("a.status = 'plata'") && s.includes('alop_id'),
         async () => ({ rows: [{ alop_id: 'alop-1' }] })),
+      H(s => s.includes('AS cif, o.rows AS ord_rows'), async () => ({
+        rows: [{ cif: '12', ord_rows: [
+          { cod_angajament: 'A', indicator_angajament: 'A', suma_ordonantata_plata: 100 }
+        ] }]
+      })),
       H(s => s.includes("SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata'"),
         async () => ({ rows: [{ expected: 100 }] })),
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
-        async () => ({ rows: [{ id: 'L1', suma_op: 200, nr_op: '1310', opme_import_id: 'imp-1' }] })),
+        async () => ({ rows: [{ id: 'L1', cod_angajament: 'A', indicator_angajament: 'A', suma_op: 200, nr_op: '1310', opme_import_id: 'imp-1' }] })),
       H(s => s.includes('UPDATE opme_lines') && s.includes("match_status='partial'"), async () => ({ rows: [] })),
       H('BEGIN', async () => ({ rows: [] })),
       H('COMMIT', async () => ({ rows: [] })),
@@ -321,12 +342,17 @@ describe('tryAutoConfirmAlop — absorbție retro', () => {
           created_by: 33, ord_id: 'ord-1', cif_beneficiar: '12',
           ord_rows: [{ cod_angajament: 'A', indicator_angajament: 'A', suma_ordonantata_plata: '100' }]
         }] })),
+      H(s => s.includes('AS cif, o.rows AS ord_rows'), async () => ({
+        rows: [{ cif: '12', ord_rows: [
+          { cod_angajament: 'A', indicator_angajament: 'A', suma_ordonantata_plata: '100' }
+        ] }]
+      })),
       H(s => s.includes("SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata'"),
         async () => ({ rows: [{ expected: 100 }] })),
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async () => ({ rows: [
           // linie deja existentă pending pe un import vechi
-          { id: 'OLD', suma_op: 100, nr_op: '999', opme_import_id: 'imp-old' }
+          { id: 'OLD', cod_angajament: 'A', indicator_angajament: 'A', suma_op: 100, nr_op: '999', opme_import_id: 'imp-old' }
         ] })),
       H(s => s.includes('FROM opme_imports\n         WHERE id = ANY'),
         async () => ({ rows: [{ data_op: new Date('2026-04-01'), nr_documents: '0099' }] })),

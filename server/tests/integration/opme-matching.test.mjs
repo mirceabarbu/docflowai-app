@@ -168,10 +168,25 @@ describe('POST /api/opme/import + matcher — seed ALOP-uri care matchează', ()
           return { rows: [{ alop_id: tripletToAlop.get(key) }] };
         }),
 
+      // Cif + rândurile ORD ale ALOP-ului (params: [alopId]) — reconstruite din
+      // tripletul asignat acelui alop (fiecare alop are exact un triplet în fixture).
+      H(s => s.includes('AS cif, o.rows AS ord_rows'), async (_sql, params) => {
+        const alopId = params[0];
+        for (const [key, aid] of tripletToAlop.entries()) {
+          if (aid === alopId) {
+            const [cod, ind, cif] = key.split('|');
+            return { rows: [{ cif, ord_rows: [
+              { cod_angajament: cod, indicator_angajament: ind, suma_ordonantata_plata: tripletToSum.get(key) || 0 }
+            ] }] };
+          }
+        }
+        return { rows: [] };
+      }),
+
       // Expected sum per triplet — îl construim din liniile aceluiași triplet.
       H(s => s.includes("SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata'"),
         async (_sql, params) => {
-          // params: [alopId, cod, ind]
+          // params: [alopId]
           const alopId = params[0];
           // suma așteptată = suma OPME a tripletului asociat acestui alop
           let total = 0;
@@ -181,17 +196,15 @@ describe('POST /api/opme/import + matcher — seed ALOP-uri care matchează', ()
           return { rows: [{ expected: total }] };
         }),
 
-      // Pool of pending lines for the triplet (we lazily compute and cache).
+      // Pool of pending lines pe CIF-ul ORD-ului (params: [org_id, cif, alopId]).
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async (_sql, params) => {
-          // params: [org_id, cod, ind, cif, alopId]
-          const [_org, cod, ind, cif] = params;
-          const key = `${cod}|${ind}|${cif}`;
-          const lines = makePendingLines().filter(l =>
-            l.cod_angajament === cod && l.indicator_angajament === ind && l.cif_beneficiar === cif
-          ).map(l => ({ id: l.id, suma_op: l.suma_op, nr_op: l.nr_op, opme_import_id: importId }));
-          const sum = lines.reduce((a, l) => a + Number(l.suma_op), 0);
-          tripletToSum.set(key, sum);
+          const [_org, cif] = params;
+          const lines = makePendingLines().filter(l => l.cif_beneficiar === cif)
+            .map(l => ({
+              id: l.id, cod_angajament: l.cod_angajament, indicator_angajament: l.indicator_angajament,
+              suma_op: l.suma_op, nr_op: l.nr_op, opme_import_id: importId,
+            }));
           return { rows: lines };
         }),
 
@@ -254,13 +267,20 @@ describe('tryAutoConfirmAlop — absorbție retro pe linie pending', () => {
           ],
         }] })),
 
+      H(s => s.includes('AS cif, o.rows AS ord_rows'), async () => ({
+        rows: [{ cif: '2801201082577', ord_rows: [
+          { cod_angajament: 'AAB2FMGM4HG', indicator_angajament: 'AAB', suma_ordonantata_plata: '4061.00' }
+        ] }]
+      })),
+
       H(s => s.includes("SELECT COALESCE(SUM(NULLIF(r->>'suma_ordonantata_plata'"),
         async () => ({ rows: [{ expected: 4061 }] })),
 
       // Există o linie OPME pending pe acel triplet, dintr-un import vechi
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async () => ({ rows: [
-          { id: 'L-OLD', suma_op: 4061, nr_op: '1310', opme_import_id: 'imp-old' }
+          { id: 'L-OLD', cod_angajament: 'AAB2FMGM4HG', indicator_angajament: 'AAB',
+            suma_op: 4061, nr_op: '1310', opme_import_id: 'imp-old' }
         ] })),
 
       H(s => s.includes('FROM opme_imports') && s.includes('WHERE id = ANY'),
