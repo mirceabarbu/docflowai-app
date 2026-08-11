@@ -318,7 +318,7 @@ router.get('/api/alop', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status, q, creat, comp, from, to, page = 1, limit = 20 } = req.query;
     const offset = (Number(page) - 1) * Number(limit);
 
     const params = [isPlatformAdmin(actor) ? null : actor.orgId];
@@ -327,6 +327,28 @@ router.get('/api/alop', async (req, res) => {
     if (status) {
       params.push(status);
       where += ` AND a.status = $${params.length}`;
+    }
+    // #121: filtre listă ALOP (oglindesc DF/ORD). Toate pe a.* (valabile și în COUNT, care n-are JOIN),
+    // iar „creat de" printr-un EXISTS corelat pe users — NU adăuga un JOIN în cele două query-uri.
+    if (q) {
+      params.push('%' + String(q).trim() + '%');
+      where += ` AND a.titlu ILIKE $${params.length}`;
+    }
+    if (comp) {
+      params.push(comp);
+      where += ` AND a.compartiment = $${params.length}`;
+    }
+    if (from) {
+      params.push(from);
+      where += ` AND a.created_at >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to + 'T23:59:59');
+      where += ` AND a.created_at < $${params.length}`;
+    }
+    if (creat) {
+      const iCreat = params.push('%' + String(creat).trim() + '%');
+      where += ` AND EXISTS (SELECT 1 FROM users cu WHERE cu.id = a.created_by AND (cu.nume ILIKE $${iCreat} OR cu.email ILIKE $${iCreat}))`;
     }
 
     const { rows } = await pool.query(`

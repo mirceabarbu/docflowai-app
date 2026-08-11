@@ -177,6 +177,30 @@ function openOpmeLinesForAlop(alopId){
     .catch(e=>alert('Eroare: '+e.message));
 }
 
+let _alopFltTimer=null;
+function debouncedLoadAlop(){
+  clearTimeout(_alopFltTimer);
+  _alopFltTimer=setTimeout(()=>{ _alopState.page=1; loadAlop(); },400);
+}
+function _alopFilterChanged(){ _alopState.page=1; loadAlop(); }
+function resetAlopFilters(){
+  ['flt-a-q','flt-a-creat','flt-a-from','flt-a-to','flt-a-from-display','flt-a-to-display'].forEach(id=>{
+    const e=document.getElementById(id); if(e){ e.value=''; e.style.borderColor=''; }
+  });
+  const cp=document.getElementById('flt-a-comp'); if(cp) cp.value='';
+  const st=document.getElementById('flt-a-status'); if(st) st.value='';
+  _alopState.page=1; loadAlop();
+}
+function _populateAlopCompartimente(){
+  const sel=document.getElementById('flt-a-comp');
+  if(!sel)return;
+  const list=window.ST?.orgProfile?._compList||[];
+  if(!list.length)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">Toate</option>'+list.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  sel.value=cur;
+}
+
 async function loadAlop(){
   _updateAlopSablonBtnVisibility();
   _updateOpmeBtnVisibility();
@@ -186,7 +210,20 @@ async function loadAlop(){
   if(pg)pg.style.display='none';
   tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--df-text-3)">Se încarcă...</td></tr>';
   try{
+    _populateAlopCompartimente();
     const qs=new URLSearchParams();
+    const _q     =(document.getElementById('flt-a-q')?.value||'').trim();
+    const _creat =(document.getElementById('flt-a-creat')?.value||'').trim();
+    const _comp  =document.getElementById('flt-a-comp')?.value||'';
+    const _fstat =document.getElementById('flt-a-status')?.value||'';
+    const _from  =document.getElementById('flt-a-from')?.value||'';
+    const _to    =document.getElementById('flt-a-to')?.value||'';
+    if(_q)     qs.set('q',_q);
+    if(_creat) qs.set('creat',_creat);
+    if(_comp)  qs.set('comp',_comp);
+    if(_fstat) qs.set('status',_fstat);
+    if(_from)  qs.set('from',_from);
+    if(_to)    qs.set('to',_to);
     qs.set('page',_alopState.page);
     qs.set('limit',_alopState.limit);
     const r=await fetch(`/api/alop?${qs.toString()}`,{credentials:'include'});
@@ -1190,6 +1227,9 @@ async function alopRevizuiesteDF(alopId,dfId){
   // -- Export onclick global + cross-module ---------------------------------
   window.loadAlopStats              = loadAlopStats;
   window.loadAlop                   = loadAlop;
+  window.debouncedLoadAlop          = debouncedLoadAlop;
+  window._alopFilterChanged         = _alopFilterChanged;
+  window.resetAlopFilters           = resetAlopFilters;
   window.openAlopModal              = openAlopModal;
   window.closeAlopModal             = closeAlopModal;
   window.createAlop                 = createAlop;
