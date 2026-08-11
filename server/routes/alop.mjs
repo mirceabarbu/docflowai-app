@@ -26,6 +26,7 @@ import { loadActorCompAndCab, isCabDept, canEditAlop, canDestroyOnly, loadOrgCab
 import { sendNotif } from '../services/formular-shared.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { isPlatformAdmin } from '../services/authz-scope.mjs';
+import { selfHealAlopDfLinkByAlop } from '../services/alop-link.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
@@ -718,6 +719,20 @@ router.get('/api/alop/:id', async (req, res) => {
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     const alop = rows[0];
+
+    // ── Self-heal LAZY al legăturii ALOP→DF (v3.9.750) ──────────────────────
+    // Calea de semnare CLOUD nu poate apela cârligul de finalizare (zona NO-TOUCH),
+    // deci reataşarea se face aici, la prima deschidere a ALOP-ului. Oglindește
+    // self-heal #1/#2 pentru ORD. Non-fatal: o eroare nu strică afișarea.
+    if (!alop.df_id) {
+      const healed = await selfHealAlopDfLinkByAlop(pool, req.params.id);
+      if (healed) {
+        alop.df_id           = healed.df_id;
+        alop.df_flow_id      = healed.df_flow_id;
+        alop.df_completed_at = healed.df_completed_at;
+        alop.df_aprobat      = true;
+      }
+    }
 
     // ── Lazy auto-tranziție pentru fluxuri STS Cloud (completed=true fără status='completed') ──
     // DF aprobat dar ALOP rămas în 'draft' sau 'angajare' → recuperare la 'lichidare'.
