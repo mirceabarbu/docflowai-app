@@ -157,10 +157,24 @@ function makeAlopRow(overrides = {}) {
  *   2. SELECT compartiment FROM users (loadActorComp)
  * Folosește created_by=1 (matches makeToken().userId) pentru a trece pe ramura 'creator'.
  */
-function mockAuthzAlopCreator(createdBy = 1) {
+// `alopExtra` completează rândul ALOP încărcat de rută (df_id/ord_id/df_flow_id/…) —
+// necesar de la P0-03 (#122), unde poarta de proveniență citește aceste câmpuri.
+function mockAuthzAlopCreator(createdBy = 1, alopExtra = {}) {
   dbModule.pool.query
-    .mockResolvedValueOnce({ rows: [{ created_by: createdBy, compartiment: '' }] })
+    .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, created_by: createdBy, compartiment: '', ...alopExtra }] })
     .mockResolvedValueOnce({ rows: [{ compartiment: '' }] });
+}
+
+// P0-03 (#122): `checkFlowLinkable` / `checkFlowSigned` (services/flow-provenance.mjs)
+// adaugă UN SELECT pe `flows` între authz și UPDATE. Rândul de mai jos acoperă ambele
+// forme (same_org/live pentru linkare, semnat pentru completed) — implicit „totul e ok".
+function mockFlowProvenance({ sameOrg = true, live = true, semnat = true, metaDocId = DF_ID, cloudSource = false } = {}) {
+  dbModule.pool.query.mockResolvedValueOnce({
+    rows: [{ id: FLOW_ID, same_org: sameOrg, live, semnat, meta_doc_id: metaDocId == null ? null : String(metaDocId) }],
+  });
+  // Ramura cloud „Fără DF" (alop.df_id NULL): proveniența se dovedește printr-un al
+  // doilea SELECT — documentul revendicat poartă source_alop_id = ALOP.
+  if (cloudSource) dbModule.pool.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
 }
 
 /**
@@ -521,7 +535,8 @@ describe('POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF', () =
 
   it('200 — link-df-flow setează df_flow_id', async () => {
     const updated = makeAlopRow({ df_flow_id: FLOW_ID, status: 'angajare' });
-    mockAuthzAlopCreator();
+    mockAuthzAlopCreator(1, { df_id: DF_ID });
+    mockFlowProvenance({ metaDocId: DF_ID });          // P0-03: fluxul revendică DF-ul ALOP-ului
     dbModule.pool.query.mockResolvedValueOnce({ rows: [updated] });
 
     const app = createTestApp();
@@ -538,7 +553,8 @@ describe('POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF', () =
   it('200 — link-df-flow idempotent: al doilea apel cu același flowId suprascrie fără eroare', async () => {
     // UPDATE fără condiție pe df_flow_id → mereu suprascrie cu același flow_id
     const same = makeAlopRow({ df_flow_id: FLOW_ID });
-    mockAuthzAlopCreator();
+    mockAuthzAlopCreator(1, { df_id: DF_ID });
+    mockFlowProvenance({ metaDocId: DF_ID });
     dbModule.pool.query.mockResolvedValueOnce({ rows: [same] });
 
     const app = createTestApp();
@@ -567,7 +583,8 @@ describe('POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF', () =
 describe('POST /api/alop/:id/link-ord-flow — leagă fluxul de semnare ORD', () => {
   it('200 — link-ord-flow setează ord_flow_id', async () => {
     const updated = makeAlopRow({ ord_flow_id: FLOW_ID, status: 'ordonantare' });
-    mockAuthzAlopCreator();
+    mockAuthzAlopCreator(1, { ord_id: ORD_ID });
+    mockFlowProvenance({ metaDocId: ORD_ID });
     dbModule.pool.query.mockResolvedValueOnce({ rows: [updated] });
 
     const app = createTestApp();
@@ -600,7 +617,8 @@ describe('POST /api/alop/:id/link-ord-flow — leagă fluxul de semnare ORD', ()
 describe('POST /api/alop/:id/df-completed — avansare la lichidare', () => {
   it('200 — avansează la lichidare când DF flow complet', async () => {
     const lichidare = makeAlopRow({ status: 'lichidare', df_completed_at: new Date().toISOString() });
-    mockAuthzAlopCreator();
+    mockAuthzAlopCreator(1, { df_id: DF_ID, df_flow_id: FLOW_ID });
+    mockFlowProvenance({ metaDocId: DF_ID });          // P0-03: flux SEMNAT, al DF-ului ALOP-ului
     dbModule.pool.query.mockResolvedValueOnce({ rows: [lichidare] });
 
     const app = createTestApp();
@@ -614,9 +632,10 @@ describe('POST /api/alop/:id/df-completed — avansare la lichidare', () => {
     expect(res.body.alop.df_completed_at).toBeDefined();
   });
 
-  it('400 — respinge dacă status !== angajare sau df_flow_id lipsă', async () => {
-    // UPDATE WHERE ... AND df_flow_id IS NOT NULL AND status='angajare' → 0 rows
-    mockAuthzAlopCreator();
+  it('400 — respinge dacă status !== angajare (a doua apărare: garda din UPDATE)', async () => {
+    // Flux legat + semnat (poarta P0-03 trece), dar UPDATE WHERE ... AND status='angajare' → 0 rows
+    mockAuthzAlopCreator(1, { df_id: DF_ID, df_flow_id: FLOW_ID });
+    mockFlowProvenance({ metaDocId: DF_ID });
     dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
 
     const app = createTestApp();
@@ -628,12 +647,40 @@ describe('POST /api/alop/:id/df-completed — avansare la lichidare', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('df_flow_necesar_sau_status_invalid');
   });
+
+  it('400 flux_lipsa — df_flow_id NULL (P0-03: poarta refuză înainte de UPDATE)', async () => {
+    mockAuthzAlopCreator(1, { df_id: DF_ID, df_flow_id: null });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/df-completed`)
+      .set('Cookie', `auth_token=${makeToken()}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('flux_lipsa');
+  });
+
+  it('409 document_nesemnat — flux legat dar NEsemnat (P0-03)', async () => {
+    mockAuthzAlopCreator(1, { df_id: DF_ID, df_flow_id: FLOW_ID });
+    mockFlowProvenance({ semnat: false, metaDocId: DF_ID });
+
+    const app = createTestApp();
+    const res = await request(app)
+      .post(`/api/alop/${ALOP_ID}/df-completed`)
+      .set('Cookie', `auth_token=${makeToken()}`)
+      .send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('document_nesemnat');
+  });
 });
 
 describe('POST /api/alop/:id/ord-completed — avansare la plata', () => {
   it('200 — avansează la plata când ORD flow complet', async () => {
     const plata = makeAlopRow({ status: 'plata', ord_completed_at: new Date().toISOString() });
-    mockAuthzAlopCreator();
+    mockAuthzAlopCreator(1, { ord_id: ORD_ID, ord_flow_id: FLOW_ID });
+    mockFlowProvenance({ metaDocId: ORD_ID });
     dbModule.pool.query.mockResolvedValueOnce({ rows: [plata] });
 
     const app = createTestApp();
@@ -646,8 +693,9 @@ describe('POST /api/alop/:id/ord-completed — avansare la plata', () => {
     expect(res.body.alop.status).toBe('plata');
   });
 
-  it('400 — respinge dacă status !== ordonantare sau ord_flow_id lipsă', async () => {
-    mockAuthzAlopCreator();
+  it('400 — respinge dacă status !== ordonantare (a doua apărare: garda din UPDATE)', async () => {
+    mockAuthzAlopCreator(1, { ord_id: ORD_ID, ord_flow_id: FLOW_ID });
+    mockFlowProvenance({ metaDocId: ORD_ID });
     dbModule.pool.query.mockResolvedValueOnce({ rows: [] });
 
     const app = createTestApp();
@@ -890,7 +938,10 @@ describe('POST /api/alop/:id/link-df-flow — auto-lichidare STS Cloud', () => {
       df_completed_at: new Date().toISOString(),
     });
 
+    // ALOP fără df_id (calea cloud) — evită branch-urile de copiere atașamente / flip DF,
+    // exact ca înainte de #122; proveniența se dovedește prin source_alop_id.
     mockAuthzAlopCreator();
+    mockFlowProvenance({ metaDocId: DF_ID, cloudSource: true });
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [angajare] })         // UPDATE df_flow_id
       .mockResolvedValueOnce({ rows: [{ id: FLOW_ID }] }) // SELECT flows (completat)
@@ -911,6 +962,8 @@ describe('POST /api/alop/:id/link-df-flow — auto-lichidare STS Cloud', () => {
   it('200 — flux NU e completat → ALOP rămâne în angajare', async () => {
     const angajare = makeAlopRow({ status: 'angajare', df_flow_id: FLOW_ID });
 
+    mockAuthzAlopCreator();
+    mockFlowProvenance({ metaDocId: DF_ID, cloudSource: true }); // proveniență OK (flux nesemnat)
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [angajare] }) // UPDATE df_flow_id
       .mockResolvedValueOnce({ rows: [] })          // SELECT flows → nu e completat

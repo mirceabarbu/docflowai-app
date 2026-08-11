@@ -524,7 +524,6 @@ const createFlow = async (req, res) => {
          WHERE df_id = $2 AND df_flow_id IS NULL AND cancelled_at IS NULL`,
         [flowId, body.meta.dfId]
       ).catch(e => logger.warn({ err: e }, 'alop link df_flow_id non-fatal'));
-      console.log('🔗 AUTO link-df-flow:', body.meta.dfId, '->', flowId);
       // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la lichidare
       try {
         const flowRow = await pool.query(`SELECT data FROM flows WHERE id = $1`, [flowId]);

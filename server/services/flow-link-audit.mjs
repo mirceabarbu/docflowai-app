@@ -14,28 +14,13 @@
  * e opțională: un flux ANULAT poate rămâne cu `data->>'completed' = 'true'`
  * (incidentul PZ_8C34C4E842, 0/5 semnături). `IS DISTINCT FROM` e obligatoriu
  * (NULL-safe). Aceeași formă apare deja în formular-shared.mjs (relink revizie).
+ *
+ * ⚠️ Din P0-03 (#122), ambele predicate trăiesc în `flow-provenance.mjs` (sursa unică,
+ * folosită și de poarta de proveniență din alop.mjs) și se importă de acolo — o a doua
+ * definiție locală ar fi drift garantat. Test anti-drift: tests/unit/flow-provenance.test.mjs.
  */
 
-// Fragment SQL: un flux e „valid semnat" (revendicabil ca sursă de adevăr) dacă
-// e nețters, ne-anulat, ne-refuzat ȘI marcat finalizat.
-function validSignedFlowSql(alias = 'f') {
-  return `${alias}.deleted_at IS NULL
-      AND ${alias}.data->>'status' IS DISTINCT FROM 'cancelled'
-      AND ${alias}.data->>'status' IS DISTINCT FROM 'refused'
-      AND (${alias}.data->>'status' = 'completed' OR (${alias}.data->>'completed')::boolean = true)`;
-}
-
-// Fragment SQL: un flux e „viu" (revendică activ documentul, dar poate să nu fie
-// încă semnat). Exclude nețters + ne-anulat + ne-refuzat. Un flux `completed` E viu
-// aici (e un flux real). Excluderea `refused` NU e în specul PAS 1 (care spune doar
-// „necancelate"), dar e NECESARĂ pentru clasa D: fără ea, o reinițiere legitimă după
-// refuz (flux vechi refuzat + flux nou activ, ambele cu același meta.dfId) ar apărea
-// permanent ca „fluxuri paralele" → cardul n-ar ajunge niciodată la 0.
-function liveFlowSql(alias = 'f') {
-  return `${alias}.deleted_at IS NULL
-      AND ${alias}.data->>'status' IS DISTINCT FROM 'cancelled'
-      AND ${alias}.data->>'status' IS DISTINCT FROM 'refused'`;
-}
+import { validSignedFlowSql, liveFlowSql } from './flow-provenance.mjs';
 
 const CLASS_KEYS = ['doc_fara_flux', 'alop_fara_flux', 'alop_fara_document', 'fluxuri_paralele'];
 
