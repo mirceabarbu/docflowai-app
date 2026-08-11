@@ -474,7 +474,15 @@ router.get('/api/formulare/list', async (req, res) => {
         conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
       }
       if (nr) {
-        conds.push(`fd.nr_unic_inreg ILIKE $${params.push('%' + nr + '%')}`);
+        // #121: căutarea după Nr. la DF acoperă și denumirea ALOP-ului legat —
+        // activ (a.df_id=fd.id) sau proveniență (fd.source_alop_id=a.id). org_id egal ⇒ fără canal cross-tenant.
+        const iNr = params.push('%' + nr + '%');
+        conds.push(`(fd.nr_unic_inreg ILIKE $${iNr} OR EXISTS (
+          SELECT 1 FROM alop_instances a_s
+          WHERE (a_s.df_id = fd.id OR a_s.id = fd.source_alop_id)
+            AND a_s.org_id = fd.org_id
+            AND a_s.titlu ILIKE $${iNr}
+        ))`);
       }
 
       const where = `WHERE ${conds.join(' AND ')}`;
@@ -601,7 +609,9 @@ router.get('/api/formulare/list', async (req, res) => {
         conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
       }
       if (nr) {
-        conds.push(`fo.nr_ordonant_pl ILIKE $${params.push('%' + nr + '%')}`);
+        // #121: căutarea după Nr. la ORD acoperă și denumirea furnizorului (fo.beneficiar).
+        const iNr = params.push('%' + nr + '%');
+        conds.push(`(fo.nr_ordonant_pl ILIKE $${iNr} OR fo.beneficiar ILIKE $${iNr})`);
       }
 
       const where = `WHERE ${conds.join(' AND ')}`;

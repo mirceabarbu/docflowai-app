@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.693">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.693">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.717">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.697">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.751">
   <script src="/js/df-utils.js?v=3.9.693"></script>
   <script src="/js/df-entitlements.js?v=3.9.693"></script>
   <script src="/js/df-shell.js?v=3.9.707"></script>
@@ -198,7 +198,7 @@
         <input type="text" id="flt-p2" class="flt-inp" placeholder="Căutați..." oninput="debouncedLoadList()"/>
       </div>
       <!-- 5. Status -->
-      <div class="flt-grp">
+      <div class="flt-grp" id="flt-status-grp">
         <label class="flt-lbl">Status</label>
         <select id="flt-status" class="flt-sel" onchange="loadList()">
           <option value="all">Toate</option>
@@ -301,6 +301,62 @@
 
   <!-- Lista ALOP -->
   <div id="alop-list-panel">
+    <div class="lst-filters">
+      <div class="lst-filter-row">
+        <!-- 1. Titlu -->
+        <div class="flt-grp" id="flt-a-q-grp">
+          <label class="flt-lbl">Titlu</label>
+          <input type="text" id="flt-a-q" class="flt-inp" placeholder="Căutați..." oninput="debouncedLoadAlop()"/>
+        </div>
+        <!-- 2. Creat de -->
+        <div class="flt-grp" id="flt-a-creat-grp">
+          <label class="flt-lbl">Creat de</label>
+          <input type="text" id="flt-a-creat" class="flt-inp" placeholder="Căutați..." oninput="debouncedLoadAlop()"/>
+        </div>
+        <!-- 3. Compartiment -->
+        <div class="flt-grp" id="flt-a-comp-wrap">
+          <label class="flt-lbl">Compartiment</label>
+          <select id="flt-a-comp" class="flt-sel" onchange="_alopFilterChanged()"><option value="">Toate</option></select>
+        </div>
+        <!-- 4. Status -->
+        <div class="flt-grp" id="flt-a-status-grp">
+          <label class="flt-lbl">Status</label>
+          <select id="flt-a-status" class="flt-sel" onchange="_alopFilterChanged()">
+            <option value="">Toate</option>
+            <option value="draft">Draft</option>
+            <option value="angajare">DF în lucru</option>
+            <option value="lichidare">Lichidare</option>
+            <option value="ordonantare">Ordonanțare</option>
+            <option value="plata">Plată</option>
+            <option value="completed">Finalizat</option>
+          </select>
+        </div>
+        <!-- 5. De la -->
+        <div class="flt-grp" id="flt-a-from-grp">
+          <label class="flt-lbl">De la</label>
+          <div style="position:relative;width:100%;">
+            <input type="text" id="flt-a-from-display" class="flt-inp" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+              style="width:100%;padding-right:32px;letter-spacing:.5px;box-sizing:border-box;"
+              oninput="onDateTextInput(this,'flt-a-from')" />
+            <input type="date" id="flt-a-from" data-ro-date="1" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;" onchange="onDatePickerChange(this,'flt-a-from-display');_alopFilterChanged();" />
+            <span style="position:absolute;right:9px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:13px;">📅</span>
+          </div>
+        </div>
+        <!-- 6. Până la -->
+        <div class="flt-grp" id="flt-a-to-grp">
+          <label class="flt-lbl">Până la</label>
+          <div style="position:relative;width:100%;">
+            <input type="text" id="flt-a-to-display" class="flt-inp" placeholder="zz.ll.aaaa" maxlength="10" autocomplete="off"
+              style="width:100%;padding-right:32px;letter-spacing:.5px;box-sizing:border-box;"
+              oninput="onDateTextInput(this,'flt-a-to')" />
+            <input type="date" id="flt-a-to" data-ro-date="1" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);width:18px;height:18px;opacity:0;cursor:pointer;" onchange="onDatePickerChange(this,'flt-a-to-display');_alopFilterChanged();" />
+            <span style="position:absolute;right:9px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:13px;">📅</span>
+          </div>
+        </div>
+        <!-- 7. Reset -->
+        <button class="df-action-btn sm" style="align-self:flex-end" onclick="resetAlopFilters()" title="Resetează filtrele">↺</button>
+      </div>
+    </div>
     <div class="lst-table-wrap">
       <table class="lst-table">
         <thead>
@@ -1418,7 +1474,7 @@
 <script src="/js/formular/core.js?v=3.9.693" defer></script>
 <script src="/js/formular/verif.js?v=3.9.693" defer></script>
 <script src="/js/shared/pagin.js?v=3.9.722" defer></script>
-<script src="/js/formular/alop.js?v=3.9.723" defer></script>
+<script src="/js/formular/alop.js?v=3.9.751" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.693" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.693" defer></script>
 <script src="/js/formular/draft.js?v=3.9.693" defer></script>
