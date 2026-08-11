@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
+import { sanitizeCancelledCompletion } from '../../services/flow-completion.mjs';
 
 const _largePdf = expressJson({ limit: '50mb' });
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
@@ -518,6 +519,11 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
     data.cancelledBy = actor.email;
     data.cancelReason = reason ? String(reason).trim().slice(0, 500) : null;
     data.updatedAt = now;
+    // #120 (PAS 4) — igiena stării anulate: un flux anulat care NU era complet semnat nu trebuie
+    // să rămână `completed=true`/`completedAt` (incidentul PZ_8C34C4E842). Dacă era complet semnat,
+    // NU rescriem istoria (helper-ul păstrează steagul). Aici `completed` e oricum false (413 blochează
+    // fluxurile finalizate), deci e o plasă defensivă — dar face starea anulată auto-consistentă.
+    sanitizeCancelledCompletion(data);
     // Marchează semnatarii pending/current ca 'cancelled'
     if (Array.isArray(data.signers)) {
       data.signers = data.signers.map(s =>

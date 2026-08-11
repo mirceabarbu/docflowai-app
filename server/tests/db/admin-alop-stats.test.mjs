@@ -120,6 +120,8 @@ d('GET /admin/alop/stats — 4 KPI ALOP (prompt 66)', () => {
   it('fără date → toate 0', async () => {
     const res = await request(app).get('/admin/alop/stats').set('Cookie', cookieOrgAdmin1());
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ alop_active: 0, valoare_angajata_an: 0, valoare_platita_an: 0, alop_finalizate_an: 0 });
+    // #120: payload-ul include acum și `linkAudit` (consistență document↔flux, stare curentă).
+    expect(res.body).toEqual({ alop_active: 0, valoare_angajata_an: 0, valoare_platita_an: 0, alop_finalizate_an: 0,
+      linkAudit: { total: 0, byClass: { doc_fara_flux: 0, alop_fara_flux: 0, alop_fara_document: 0, fluxuri_paralele: 0 } } });
   });
 });
