@@ -344,6 +344,21 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
     let extraVals = [];
     if (isP1 || actor.role === 'admin' || actor.role === 'org_admin') {
       if (doc.status === 'completed') {
+        // v3.9.750: pe calea de semnare CLOUD statusul rămâne 'completed' și după
+        // aprobare (marcarea 'aprobat' e lazy). Un document SEMNAT nu se resetează
+        // niciodată la draft — calea corectă e /revizuieste.
+        let semnat = false;
+        if (doc.flow_id) {
+          const { rows: fr } = await pool.query(`
+            SELECT 1 FROM flows f
+             WHERE f.id = $1 AND f.deleted_at IS NULL
+               AND f.data->>'status' IS DISTINCT FROM 'cancelled'
+               AND f.data->>'status' IS DISTINCT FROM 'refused'
+               AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+             LIMIT 1`, [doc.flow_id]);
+          semnat = fr.length > 0;
+        }
+        if (semnat) return res.status(409).json({ error: 'document_locked', status: 'aprobat' });
         // P1 modifică după ce P2 a completat → reset + version++
         extraSets = ['status=$__', 'version=$__', 'completed_at=NULL', 'submitted_at=NULL'];
         extraVals = ['draft', doc.version + 1];
@@ -374,11 +389,20 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
     const allSets = [...sets];
     const allVals = [...vals];
     let pi = allVals.length + 1;
+    // v3.9.750: extraSets poate conține fragmente LITERALE fără placeholder
+    // (ex. 'completed_at=NULL') alături de cele cu '$__'. Consumăm o valoare din
+    // extraVals DOAR pentru fragmentele cu placeholder — altfel împingeam un
+    // `undefined` (→ param nereferențiat) și Postgres arunca „could not determine
+    // data type of parameter". extraVals rămâne aliniat pozițional cu placeholder-ele.
+    let evi = 0;
     for (let i = 0; i < extraSets.length; i++) {
-      const s = extraSets[i].replace('$__', `$${pi}`);
-      allSets.push(s);
-      allVals.push(extraVals[i]);
-      pi++;
+      if (extraSets[i].includes('$__')) {
+        allSets.push(extraSets[i].replace('$__', `$${pi}`));
+        allVals.push(extraVals[evi++]);
+        pi++;
+      } else {
+        allSets.push(extraSets[i]);
+      }
     }
     allSets.push(`updated_at=NOW()`);
     allSets.push(`updated_by=$${allVals.length + 1}`);

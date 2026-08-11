@@ -101,3 +101,71 @@ export async function finalizeDfOnFlowCompleted(pool, flowId) {
     logger.error({ err: e, flowId }, 'finalizeDfOnFlowCompleted: self-heal esuat (non-fatal)');
   }
 }
+
+/**
+ * selfHealAlopDfLinkByAlop — varianta LAZY, cheiată pe alopId, apelată din
+ * GET /api/alop/:id. Rezolvă cazul „ALOP fără DF" fără a atinge calea de semnare:
+ * caută documentul DF care revendică ALOP-ul prin `source_alop_id`, cu flux
+ * FINALIZAT, și îl reataşează. Marchează și `status='aprobat'` (calea cloud nu o face).
+ * Oglindește self-heal #1 pentru ORD din alop.mjs. Non-fatală și idempotentă.
+ * Ambiguitatea (mai multe candidate cu revizia MAXIMĂ) se rezolvă prin SKIP + warn.
+ */
+export async function selfHealAlopDfLinkByAlop(pool, alopId) {
+  if (!pool || !alopId) return null;
+  try {
+    const { rows: cands } = await pool.query(`
+      SELECT fd.id, fd.flow_id, fd.revizie_nr, fd.status,
+             (f.data->>'completedAt') AS completed_at
+        FROM formulare_df fd
+        JOIN flows f ON f.id = fd.flow_id
+       WHERE fd.source_alop_id = $1
+         AND fd.deleted_at IS NULL
+         AND f.deleted_at IS NULL
+         AND f.data->>'status' IS DISTINCT FROM 'cancelled'
+         AND f.data->>'status' IS DISTINCT FROM 'refused'
+         AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+       ORDER BY fd.revizie_nr DESC, fd.created_at DESC
+    `, [alopId]);
+
+    if (!cands.length) return null;
+    if (cands.length > 1 && cands[0].revizie_nr === cands[1].revizie_nr) {
+      logger.warn({ alopId, candidateCount: cands.length, revizie: cands[0].revizie_nr },
+        '[ALOP] self-heal DF: ambiguu (mai multe DF pe aceeași revizie), skipped');
+      return null;
+    }
+    const cand = cands[0];
+
+    const { rows: linked } = await pool.query(`
+      UPDATE alop_instances
+         SET df_id = $1,
+             df_flow_id = COALESCE(df_flow_id, $2),
+             df_completed_at = COALESCE(df_completed_at, $3::timestamptz, NOW()),
+             updated_at = NOW()
+       WHERE id = $4
+         AND df_id IS NULL
+         AND cancelled_at IS NULL
+      RETURNING id, df_id, df_flow_id, df_completed_at
+    `, [cand.id, cand.flow_id, cand.completed_at || null, alopId]);
+
+    if (!linked[0]) return null;
+
+    if (cand.status !== 'aprobat') {
+      try {
+        await pool.query(
+          `UPDATE formulare_df SET status='aprobat', updated_at=NOW()
+            WHERE id=$1 AND deleted_at IS NULL AND status IS DISTINCT FROM 'aprobat'`,
+          [cand.id]
+        );
+      } catch (e) {
+        logger.error({ err: e, dfId: cand.id }, '[ALOP] self-heal DF: marcare aprobat esuata (non-fatal)');
+      }
+    }
+
+    logger.info({ alopId, dfId: cand.id, flowId: cand.flow_id, revizie: cand.revizie_nr },
+      '[ALOP] self-heal DF: legatura ALOP→DF refacuta (lazy)');
+    return linked[0];
+  } catch (e) {
+    logger.error({ err: e, alopId }, '[ALOP] self-heal DF failed (non-fatal)');
+    return null;
+  }
+}

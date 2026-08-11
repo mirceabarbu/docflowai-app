@@ -17,10 +17,19 @@ process.env.LOG_PRETTY         = '0';
 // Dacă există TEST_DATABASE_URL, îl punem pe DATABASE_URL ÎNAINTE ca db/index.mjs
 // să fie importat (pool-ul se creează la import). Testele mock-uite ignoră complet
 // asta (înlocuiesc modulul prin vi.mock).
-if (process.env.TEST_DATABASE_URL && !process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
-}
+//
+// v3.9.747 (audit P0-01): TEST_DATABASE_URL are ÎNTOTDEAUNA prioritate.
+// Varianta veche (`&& !DATABASE_URL`) lăsa DATABASE_URL — adică PRODUCȚIA —
+// să câștige când ambele erau setate, în timp ce hasTestDb() raporta „sunt pe
+// baza de test" ⇒ truncateAll() ar fi rulat TRUNCATE pe producție.
 if (process.env.TEST_DATABASE_URL) {
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL !== process.env.TEST_DATABASE_URL) {
+    console.warn(
+      '[tests] DATABASE_URL era setat și DIFERIT de TEST_DATABASE_URL — ' +
+      'a fost IGNORAT. Testele rulează exclusiv pe TEST_DATABASE_URL.'
+    );
+  }
+  process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
   process.env.DB_DISABLE_SSL = '1';
 }
 

@@ -186,11 +186,97 @@
             _gateCard.style.display = 'none';
           }
         }
+        // #120 — cardul „Consistență document↔flux". Spre deosebire de poarta ALOP
+        // (cumulativ), acesta reflectă starea CURENTĂ: 0 = normal (verde), orice altceva
+        // = divergență de reparat (roșu). Randare DOM-only (fără innerHTML interpolat).
+        const _laCard = document.getElementById('dashKpiLinkAuditCard');
+        const _laVal  = document.getElementById('dashKpiLinkAudit');
+        const _laSub  = document.getElementById('dashKpiLinkAuditSub');
+        if (_laCard && _laVal && _laSub) {
+          if (a.linkAudit) {
+            const _laTot = a.linkAudit.total;
+            if (_laTot == null) {
+              // Metrica a eșuat server-side (non-fatal) — n-o afișăm.
+              _laCard.style.display = 'none';
+            } else {
+              const _n = Number(_laTot) || 0;
+              const _bc = a.linkAudit.byClass || {};
+              if (_n === 0) {
+                _laVal.style.color = 'var(--df-success)';
+                _laVal.textContent = '✅ 0';
+                _laSub.textContent = 'Fără divergențe';
+              } else {
+                _laVal.style.color = 'var(--df-danger)';
+                _laVal.textContent = '⚠️ ' + _n.toLocaleString('ro-RO');
+                const _parts = [];
+                if (_bc.doc_fara_flux)     _parts.push('doc fără flux: ' + _bc.doc_fara_flux);
+                if (_bc.alop_fara_flux)    _parts.push('ALOP fără flux: ' + _bc.alop_fara_flux);
+                if (_bc.alop_fara_document) _parts.push('ALOP fără doc: ' + _bc.alop_fara_document);
+                if (_bc.fluxuri_paralele)  _parts.push('fluxuri paralele: ' + _bc.fluxuri_paralele);
+                _laSub.textContent = _parts.join(' · ') || 'vezi detalii';
+              }
+              _laCard.style.display = '';
+            }
+          } else {
+            _laCard.style.display = 'none';
+          }
+        }
       }
     } catch (e) {
       console.warn('[loadDashboard] failed:', e);
     }
   }
+
+  // #120 — deschide lista detaliată a divergențelor document↔flux (drawer simplu).
+  // Read-only: doar afișare, NICIO acțiune de reparare (decizia e a omului).
+  async function showFlowLinkDivergences() {
+    try {
+      const res = await _apiFetch('/admin/flow-link-divergences?limit=500');
+      if (!res.ok) { alert('Nu am putut încărca divergențele.'); return; }
+      const data = await res.json();
+      const rows = data.rows || [];
+      const CLASS_LABEL = {
+        doc_fara_flux:      'Document fără flux',
+        alop_fara_flux:     'ALOP fără legătură la flux',
+        alop_fara_document: 'ALOP fără document',
+        fluxuri_paralele:   'Fluxuri paralele',
+      };
+      const w = window.open('', '_blank');
+      if (!w) { alert('Permite ferestrele pop-up pentru a vedea raportul.'); return; }
+      const head = '<meta charset="utf-8"><title>Divergențe document↔flux</title>' +
+        '<style>body{font:14px system-ui,sans-serif;margin:24px;color:#1a1a1a}' +
+        'h1{font-size:18px}table{border-collapse:collapse;width:100%;margin-top:12px}' +
+        'th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;font-size:12px;vertical-align:top}' +
+        'th{background:#f3f4f6}tr:nth-child(even){background:#fafafa}code{font-size:11px}</style>';
+      const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      let body = '<h1>Divergențe document↔flux — ' + esc2(data.total) + ' total</h1>' +
+        '<p>Detecție read-only. Nimic nu se repară automat — analizează și decide manual.</p>';
+      if (!rows.length) {
+        body += '<p style="color:#16a34a;font-weight:600">✅ Nicio divergență.</p>';
+      } else {
+        body += '<table><thead><tr><th>Clasă</th><th>Tip</th><th>Document</th><th>Nr.</th>' +
+          '<th>ALOP</th><th>Flux</th><th>Detaliu</th></tr></thead><tbody>';
+        for (const r of rows) {
+          body += '<tr>' +
+            '<td>' + esc2(CLASS_LABEL[r.clasa] || r.clasa) + '</td>' +
+            '<td>' + esc2((r.tip || '').toUpperCase()) + '</td>' +
+            '<td><code>' + esc2(r.doc_id) + '</code></td>' +
+            '<td>' + esc2(r.doc_nr) + '</td>' +
+            '<td><code>' + esc2(r.alop_id) + '</code></td>' +
+            '<td><code>' + esc2(r.flux) + '</code></td>' +
+            '<td>' + esc2(r.detaliu) + '</td>' +
+          '</tr>';
+        }
+        body += '</tbody></table>';
+      }
+      w.document.write(head + body);
+      w.document.close();
+    } catch (e) {
+      console.warn('[showFlowLinkDivergences] failed:', e);
+      alert('Eroare la încărcarea divergențelor.');
+    }
+  }
+  window.showFlowLinkDivergences = showFlowLinkDivergences;
 
   async function loadAuditEvents(page = 1) {
     _auditCurrentPage = page;

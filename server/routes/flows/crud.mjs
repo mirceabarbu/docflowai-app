@@ -446,17 +446,63 @@ const createFlow = async (req, res) => {
     // `linkFlowFormular` citea flow_id-ul VECHI → guard fix 10 vedea un flux DIFERIT activ
     // → 409 → copierea atașamentelor nu rula. Cu await, flow_id e comis înainte ca POST /flows
     // să răspundă → linkFlowFormular citește mereu valoarea corectă → guard se sare → copiere rulează.
+    // #120 (PAS 3, cauză-rădăcină): NU suprascrie orb `flow_id`. Preia documentul DOAR dacă e
+    // liber (flow_id NULL), dacă e deja al fluxului curent (idempotent la retry/dublu-POST), sau
+    // dacă fluxul vechi e MORT (șters/anulat/refuzat). Condiția trăiește ÎN UPDATE — nu un SELECT
+    // separat — ca să nu existe fereastra de cursă la dublu-click (ORD 42719: 3 fluxuri în 4s).
+    // rowCount===0 ⇒ documentul e pe un flux VIU → îl lăsăm acolo. DECIZIE DE PRODUS: fluxul nou
+    // se creează în continuare (fără rollback pe calea sensibilă de creare); clasa D din
+    // flow-link-audit.mjs face fluxul paralel vizibil imediat. NU atinge linkFlowFormular (garda
+    // lui de 409 rămâne).
     if (body.meta?.dfId && pool) {
-      await pool.query(
-        `UPDATE formulare_df SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
-        [flowId, body.meta.dfId, orgId]
-      ).catch(e => logger.warn({ err: e }, 'formulare_df link flow_id non-fatal'));
+      try {
+        const r = await pool.query(
+          `UPDATE formulare_df SET flow_id = $1, updated_at = NOW()
+             WHERE id = $2 AND org_id = $3
+               AND (
+                 flow_id IS NULL
+                 OR flow_id = $1
+                 OR NOT EXISTS (
+                   SELECT 1 FROM flows f
+                    WHERE f.id = formulare_df.flow_id
+                      AND f.deleted_at IS NULL
+                      AND f.data->>'status' IS DISTINCT FROM 'cancelled'
+                      AND f.data->>'status' IS DISTINCT FROM 'refused'
+                 )
+               )
+           RETURNING id`,
+          [flowId, body.meta.dfId, orgId]
+        );
+        if (r.rowCount === 0) {
+          logger.warn({ flowId, formType: 'df', formId: body.meta.dfId, rowCount: 0 },
+            '[flux] documentul e deja pe un flux activ — pre-setare flow_id refuzata (posibil dublu-click)');
+        }
+      } catch (e) { logger.warn({ err: e }, 'formulare_df link flow_id non-fatal'); }
     }
     if (body.meta?.ordId && pool) {
-      await pool.query(
-        `UPDATE formulare_ord SET flow_id = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
-        [flowId, body.meta.ordId, orgId]
-      ).catch(e => logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'));
+      try {
+        const r = await pool.query(
+          `UPDATE formulare_ord SET flow_id = $1, updated_at = NOW()
+             WHERE id = $2 AND org_id = $3
+               AND (
+                 flow_id IS NULL
+                 OR flow_id = $1
+                 OR NOT EXISTS (
+                   SELECT 1 FROM flows f
+                    WHERE f.id = formulare_ord.flow_id
+                      AND f.deleted_at IS NULL
+                      AND f.data->>'status' IS DISTINCT FROM 'cancelled'
+                      AND f.data->>'status' IS DISTINCT FROM 'refused'
+                 )
+               )
+           RETURNING id`,
+          [flowId, body.meta.ordId, orgId]
+        );
+        if (r.rowCount === 0) {
+          logger.warn({ flowId, formType: 'ord', formId: body.meta.ordId, rowCount: 0 },
+            '[flux] documentul e deja pe un flux activ — pre-setare flow_id refuzata (posibil dublu-click)');
+        }
+      } catch (e) { logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'); }
     }
     // fix 11 (B+): copiere atașamente formular→flux ca PLASĂ, idempotentă (INSERT...SELECT — DUPLICĂ,
     // nu mută; NOT EXISTS împiedică dublarea față de linkFlowFormular). Readusă aici fiindcă meta.dfId/

@@ -12,6 +12,7 @@ import { archiveFlow } from '../../drive.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, actorOrgFilter } from './_helpers.mjs';
 import { isFlowAccessAllowed } from '../../services/flow-access.mjs';
+import { findFlowLinkDivergences } from '../../services/flow-link-audit.mjs';
 
 let PDFLibAdmin = null;
 try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { logger.warn('⚠️ pdf-lib not available for audit PDF export'); }
@@ -132,8 +133,32 @@ router.get('/admin/alop/stats', async (req, res) => {
         };
       } catch(e) { logger.warn({ err: e }, '/admin/alop/stats gate query failed (non-fatal)'); }
     }
+    // #120 — consistență document↔flux (starea CURENTĂ, nu cumulativă ca `gate`): trebuie să
+    // ajungă la 0 și să RĂMÂNĂ la 0. Scop pe org (org_admin → propriul org; platform-admin →
+    // tot). limit:0 = doar numărătoare. Non-fatal: un dashboard nu pică din cauza unei metrici.
+    try {
+      const { total, byClass } = await findFlowLinkDivergences(pool, { orgId: actorOrgFilter(actor), limit: 0 });
+      payload.linkAudit = { total, byClass };
+    } catch(e) {
+      logger.warn({ err: e }, '/admin/alop/stats linkAudit query failed (non-fatal)');
+      payload.linkAudit = { total: null };
+    }
     res.json(payload);
   } catch(e) { logger.error({ err: e }, '/admin/alop/stats error'); res.status(500).json({ error: 'server_error' }); }
+});
+
+// ── GET /admin/flow-link-divergences — rândurile detaliate (audit #120) ──────
+// Același gard de autorizare ca restul rutelor din acest fișier (admin/org_admin),
+// scop pe org via actorOrgFilter. Read-only: doar detecție, NICIO reparare automată.
+router.get('/admin/flow-link-divergences', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  try {
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit || '200')));
+    const result = await findFlowLinkDivergences(pool, { orgId: actorOrgFilter(actor), limit });
+    return res.json(result);
+  } catch(e) { logger.error({ err: e }, '/admin/flow-link-divergences error'); res.status(500).json({ error: 'server_error' }); }
 });
 
 router.get('/admin/flows/clean-preview', async (req, res) => {

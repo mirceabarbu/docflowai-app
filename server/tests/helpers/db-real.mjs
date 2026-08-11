@@ -18,6 +18,23 @@ export function hasTestDb() {
   return !!process.env.TEST_DATABASE_URL;
 }
 
+// v3.9.747 (audit P0-01): poartă fail-closed lipită de operația distructivă.
+// Se apelează ÎNAINTE de orice TRUNCATE/DROP. Aruncă — niciodată „skip tăcut".
+export function assertTestDatabase() {
+  const test = process.env.TEST_DATABASE_URL;
+  const active = process.env.DATABASE_URL;
+  if (!test) {
+    throw new Error('[tests] REFUZ TRUNCATE: TEST_DATABASE_URL nu este setat.');
+  }
+  if (active && active !== test) {
+    throw new Error(
+      '[tests] REFUZ TRUNCATE: DATABASE_URL diferă de TEST_DATABASE_URL. ' +
+      'Suita de test NU rulează pe o bază de test. Dezactivează DATABASE_URL ' +
+      'din mediu (shell/.env) și reia.'
+    );
+  }
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-vitest-docflowai-2025';
 
 export function makeAuthCookie({ userId = 1, role = 'user', orgId = 1, email = 'p1@x.ro', tv = 1 } = {}) {
@@ -48,6 +65,20 @@ const TRUNCATE_TABLES = [
   'organizations',
 ];
 export async function truncateAll() {
+  assertTestDatabase();
+
+  // A doua poartă: întreabă chiar serverul pe ce bază suntem. Numele bazei de
+  // test trebuie să conțină 'test' — singura verificare care nu poate fi
+  // păcălită de variabile de mediu setate greșit.
+  const { rows: dbInfo } = await pool.query(`SELECT current_database() AS db`);
+  const dbName = String(dbInfo[0]?.db || '');
+  if (!/test/i.test(dbName) && process.env.TEST_DB_ALLOW_ANY_NAME !== '1') {
+    throw new Error(
+      `[tests] REFUZ TRUNCATE: baza conectată se numește "${dbName}" și nu conține "test". ` +
+      'Dacă e intenționat (bază efemeră cu alt nume), setează TEST_DB_ALLOW_ANY_NAME=1.'
+    );
+  }
+
   await pool.query(`TRUNCATE ${TRUNCATE_TABLES.join(', ')} RESTART IDENTITY CASCADE`);
 }
 

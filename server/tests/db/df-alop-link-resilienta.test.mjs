@@ -14,10 +14,10 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { hasTestDb, migrate, truncateAll, pool,
-         seedOrgUser, seedDf, seedAlop, seedFlowApproved,
+         seedOrgUser, seedDf, seedAlop, seedFlowApproved, seedFlow,
          getAlop, getDf, makeAuthCookie } from '../helpers/db-real.mjs';
 import { buildApp } from './helpers/app.mjs';
-import { finalizeDfOnFlowCompleted } from '../../services/alop-link.mjs';
+import { finalizeDfOnFlowCompleted, selfHealAlopDfLinkByAlop } from '../../services/alop-link.mjs';
 
 const d = describe.skipIf(!hasTestDb());
 
@@ -30,6 +30,15 @@ async function seedFlowRefused(id = `flow-ref-${Math.random().toString(36).slice
   return id;
 }
 
+// Flux ANULAT — self-heal-ul lazy nu-l consideră finalizat.
+async function seedFlowCancelled(id = `flow-cxl-${Math.random().toString(36).slice(2, 8)}`) {
+  await pool.query(
+    `INSERT INTO flows (id, data) VALUES ($1, $2::jsonb)`,
+    [id, JSON.stringify({ status: 'cancelled', signers: [] })]
+  );
+  return id;
+}
+
 d('DF↔ALOP — reziliența legăturii pe calea de semnare cloud', () => {
   let app;
   beforeAll(migrate);
@@ -38,7 +47,6 @@ d('DF↔ALOP — reziliența legăturii pe calea de semnare cloud', () => {
     await seedOrgUser({ role: 'user', email: 'p1@x.ro' });
     app = buildApp();
   });
-  afterAll(() => pool.end());
   const p1 = () => makeAuthCookie({ userId: 1, role: 'user', orgId: 1 });
 
   // ── 1. Reproducerea incidentului 04.08.2026 ────────────────────────────────
@@ -189,5 +197,187 @@ d('DF↔ALOP — reziliența legăturii pe calea de semnare cloud', () => {
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('document_locked');
     expect((await getDf(dfId)).status).toBe('aprobat');
+  });
+});
+
+// ═══ v3.9.750 — self-heal DF LAZY (cheiat pe alopId), din GET /api/alop/:id ═══
+// selfHealAlopDfLinkByAlop e importat din producție (NU reimplementat).
+d('DF↔ALOP — self-heal lazy cheiat pe ALOP (selfHealAlopDfLinkByAlop)', () => {
+  beforeAll(migrate);
+  beforeEach(async () => {
+    await truncateAll();
+    await seedOrgUser({ role: 'user', email: 'p1@x.ro' });
+  });
+
+  const linkDf = (dfId, alopId) =>
+    pool.query(`UPDATE formulare_df SET source_alop_id=$2 WHERE id=$1`, [dfId, alopId]);
+
+  // ── 1. Self-heal lazy + idempotent ─────────────────────────────────────────
+  it('ALOP df_id=NULL + DF source_alop_id pe flux FINALIZAT → reataşează, marchează aprobat, idempotent', async () => {
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare' }); // df_id NULL
+    const flowId = await seedFlowApproved();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'LZ-1' });
+    await linkDf(dfId, alopId);
+
+    const healed = await selfHealAlopDfLinkByAlop(pool, alopId);
+    expect(healed).not.toBeNull();
+    expect(healed.df_id).toBe(dfId);
+
+    const a1 = await getAlop(alopId);
+    expect(a1.df_id).toBe(dfId);
+    expect(a1.df_flow_id).toBe(flowId);
+    expect((await getDf(dfId)).status).toBe('aprobat');
+
+    // A doua rulare: df_id nu mai e NULL → no-op (returnează null, nu schimbă nimic)
+    const again = await selfHealAlopDfLinkByAlop(pool, alopId);
+    expect(again).toBeNull();
+    expect((await getAlop(alopId)).df_id).toBe(dfId);
+  });
+
+  // ── 2. Nu fură un ALOP deja legat ──────────────────────────────────────────
+  it('ALOP cu df_id = alt document → funcția NU modifică nimic', async () => {
+    const altDf = await seedDf({ orgId: 1, createdBy: 1, status: 'draft', nrUnic: 'LZ-ALT' });
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId: altDf });
+    const flowId = await seedFlowApproved();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'LZ-2' });
+    await linkDf(dfId, alopId);
+
+    expect(await selfHealAlopDfLinkByAlop(pool, alopId)).toBeNull();
+    expect((await getAlop(alopId)).df_id).toBe(altDf);
+    expect((await getDf(dfId)).status).toBe('completed'); // NU marcat aprobat
+  });
+
+  // ── 3. Flux nefinalizat / refuzat / anulat → NU reataşează ─────────────────
+  it('flux ÎN CURS → NU reataşează', async () => {
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare' });
+    const flowId = await seedFlow({ completed: false });
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'LZ-3a' });
+    await linkDf(dfId, alopId);
+    expect(await selfHealAlopDfLinkByAlop(pool, alopId)).toBeNull();
+    expect((await getAlop(alopId)).df_id).toBeNull();
+  });
+
+  it('flux REFUZAT → NU reataşează', async () => {
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare' });
+    const flowId = await seedFlowRefused();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'LZ-3b' });
+    await linkDf(dfId, alopId);
+    expect(await selfHealAlopDfLinkByAlop(pool, alopId)).toBeNull();
+    expect((await getAlop(alopId)).df_id).toBeNull();
+  });
+
+  it('flux ANULAT → NU reataşează', async () => {
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare' });
+    const flowId = await seedFlowCancelled();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'LZ-3c' });
+    await linkDf(dfId, alopId);
+    expect(await selfHealAlopDfLinkByAlop(pool, alopId)).toBeNull();
+    expect((await getAlop(alopId)).df_id).toBeNull();
+  });
+
+  // ── 4. Ambiguitate: două DF pe aceeași revizie maximă → SKIP + warn ─────────
+  // Starea (2 DF nedeleted cu ACEEAȘI source_alop_id + revizie_nr) e împiedicată în
+  // producție de indexul parțial `df_source_alop_revizie_uniq` — garda din funcție e
+  // DEFENSIVĂ față de coruperea acelui invariant. Ca s-o exersăm, coborâm temporar
+  // indexul, apoi îl restaurăm (try/finally) — restul suitei rulează secvențial.
+  it('două DF nedeleted cu ACEEAȘI revizie_nr maximă, ambele finalizate → SKIP, df_id rămâne NULL', async () => {
+    await pool.query('DROP INDEX IF EXISTS df_source_alop_revizie_uniq');
+    try {
+      const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare' });
+      const f1 = await seedFlowApproved(`flow-amb-1-${Math.random().toString(36).slice(2, 7)}`);
+      const f2 = await seedFlowApproved(`flow-amb-2-${Math.random().toString(36).slice(2, 7)}`);
+      const d1 = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId: f1, nrUnic: 'LZ-AMB', revizieNr: 0 });
+      const d2 = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId: f2, nrUnic: 'LZ-AMB2', revizieNr: 0 });
+      await linkDf(d1, alopId);
+      await linkDf(d2, alopId);
+
+      expect(await selfHealAlopDfLinkByAlop(pool, alopId)).toBeNull();
+      expect((await getAlop(alopId)).df_id).toBeNull();
+    } finally {
+      // Curăță rândurile duplicate ÎNAINTE de a reface indexul unic (altfel CREATE
+      // eșuează pe cheia duplicată). beforeEach truncă oricum înaintea testului următor.
+      await pool.query('DELETE FROM formulare_df');
+      await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS df_source_alop_revizie_uniq
+        ON public.formulare_df (source_alop_id, revizie_nr)
+        WHERE (source_alop_id IS NOT NULL AND deleted_at IS NULL)`);
+    }
+  });
+
+  // ── 5. Revizie mai nouă câștigă ────────────────────────────────────────────
+  it('R0 și R1 ambele finalizate → se leagă R1 (revizia maximă)', async () => {
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare' });
+    const f0 = await seedFlowApproved(`flow-r0-${Math.random().toString(36).slice(2, 7)}`);
+    const f1 = await seedFlowApproved(`flow-r1-${Math.random().toString(36).slice(2, 7)}`);
+    const r0 = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId: f0, nrUnic: 'LZ-REV', revizieNr: 0 });
+    const r1 = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId: f1, nrUnic: 'LZ-REV', revizieNr: 1, parentDfId: r0 });
+    await linkDf(r0, alopId);
+    await linkDf(r1, alopId);
+
+    const healed = await selfHealAlopDfLinkByAlop(pool, alopId);
+    expect(healed).not.toBeNull();
+    expect(healed.df_id).toBe(r1);
+    expect((await getAlop(alopId)).df_id).toBe(r1);
+  });
+
+  // ── 6. ALOP completed se vindecă; cancelled NU (invariant CLAUDE.md:499) ────
+  it('ALOP status=completed, df_id=NULL, cancelled_at NULL → reataşat', async () => {
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'completed' });
+    const flowId = await seedFlowApproved();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'LZ-6a' });
+    await linkDf(dfId, alopId);
+
+    expect(await selfHealAlopDfLinkByAlop(pool, alopId)).not.toBeNull();
+    expect((await getAlop(alopId)).df_id).toBe(dfId);
+  });
+
+  it('ALOP cancelled_at ne-null → NU reataşat', async () => {
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', cancelledAt: new Date() });
+    const flowId = await seedFlowApproved();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'LZ-6b' });
+    await linkDf(dfId, alopId);
+
+    expect(await selfHealAlopDfLinkByAlop(pool, alopId)).toBeNull();
+    expect((await getAlop(alopId)).df_id).toBeNull();
+  });
+});
+
+// ═══ v3.9.750 — PAS 4: blocarea PUT derivată din flux, nu din coloana status ═══
+d('DF PUT — blocare derivată din fluxul de semnare (nu din coloana status)', () => {
+  let app;
+  beforeAll(migrate);
+  beforeEach(async () => {
+    await truncateAll();
+    await seedOrgUser({ role: 'user', email: 'p1@x.ro' });
+    app = buildApp();
+  });
+  afterAll(() => pool.end());
+  const p1 = () => makeAuthCookie({ userId: 1, role: 'user', orgId: 1 });
+
+  it('DF status=completed pe flux FINALIZAT → 409 document_locked (semnat prin cloud, nu resetat la draft)', async () => {
+    const flowId = await seedFlowApproved();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'PUT-LOCK-1' });
+
+    const res = await request(app).put(`/api/formulare-df/${dfId}`).set('Cookie', p1()).send({ subtitlu_df: 'x' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('document_locked');
+    expect((await getDf(dfId)).status).toBe('completed');
+  });
+
+  it('DF status=completed pe flux ÎN CURS → reset la draft (comportament neschimbat)', async () => {
+    const flowId = await seedFlow({ completed: false });
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'PUT-LOCK-2' });
+
+    const res = await request(app).put(`/api/formulare-df/${dfId}`).set('Cookie', p1()).send({ subtitlu_df: 'x' });
+    expect(res.status).toBe(200);
+    expect((await getDf(dfId)).status).toBe('draft');
+  });
+
+  it('DF status=completed pe flux REFUZAT → reset la draft (rămâne editabil pentru corectare)', async () => {
+    const flowId = await seedFlowRefused();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'PUT-LOCK-3' });
+
+    const res = await request(app).put(`/api/formulare-df/${dfId}`).set('Cookie', p1()).send({ subtitlu_df: 'x' });
+    expect(res.status).toBe(200);
+    expect((await getDf(dfId)).status).toBe('draft');
   });
 });
