@@ -1,4 +1,8 @@
 /**
+ * ⚠️ P0-03 (#122): fluxurile din fixturi trebuie să fie legitime ca PROVENIENȚĂ
+ * (`orgId` + `data.meta.{dfId,ordId}`), altfel link-{df,ord}-flow le refuză cu 403
+ * `flux_alt_document` / `flow_alt_org` înainte de copierea atașamentelor.
+ *
  * DB caracterizare — fix 8: copierea atașamentelor formular→flux se declanșează ȘI pe calea ALOP
  * (POST /api/alop/:id/link-{df,ord}-flow), unde `linkFlowFormular` dă 409 (doc not completed /
  * already_on_flow) și nu copiază niciodată.
@@ -52,7 +56,7 @@ d('POST /api/alop/:id/link-{df,ord}-flow — copiere atașamente (fix 8)', () =>
     await insertFormAtt({ formId: df, filename: 'declaratie_interese.pdf', data: 'INT' });
     await insertFormAtt({ formId: df, filename: 'declaratie_avere.pdf', data: 'AV', slot: 2 });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare', dfId: df });
-    const flowId = await seedFlow({ completed: false });
+    const flowId = await seedFlow({ completed: false, orgId: 1, meta: { dfId: String(df) } });
 
     const res = await request(app).post(`/api/alop/${alopId}/link-df-flow`).set('Cookie', cookie()).send({ flow_id: flowId });
     expect(res.status).toBe(200);
@@ -64,7 +68,7 @@ d('POST /api/alop/:id/link-{df,ord}-flow — copiere atașamente (fix 8)', () =>
     const ord = await seedOrd({ orgId: 1, createdBy: 1, status: 'in_lucru', nrOrd: 'ORD-AL-1' });
     await insertFormAtt({ formType: 'ord', formId: ord, filename: 'factura.pdf', data: 'FACT' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'ordonantare', ordId: ord });
-    const flowId = await seedFlow({ completed: false });
+    const flowId = await seedFlow({ completed: false, orgId: 1, meta: { ordId: String(ord) } });
 
     const res = await request(app).post(`/api/alop/${alopId}/link-ord-flow`).set('Cookie', cookie()).send({ flow_id: flowId });
     expect(res.status).toBe(200);
@@ -76,7 +80,7 @@ d('POST /api/alop/:id/link-{df,ord}-flow — copiere atașamente (fix 8)', () =>
     const ord = await seedOrd({ orgId: 1, createdBy: 1, status: 'in_lucru', nrOrd: 'ORD-AL-2' });
     await insertFormAtt({ formType: 'ord', formId: ord, filename: 'factura.pdf', data: 'FACT' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'ordonantare', ordId: ord });
-    const flowId = await seedFlow({ completed: false });
+    const flowId = await seedFlow({ completed: false, orgId: 1, meta: { ordId: String(ord) } });
 
     const r1 = await request(app).post(`/api/alop/${alopId}/link-ord-flow`).set('Cookie', cookie()).send({ flow_id: flowId });
     expect(r1.status).toBe(200);
@@ -88,7 +92,7 @@ d('POST /api/alop/:id/link-{df,ord}-flow — copiere atașamente (fix 8)', () =>
   it('link-df-flow pe ALOP fără DF/ORD cu atașamente → 200, fără copiere (non-fatal/no-op)', async () => {
     const df = await seedDf({ orgId: 1, createdBy: 1, status: 'in_lucru', nrUnic: 'DF-AL-3' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare', dfId: df });
-    const flowId = await seedFlow({ completed: false });
+    const flowId = await seedFlow({ completed: false, orgId: 1, meta: { dfId: String(df) } });
 
     const res = await request(app).post(`/api/alop/${alopId}/link-df-flow`).set('Cookie', cookie()).send({ flow_id: flowId });
     expect(res.status).toBe(200);

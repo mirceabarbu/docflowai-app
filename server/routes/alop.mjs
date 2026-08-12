@@ -27,6 +27,7 @@ import { sendNotif } from '../services/formular-shared.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { isPlatformAdmin } from '../services/authz-scope.mjs';
 import { selfHealAlopDfLinkByAlop } from '../services/alop-link.mjs';
+import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
@@ -1074,7 +1075,6 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
 
 // ── POST /api/alop/:id/link-df-flow — leagă fluxul de semnare DF ─────────────
 router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
-  console.log('🔗 LINK-DF-FLOW called:', req.params.id, 'flow_id:', req.body?.flow_id);
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
@@ -1082,7 +1082,7 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
 
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT id, created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -1090,6 +1090,17 @@ router.post('/api/alop/:id/link-df-flow', _csrf, async (req, res) => {
       const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
+    // P0-03: proveniența fluxului — există, aceeași organizație, viu (ne-anulat/refuzat/șters)
+    // ȘI revendică documentul acestui ALOP (meta.dfId, sau source_alop_id pe calea cloud).
+    const prov = await checkFlowLinkable(pool, {
+      flowId: flow_id, kind: 'df', alop: alopRows[0], orgId: actor.orgId,
+    });
+    if (!prov.ok) {
+      logger.warn({ alopId: req.params.id, flowId: flow_id, reason: prov.body.error },
+        '[ALOP] link-df-flow REFUZAT (proveniență)');
+      return res.status(prov.status).json(prov.body);
     }
 
     const { rows } = await pool.query(`
@@ -1178,7 +1189,7 @@ router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT id, created_by, compartiment, df_id, ord_id, df_flow_id, ord_flow_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -1186,6 +1197,15 @@ router.post('/api/alop/:id/df-completed', _csrf, async (req, res) => {
       const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
+    // P0-03: dovada semnării — fluxul legat trebuie să fie finalizat, viu ȘI să revendice
+    // DF-ul acestui ALOP. Fără ea, butonul manual avansa dosarul fără document semnat.
+    const semnat = await checkFlowSigned(pool, { kind: 'df', alop: alopRows[0], orgId: actor.orgId });
+    if (!semnat.ok) {
+      logger.warn({ alopId: req.params.id, reason: semnat.body.error },
+        '[ALOP] df-completed REFUZAT (fără dovada semnării)');
+      return res.status(semnat.status).json(semnat.body);
     }
 
     const { rows } = await pool.query(`
@@ -1382,7 +1402,7 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
     if (!flow_id) return res.status(400).json({ error: 'flow_id obligatoriu' });
 
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT id, created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -1390,6 +1410,16 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
       const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
+    // P0-03: proveniența fluxului (simetric cu link-df-flow) — vezi flow-provenance.mjs.
+    const prov = await checkFlowLinkable(pool, {
+      flowId: flow_id, kind: 'ord', alop: alopRows[0], orgId: actor.orgId,
+    });
+    if (!prov.ok) {
+      logger.warn({ alopId: req.params.id, flowId: flow_id, reason: prov.body.error },
+        '[ALOP] link-ord-flow REFUZAT (proveniență)');
+      return res.status(prov.status).json(prov.body);
     }
 
     const { rows } = await pool.query(`
@@ -1423,7 +1453,7 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows: alopRows } = await pool.query(
-      'SELECT created_by, compartiment, df_id, ord_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT id, created_by, compartiment, df_id, ord_id, df_flow_id, ord_flow_id, df_semnatari, ord_semnatari FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!alopRows[0]) return res.status(404).json({ error: 'not_found' });
@@ -1431,6 +1461,14 @@ router.post('/api/alop/:id/ord-completed', _csrf, async (req, res) => {
       const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+    }
+
+    // P0-03: dovada semnării ORD (simetric cu df-completed) — vezi flow-provenance.mjs.
+    const semnat = await checkFlowSigned(pool, { kind: 'ord', alop: alopRows[0], orgId: actor.orgId });
+    if (!semnat.ok) {
+      logger.warn({ alopId: req.params.id, reason: semnat.body.error },
+        '[ALOP] ord-completed REFUZAT (fără dovada semnării)');
+      return res.status(semnat.status).json(semnat.body);
     }
 
     const { rows } = await pool.query(`

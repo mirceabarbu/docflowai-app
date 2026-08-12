@@ -221,6 +221,7 @@ describe('changing a role invalidates active sessions (SEC-87 PAS 3e)', () => {
   it('role change bumps token_version in the same UPDATE', async () => {
     db.pool.query
       .mockResolvedValueOnce({ rows: [{ role: 'org_admin' }] }) // current role in DB
+      .mockResolvedValueOnce({ rows: [{ org_id: 200 }] }) // P0-02 tenant guard: target org_id lookup
       .mockResolvedValueOnce({ rows: [{ id: 10, org_id: 200, role: 'user' }] }); // UPDATE
     const res = await csrf(request(app(usersRouter)).put('/admin/users/10'), { role: 'admin' })
       .send({ role: 'user' });
@@ -233,6 +234,7 @@ describe('changing a role invalidates active sessions (SEC-87 PAS 3e)', () => {
   it('re-sending the SAME role does not bump token_version', async () => {
     db.pool.query
       .mockResolvedValueOnce({ rows: [{ role: 'user' }] }) // current role already 'user'
+      .mockResolvedValueOnce({ rows: [{ org_id: 200 }] }) // P0-02 tenant guard: target org_id lookup
       .mockResolvedValueOnce({ rows: [{ id: 10, org_id: 200, role: 'user' }] }); // UPDATE
     const res = await csrf(request(app(usersRouter)).put('/admin/users/10'), { role: 'admin' })
       .send({ role: 'user' });

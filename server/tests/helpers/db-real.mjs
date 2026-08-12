@@ -107,10 +107,18 @@ export async function seedOrgUser({ orgName = 'Org Test', email = 'p1@x.ro', rol
 }
 
 // Inserează un flow "aprobat" (data.status=completed) și întoarce id-ul (TEXT).
-export async function seedFlowApproved(id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`) {
+// Al doilea argument (opțional) e RETROCOMPATIBIL: apelurile `seedFlowApproved()` /
+// `seedFlowApproved(id)` existente păstrează exact comportamentul de dinainte (org_id NULL,
+// fără data.meta). `orgId` + `meta` sunt necesare acolo unde fluxul trece prin poarta de
+// proveniență P0-03 (link-{df,ord}-flow / {df,ord}-completed).
+export async function seedFlowApproved(
+  id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+  { orgId = null, meta } = {}
+) {
+  const data = { status: 'completed', completed: true, ...(meta ? { meta } : {}) };
   await pool.query(
-    `INSERT INTO flows (id, data) VALUES ($1, $2::jsonb)`,
-    [id, JSON.stringify({ status: 'completed', completed: true })]
+    `INSERT INTO flows (id, data, org_id) VALUES ($1, $2::jsonb, $3)`,
+    [id, JSON.stringify(data), orgId]
   );
   return id;
 }
@@ -200,13 +208,18 @@ export async function getAlopCicluri(alopId) {
 // ca ARRAY JSONB (chiar gol). Ruta /my-flows (crud.mjs) filtrează pe `data->'signers' @> jsonb_build_array(...)`
 // și mapează `d.signers.map(...)` — un `data` fără cheia `signers` producea 500 (fix #104). Cheile
 // status/completed rămân IDENTICE cu forma veche → apelanții existenți (alop link/lazy-resync) neafectați.
-export async function seedFlow({ id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, completed = false, orgId = null, initEmail = null, docName = null, signers = [] } = {}) {
+// meta (opțional) → data.meta (ex. { dfId, ordId }) — PROVENIENȚA fluxului, verificată de
+// poarta P0-03 din link-{df,ord}-flow / {df,ord}-completed. Fără el, un flux nu revendică
+// niciun document ⇒ legarea de un ALOP e refuzată (403 flux_alt_document). Retrocompatibil:
+// apelanții care nu pasează `meta` primesc exact `data` de dinainte.
+export async function seedFlow({ id = `flow-${Date.now()}-${Math.random().toString(36).slice(2,8)}`, completed = false, orgId = null, initEmail = null, docName = null, signers = [], meta } = {}) {
   const data = {
     flowId: id,
     docName: docName || 'Document test',
     initName: 'Inițiator',
     initEmail: initEmail ? String(initEmail).toLowerCase() : 'init@x.ro',
     signers: Array.isArray(signers) ? signers : [],
+    ...(meta ? { meta } : {}),
     ...(completed ? { status: 'completed', completed: true } : { status: 'pending' }),
   };
   await pool.query(

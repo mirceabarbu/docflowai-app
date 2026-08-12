@@ -36,15 +36,27 @@ d('ALOP — progresie mașină de stare (happy path)', () => {
     expect(linkDf.status).toBe(200);
     expect((await getAlop(id)).status).toBe('angajare');
 
-    // 3) link-df-flow cu un flux ÎN LUCRU (nu declanșează auto-lichidare) → df_flow_id setat, rămâne angajare
-    const dfFlow = await seedFlow({ completed: false });
+    // 3) link-df-flow cu un flux ÎN LUCRU (nu declanșează auto-lichidare) → df_flow_id setat, rămâne angajare.
+    //    P0-03: fluxul trebuie să fie al aceleiași organizații ȘI să revendice DF-ul (meta.dfId).
+    const dfFlow = await seedFlow({ completed: false, orgId: 1, meta: { dfId: String(dfId) } });
     const linkDfFlow = await request(app).post(`/api/alop/${id}/link-df-flow`).set('Cookie', cookie())
       .send({ flow_id: dfFlow });
     expect(linkDfFlow.status).toBe(200);
     expect((await getAlop(id)).status).toBe('angajare');
     expect((await getAlop(id)).df_flow_id).toBe(dfFlow);
 
-    // 4) df-completed → lichidare, df_completed_at setat
+    // 4a) df-completed cu fluxul ÎNCĂ NESEMNAT → 409, dosarul NU avansează (poarta P0-03).
+    //     Premisa veche a testului („pointer non-NULL = destul") era exact gaura reparată.
+    const dfPrea = await request(app).post(`/api/alop/${id}/df-completed`).set('Cookie', cookie()).send({});
+    expect(dfPrea.status).toBe(409);
+    expect(dfPrea.body.error).toBe('document_nesemnat');
+    expect((await getAlop(id)).status).toBe('angajare');
+
+    // 4b) fluxul devine semnat → df-completed → lichidare, df_completed_at setat
+    await pool.query(
+      `UPDATE flows SET data = data || '{"status":"completed","completed":true}'::jsonb WHERE id=$1`,
+      [dfFlow]
+    );
     const dfDone = await request(app).post(`/api/alop/${id}/df-completed`).set('Cookie', cookie()).send({});
     expect(dfDone.status).toBe(200);
     let a = await getAlop(id);
@@ -74,14 +86,24 @@ d('ALOP — progresie mașină de stare (happy path)', () => {
     expect(a.ord_id).toBe(ordId);
     expect(a.status).toBe('ordonantare');
 
-    // 7) link-ord-flow cu flux în lucru → ord_flow_id setat
-    const ordFlow = await seedFlow({ completed: false });
+    // 7) link-ord-flow cu flux în lucru (org + meta.ordId corecte) → ord_flow_id setat
+    const ordFlow = await seedFlow({ completed: false, orgId: 1, meta: { ordId: String(ordId) } });
     const linkOrdFlow = await request(app).post(`/api/alop/${id}/link-ord-flow`).set('Cookie', cookie())
       .send({ flow_id: ordFlow });
     expect(linkOrdFlow.status).toBe(200);
     expect((await getAlop(id)).ord_flow_id).toBe(ordFlow);
 
-    // 8) ord-completed → plata, ord_completed_at setat
+    // 8a) ord-completed cu fluxul ÎNCĂ NESEMNAT → 409, dosarul rămâne în ordonantare.
+    const ordPrea = await request(app).post(`/api/alop/${id}/ord-completed`).set('Cookie', cookie()).send({});
+    expect(ordPrea.status).toBe(409);
+    expect(ordPrea.body.error).toBe('document_nesemnat');
+    expect((await getAlop(id)).status).toBe('ordonantare');
+
+    // 8b) fluxul devine semnat → ord-completed → plata, ord_completed_at setat
+    await pool.query(
+      `UPDATE flows SET data = data || '{"status":"completed","completed":true}'::jsonb WHERE id=$1`,
+      [ordFlow]
+    );
     const ordDone = await request(app).post(`/api/alop/${id}/ord-completed`).set('Cookie', cookie()).send({});
     expect(ordDone.status).toBe(200);
     a = await getAlop(id);
@@ -104,10 +126,12 @@ d('ALOP — progresie mașină de stare (happy path)', () => {
     const id = create.body.alop.id;
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'draft' });
     await request(app).post(`/api/alop/${id}/link-df`).set('Cookie', cookie()).send({ df_id: dfId });
-    // angajare, dar df_flow_id încă NULL
+    // angajare, dar df_flow_id încă NULL. Rămâne 400, dar codul e acum al porții P0-03
+    // (`flux_lipsa`), care refuză ÎNAINTE de UPDATE — garda `AND df_flow_id IS NOT NULL`
+    // din UPDATE rămâne pe loc ca a doua apărare.
     const res = await request(app).post(`/api/alop/${id}/df-completed`).set('Cookie', cookie()).send({});
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('df_flow_necesar_sau_status_invalid');
+    expect(res.body.error).toBe('flux_lipsa');
     expect((await getAlop(id)).status).toBe('angajare');
   });
 });

@@ -54,7 +54,12 @@ router.get('/admin/organizations/:id', async (req, res) => {
        WHERE table_name='organizations' AND column_name='signing_providers_enabled' LIMIT 1`
     );
     const hasSigning = colCheck.length > 0;
-    const signingCols = hasSigning ? ', signing_providers_enabled, signing_providers_config' : '';
+    // P0-04 (audit v3.9.746): `signing_providers_config` conține `privateKeyPem` (cheia
+    // privată STS) și NU are voie să părăsească serverul. Varianta sigură există deja pe
+    // ruta dedicată GET /admin/organizations/:id/signing (`configSafe`, cu `hasPrivateKey`
+    // în loc de cheie) — singura pe care o citește frontendul. Aici expunem DOAR lista de
+    // provideri activi. ⛔ Nu readăuga coloana „ca să fie la îndemână".
+    const signingCols = hasSigning ? ', signing_providers_enabled' : '';
 
     const { rows } = await pool.query(`
       SELECT id, name, cif, compartimente, cab_compartiment,
@@ -183,7 +188,18 @@ router.put('/admin/organizations/:id', csrfMiddleware, async (req, res) => {
             ? signing_providers_enabled : ['local-upload', ...signing_providers_enabled];
           params.push(enabled); updates.push(`signing_providers_enabled=$${params.length}`);
           if (signing_providers_config !== undefined && typeof signing_providers_config === 'object') {
-            params.push(JSON.stringify(signing_providers_config));
+            // P0-04 (audit v3.9.746): merge cu configul existent, NU înlocuire totală —
+            // oglindește PUT /admin/organizations/:id/signing (~473). Un apelant care nu
+            // mai primește cheia privată (frontendul o lasă goală) trimite un config
+            // parțial; o înlocuire totală ar șterge tăcut `privateKeyPem` din DB.
+            const { rows: existingRows } = await pool.query(
+              'SELECT signing_providers_config FROM organizations WHERE id=$1', [orgId]);
+            const existingConfig = existingRows[0]?.signing_providers_config || {};
+            const mergedConfig = { ...existingConfig };
+            for (const [pid, cfg] of Object.entries(signing_providers_config)) {
+              mergedConfig[pid] = { ...(existingConfig[pid] || {}), ...cfg };
+            }
+            params.push(JSON.stringify(mergedConfig));
             updates.push(`signing_providers_config=$${params.length}`);
           }
         }

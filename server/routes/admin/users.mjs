@@ -564,6 +564,27 @@ router.put('/admin/users/:id', csrfMiddleware, async (req, res) => {
   if (!updates.length) return res.status(400).json({ error: 'nothing_to_update' });
   vals.push(targetId);
   try {
+    // P0-02 (audit v3.9.746): fără această gardă, UPDATE-ul rula cu `WHERE id=$n` — un
+    // org_admin din organizația A putea schimba parola unui utilizator din organizația B
+    // (preluare de cont). Aceeași formă ca la reset-password/delete/reactivate/
+    // send-credentials din acest fișier. Platform-adminul (`role === 'admin'`) rămâne
+    // cross-org, ca la surori.
+    const { rows: targetRows } = await pool.query(
+      'SELECT org_id FROM users WHERE id=$1', [targetId]);
+    if (!targetRows.length) return res.status(404).json({ error: 'user_not_found' });
+    if (actor.role === 'org_admin') {
+      const { rows: actorRows } = await pool.query(
+        'SELECT org_id FROM users WHERE id=$1', [actor.userId]);
+      const actorOrgId = actorRows[0]?.org_id || null;
+      // FAIL-CLOSED: dacă nu putem DOVEDI că e același tenant, refuzăm. (Surorile sunt
+      // permisive când un org_id e NULL; aici alegem strict — un org_admin fără org_id
+      // e o stare invalidă, nu o permisiune.)
+      if (!actorOrgId || actorOrgId !== targetRows[0].org_id) {
+        logger.warn({ actorId: actor.userId, targetId, actorOrgId, targetOrgId: targetRows[0].org_id },
+          '[SEC] PUT /admin/users/:id cross-tenant REFUZAT');
+        return res.status(403).json({ error: 'forbidden_cross_tenant' });
+      }
+    }
     const { rows } = await pool.query(
       `UPDATE users SET ${updates.join(',')} WHERE id=$${i} RETURNING id,email,nume,functie,institutie,compartiment,role,phone,notif_inapp,notif_email,notif_whatsapp,org_id`,
       vals

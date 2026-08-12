@@ -50,7 +50,7 @@ d('POST /api/alop/:id/link-df-flow — persistă status=transmis_flux pe DF (v3.
   it('1. DF completed + link-df-flow → status=transmis_flux și badge_status=transmis_flux în listă', async () => {
     const df = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', nrUnic: 'DF-ST-1' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare', dfId: df });
-    const flowId = await seedFlow({ completed: false });
+    const flowId = await seedFlow({ completed: false, orgId: 1, meta: { dfId: String(df) } });
 
     const res = await request(app).post(`/api/alop/${alopId}/link-df-flow`).set('Cookie', cookie()).send({ flow_id: flowId });
     expect(res.status).toBe(200);
@@ -69,7 +69,7 @@ d('POST /api/alop/:id/link-df-flow — persistă status=transmis_flux pe DF (v3.
   it('2. Idempotență: al doilea link-df-flow nu re-flipează și nu adaugă audit dublu', async () => {
     const df = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', nrUnic: 'DF-ST-2' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare', dfId: df });
-    const flowId = await seedFlow({ completed: false });
+    const flowId = await seedFlow({ completed: false, orgId: 1, meta: { dfId: String(df) } });
 
     const r1 = await request(app).post(`/api/alop/${alopId}/link-df-flow`).set('Cookie', cookie()).send({ flow_id: flowId });
     expect(r1.status).toBe(200);
@@ -81,10 +81,12 @@ d('POST /api/alop/:id/link-df-flow — persistă status=transmis_flux pe DF (v3.
   });
 
   it('3. Gardă anti-deturnare: DF pe alt flux activ → link-df-flow cu flux nou NU-i schimbă statusul', async () => {
-    const otherFlow = await seedFlow({ completed: false });
+    const otherFlow = await seedFlow({ completed: false, orgId: 1 });
     const df = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', nrUnic: 'DF-ST-3', flowId: otherFlow });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare', dfId: df });
-    const newFlow = await seedFlow({ completed: false });
+    // P0-03: fluxul NOU e legitim ca proveniență (același DF, aceeași org) — garda testată
+    // aici e cea anti-deturnare pe formulare_df.flow_id, nu poarta de proveniență.
+    const newFlow = await seedFlow({ completed: false, orgId: 1, meta: { dfId: String(df) } });
 
     const res = await request(app).post(`/api/alop/${alopId}/link-df-flow`).set('Cookie', cookie()).send({ flow_id: newFlow });
     expect(res.status).toBe(200);
@@ -98,7 +100,7 @@ d('POST /api/alop/:id/link-df-flow — persistă status=transmis_flux pe DF (v3.
   it('4. Simetrie ORD: link-ord-flow NU persistă transmis_flux (rămâne completed, badge derivat)', async () => {
     const ord = await seedOrd({ orgId: 1, createdBy: 1, status: 'completed', nrOrd: 'ORD-ST-1' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'ordonantare', ordId: ord });
-    const flowId = await seedFlow({ completed: false });
+    const flowId = await seedFlow({ completed: false, orgId: 1, meta: { ordId: String(ord) } });
 
     const res = await request(app).post(`/api/alop/${alopId}/link-ord-flow`).set('Cookie', cookie()).send({ flow_id: flowId });
     expect(res.status).toBe(200);
