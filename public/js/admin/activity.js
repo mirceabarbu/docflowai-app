@@ -36,6 +36,7 @@
     REFUSED:                        'Refuzat',
     REVIEW_REQUESTED:               'Trimis la revizuire',
     SIGN_FAILED:                    'Semnare eșuată',
+    STS_CANCELLED:                  'Sesiune STS anulată de semnatar',
 
     // ─── Delegări ─────────────────────────────────────────────────────
     DELEGATE:                       'Delegare semnătură',

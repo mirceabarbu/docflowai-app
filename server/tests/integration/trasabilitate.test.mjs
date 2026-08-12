@@ -95,7 +95,8 @@ describe('GET /api/trasabilitate/:type/:id', () => {
   it('200 DF root cu 2 revizii, 1 ALOP cu 1 ciclu arhivat + ORD curent', async () => {
     // Q1 — root DF + nr_unic_inreg
     dbModule.pool.query.mockResolvedValueOnce({
-      rows: [{ id: VALID_UUID, nr_unic_inreg: 'DF-2025-00125' }]
+      // #126: Q1 proiectează CHEIA DE DOSAR (source_alop_id sau, legacy, numărul) ca `dosar_key`.
+      rows: [{ id: VALID_UUID, dosar_key: 'DF-2025-00125' }]
     });
     // Q2 — toate reviziile DF (R0 + R1)
     dbModule.pool.query.mockResolvedValueOnce({

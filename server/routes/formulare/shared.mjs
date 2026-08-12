@@ -21,6 +21,7 @@ import { isAdminOrOrgAdmin } from '../admin/_helpers.mjs';
 import { isPlatformAdmin } from '../../services/authz-scope.mjs';
 import { loadActorCompAndCab, isCabDept, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
 import { requireDb } from './_helpers.mjs';
+import { dosarKeyExpr } from '../../services/df-dosar-key.mjs';
 
 let PDFLibFormular = null;
 try { PDFLibFormular = await import('pdf-lib'); } catch (e) { logger.warn('⚠️ pdf-lib indisponibil pentru export audit formular PDF'); }
@@ -498,13 +499,24 @@ router.get('/api/formulare/list', async (req, res) => {
           fd.flow_id,
           COALESCE(fd.revizie_nr, 0) AS revizie_nr,
           COALESCE(fd.este_revizie, FALSE) AS este_revizie,
+          -- #126 A3: lanțul de revizii se cheie pe DOSARUL ALOP — un dosar STRĂIN
+          -- care întâmplător împarte numărul nu mai marchează documentul „istoric".
           EXISTS(
             SELECT 1 FROM formulare_df fd2
-            WHERE fd2.nr_unic_inreg = fd.nr_unic_inreg
+            WHERE ${dosarKeyExpr('fd2')} = ${dosarKeyExpr('fd')}
               AND fd2.org_id = fd.org_id
               AND fd2.deleted_at IS NULL
               AND fd2.revizie_nr > fd.revizie_nr
           ) AS has_newer_revision,
+          -- #126 A6: semnal (NU blocaj) — alt DOSAR folosește același număr unic.
+          EXISTS(
+            SELECT 1 FROM formulare_df fdx
+            WHERE fdx.org_id = fd.org_id
+              AND fdx.deleted_at IS NULL
+              AND COALESCE(TRIM(fd.nr_unic_inreg), '') <> ''
+              AND TRIM(fdx.nr_unic_inreg) = TRIM(fd.nr_unic_inreg)
+              AND ${dosarKeyExpr('fdx')} IS DISTINCT FROM ${dosarKeyExpr('fd')}
+          ) AS nr_partajat,
           CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
           COALESCE(

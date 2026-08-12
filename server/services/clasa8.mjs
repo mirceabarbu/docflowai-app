@@ -3,7 +3,7 @@
  *
  * Agregator centralizator Clasa 8: per Cod SSI extrage din BD:
  *   - Angajamente bugetare  (DF Sec.B rows_ctrl[].sum_rezv_crdt_bug_act col.10=8+9,
- *                            DOAR ultima revizie per nr_unic_inreg, flow APROBAT)
+ *                            DOAR ultima revizie per DOSAR ALOP, flow APROBAT)
  *   - Ordonanțări           (ORD rows[].suma_ordonantata_plata col.4, flow APROBAT)
  *   - Plăți (proporțional)  (alop_ord_cicluri + alop_instances ciclu curent,
  *                            plata_confirmed_at IS NOT NULL)
@@ -22,7 +22,13 @@
  * Notă money parsing:
  *   Valorile money se salvează în JSONB ca string raw cu '.' separator zecimal
  *   (ex: "1234.56"), deci ::numeric cast funcționează direct.
+ *
+ * Cheia „ultima revizie aprobată" e DOSARUL ALOP, nu nr_unic_inreg (#127, v3.9.756) —
+ * vezi server/services/df-dosar-key.mjs. Motiv: nr_unic_inreg poate fi duplicat între
+ * DOSARE ALOP diferite; a cheia pe număr sub-numără angajamentele bugetare.
  */
+
+import { dosarKeyExpr } from './df-dosar-key.mjs';
 
 /**
  * Returnează rândurile centralizatorului filtrate.
@@ -80,13 +86,13 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
   const sql = `
     WITH
     -- ─────────────────────────────────────────────────────────────────────
-    -- ANGAJAMENTE BUGETARE: ultima revizie aprobată per nr_unic_inreg.
+    -- ANGAJAMENTE BUGETARE: ultima revizie aprobată per DOSAR ALOP (#127).
     -- Sursă: DF Sec.B rows_ctrl[].sum_rezv_crdt_bug_act (col.10 = 8+9,
     --        Suma rezervată din credite bugetare actualizată).
     -- „Aprobat" = flow signing completat (NU doar form-data-entry).
     -- ─────────────────────────────────────────────────────────────────────
     latest_approved_df AS (
-      SELECT DISTINCT ON (fd.nr_unic_inreg)
+      SELECT DISTINCT ON (${dosarKeyExpr('fd')})
         fd.id, fd.rows_ctrl, fd.org_id, fd.nr_unic_inreg
       FROM formulare_df fd
       JOIN flows f ON f.id = fd.flow_id
@@ -97,7 +103,7 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
         AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
         ${dfCompFilter}
         ${dfQFilter}
-      ORDER BY fd.nr_unic_inreg, fd.revizie_nr DESC NULLS LAST
+      ORDER BY ${dosarKeyExpr('fd')}, fd.revizie_nr DESC NULLS LAST
     ),
     angajamente AS (
       SELECT
@@ -298,12 +304,13 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
  *
  * Reutilizează EXACT aceeași regulă de agregare ca `getClasa8Aggregate`:
  *   - `angajat_aprobat` = Σ col.10 (`sum_rezv_crdt_bug_act`) din DF-urile
- *     APROBATE (flow `completed`), DOAR ultima revizie per `nr_unic_inreg`;
+ *     APROBATE (flow `completed`), DOAR ultima revizie per DOSAR ALOP (#127);
  *   - `disponibil = buget − angajat_aprobat` (null dacă nu există buget importat).
  *
- * `excludeDfId`: dacă e dat, rezolvă `nr_unic_inreg`-ul acelui DF și exclude din
- * `angajat_aprobat` TOATE DF-urile cu același `nr_unic_inreg` (ca să nu numărăm
- * dublu o revizie anterioară aprobată a documentului aflat în curs de editare).
+ * `excludeDfId`: dacă e dat, rezolvă cheia de dosar a acelui DF și exclude din
+ * `angajat_aprobat` TOATE DF-urile din ACELAȘI DOSAR (ca să nu numărăm dublu o
+ * revizie anterioară aprobată a documentului aflat în curs de editare) — NU
+ * toate DF-urile cu același `nr_unic_inreg` (poate fi partajat de alt dosar).
  *
  * @param {object} pool - PostgreSQL pool
  * @param {number} orgId - ID organizație (filtru obligatoriu, multi-tenant)
@@ -320,7 +327,7 @@ export async function getBugetDisponibil(pool, orgId, excludeDfId = null) {
   const sql = `
     WITH
     latest_approved_df AS (
-      SELECT DISTINCT ON (fd.nr_unic_inreg)
+      SELECT DISTINCT ON (${dosarKeyExpr('fd')})
         fd.id, fd.rows_ctrl, fd.nr_unic_inreg
       FROM formulare_df fd
       JOIN flows f ON f.id = fd.flow_id
@@ -329,9 +336,9 @@ export async function getBugetDisponibil(pool, orgId, excludeDfId = null) {
         AND fd.flow_id IS NOT NULL
         AND fd.nr_unic_inreg IS NOT NULL
         AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-        AND ($2::uuid IS NULL OR fd.nr_unic_inreg IS DISTINCT FROM
-             (SELECT nr_unic_inreg FROM formulare_df WHERE id = $2::uuid))
-      ORDER BY fd.nr_unic_inreg, fd.revizie_nr DESC NULLS LAST
+        AND ($2::uuid IS NULL OR ${dosarKeyExpr('fd')} IS DISTINCT FROM
+             (SELECT ${dosarKeyExpr('fd2')} FROM formulare_df fd2 WHERE fd2.id = $2::uuid))
+      ORDER BY ${dosarKeyExpr('fd')}, fd.revizie_nr DESC NULLS LAST
     ),
     angajamente AS (
       SELECT cod_ssi, SUM(suma) AS suma

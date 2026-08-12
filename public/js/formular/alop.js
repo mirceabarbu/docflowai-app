@@ -648,9 +648,21 @@ function renderAlopDetail(a,container){
       case 'marcheaza_ord_semnat':
         actionsHtml+=`<button class="df-action-btn primary" onclick="alopOrdCompleted('${id}')">${_alopIcoBtn('ico-check-circle')}Marchează ORD semnat complet</button>`;
         break;
-      case 'confirma_plata':
-        actionsHtml+=`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`;
+      case 'confirma_plata':{
+        // #126 B2: confirmarea manuală a plății e rezervată compartimentului CAB
+        // (separare de atribuții). Serverul rămâne POARTA (403 doar_cab); asta e doar
+        // UX. Dezactivăm DOAR când știm sigur ambele compartimente în frontend —
+        // ST.cabCompartiment se populează abia după /api/formulare/utilizatori-org,
+        // deci când lipsește lăsăm butonul și tratăm 403-ul cu mesajul serverului.
+        const _isAdm=window.ST?.user?.role==='admin';
+        const _cabC=(window.ST?.cabCompartiment||'').trim();
+        const _actC=(window.ST?.user?.compartiment||window.ST?.actorCompartiment||'').trim();
+        const _blocatCab=!_isAdm&&!!_cabC&&!!_actC&&_actC!==_cabC;
+        actionsHtml+=_blocatCab
+          ?`<button class="df-action-btn primary" disabled title="Doar utilizatorii din compartimentul ${esc(_cabC)} (CAB) pot confirma plata.">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`
+          :`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`;
         break;
+      }
     }
     // FIX 6: „Revizuiește DF" — randat o SINGURĂ dată, independent de phase_action,
     // gated doar de caps.can_revise_df (true în toate fazele post-angajare + ciclu închis).
@@ -1126,7 +1138,8 @@ async function confirmPlata(){
       body:JSON.stringify(body),
     });
     const data=await r.json();
-    if(!r.ok){alert(data.error||'Eroare confirmare plată');return;}
+    // #126 B1: 403 doar_cab / 409 cab_compartiment_nesetat vin cu `message` explicativ.
+    if(!r.ok){alert(data.message||data.error||'Eroare confirmare plată');return;}
     closePlataModal();
     loadAlop();
     loadAlopStats();

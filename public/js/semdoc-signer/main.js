@@ -381,12 +381,30 @@
       let _stsPollInterval = null;
       let _stsPollCount    = 0;
       const STS_POLL_MAX   = 60; // max 3 minute
+      // #125: markup-ul original al lui #signBox, salvat ÎNAINTE de a-l înlocui cu
+      // ecranul de așteptare. Fără el, „Anulează" părea mort: loadFlow() schimbă doar
+      // opacity/display, nu reconstruiește conținutul distrus de polling.
+      let _signBoxBackup = null;
+
+      // #125: nu afișa niciodată text brut de excepție (plasă peste mesajele de la server)
+      function _stsSafeMessage(raw, fallback) {
+        const s = String(raw || '');
+        if (!s) return fallback;
+        if (s.length > 160 || /JSON|undefined|TypeError|SyntaxError/i.test(s)) {
+          console.warn('[STS] mesaj brut înlocuit cu text generic:', s);
+          return fallback;
+        }
+        return s;
+      }
 
       function startStsPolling() {
         if (_stsPollInterval) return;
         // Afișăm UI de așteptare
         const signBox = $('signBox');
         if (signBox) {
+          // Salvăm o SINGURĂ dată — polling-ul poate reporni, iar a doua salvare ar
+          // memora chiar ecranul de așteptare.
+          if (_signBoxBackup === null) _signBoxBackup = signBox.innerHTML;
           signBox.innerHTML = `
             <div style="text-align:center;padding:24px;">
               <div style="font-size:2rem;margin-bottom:12px;">📱</div>
@@ -405,7 +423,7 @@
                   <div id="stsPollBar" style="width:0%;height:100%;background:#7c5cff;transition:width .3s;"></div>
                 </div>
               </div>
-              <button class="df-action-btn sm" onclick="cancelStsPolling()" style="margin-top:16px;">
+              <button class="df-action-btn sm" onclick="cancelStsPolling(this)" style="margin-top:16px;">
                 Anulează
               </button>
             </div>
@@ -419,7 +437,10 @@
           if (bar) bar.style.width = Math.min(100, (_stsPollCount / STS_POLL_MAX) * 100) + '%';
 
           if (_stsPollCount >= STS_POLL_MAX) {
-            cancelStsPolling();
+            // #125: cancelStsPolling e async — ordonăm explicit ca restaurarea UI să
+            // se termine înainte de mesaj. (#err e element separat de #signBox, deci
+            // mesajul nu poate fi suprascris de restaurare.)
+            await cancelStsPolling();
             showError('⏱ Timeout — utilizatorul nu a aprobat în 3 minute. Reîncearcă semnarea.');
             return;
           }
@@ -432,7 +453,8 @@
             const statusEl = $('stsPollStatus');
 
             if (j.status === 'waiting') {
-              if (statusEl) statusEl.textContent = '⏳ ' + (j.message || 'Așteptăm aprobarea...');
+              if (statusEl) statusEl.textContent = '⏳ ' +
+                _stsSafeMessage(j.message, 'Se verifică statusul semnării...');
             } else if (j.status === 'signed') {
               clearInterval(_stsPollInterval); _stsPollInterval = null;
               // ── Completăm overlay-ul vizual înainte de redirect ──────────
@@ -460,8 +482,9 @@
                 window.location.replace(`/flow.html?flow=${encodeURIComponent(flow)}`);
               }, 1600);
             } else if (j.status === 'error') {
-              cancelStsPolling();
-              showError('❌ ' + (j.message || 'Eroare la semnare STS.'));
+              const _msg = _stsSafeMessage(j.message, 'Eroare la semnare. Reîncearcă.');
+              await cancelStsPolling();
+              showError('❌ ' + _msg);
             }
           } catch(e) {
             const statusEl = $('stsPollStatus');
@@ -470,9 +493,28 @@
         }, 3000);
       }
 
-      function cancelStsPolling() {
+      // #125: trei lucruri, nu unul — oprește intervalul local, ELIBEREAZĂ stsPending
+      // pe server (altfel refresh-ul reia bucla la nesfârșit) și REFACE #signBox-ul
+      // distrus de startStsPolling. `btn` vine doar din onclick-ul inline.
+      async function cancelStsPolling(btn) {
         if (_stsPollInterval) { clearInterval(_stsPollInterval); _stsPollInterval = null; }
-        loadFlow();
+        const _btnHtml = btn ? btn.innerHTML : null;
+        try {
+          if (btn) { btn.disabled = true; btn.textContent = 'Se anulează...'; }
+          try {
+            await _apiFetch(
+              `/flows/${encodeURIComponent(flow)}/sts-cancel?token=${encodeURIComponent(token)}`,
+              { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+          } catch (e) {
+            console.warn('[STS] sts-cancel a eșuat:', e);   // continuăm oricum cu restaurarea UI
+          }
+          const signBox = $('signBox');
+          if (signBox && _signBoxBackup !== null) { signBox.innerHTML = _signBoxBackup; }
+          try { await loadFlow(); } catch (e) { console.warn('[STS] loadFlow după anulare:', e); }
+        } finally {
+          // butonul poate să nu mai existe (signBox restaurat) — de aceea guard pe parent
+          if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = _btnHtml; }
+        }
       }
 
       async function loadFlow() {

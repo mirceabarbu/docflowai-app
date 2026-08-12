@@ -837,6 +837,82 @@ autentificată care creează fluxul, indiferent de origine (creare manuală, șa
 
 ---
 
+## Lanțul de revizii DF se cheie pe DOSARUL ALOP, nu pe număr (din v3.9.755)
+
+În producție există `nr_unic_inreg` DUPLICATE între dosare ALOP diferite (utilizatorii deschid
+un dosar nou pentru cheltuiala următoare pe același obiect și refolosesc numărul din
+registratură). Identitatea lanțului de revizii e **dosarul**, cimentată deja de indexul unic
+`df_source_alop_revizie_uniq (source_alop_id, revizie_nr)` (migrarea 095).
+
+**Expresia de cheie — definiție UNICĂ în `server/services/df-dosar-key.mjs`** (modul PUR, fără
+dependențe), importată în toate locurile care grupează revizii:
+
+```sql
+COALESCE(fd.source_alop_id::text, fd.nr_unic_inreg)
+```
+
+⛔ Fallback-ul e `nr_unic_inreg`, NU `id` — cu `id::text` fiecare revizie **legacy** (DF fără
+`source_alop_id`) ar deveni un lanț separat. ⛔ La `DISTINCT ON`, primul termen din `ORDER BY`
+trebuie să fie EXACT aceeași expresie.
+
+Locuri cheiate pe dosar: `/api/formulare-df/aprobate` (dropdown ORD), GET detaliu
+(`latest_revizie_nr` + `has_newer_revision`), `/api/formulare-df/:id/revizii`, `/revizuieste`
+(`MAX(revizie_nr)`), `/api/formulare/list` (`has_newer_revision` + `nr_partajat`),
+`services/trasabilitate.mjs` (Q1+Q2). Garda „doar revizia curentă poate fi revizuită" RĂMÂNE —
+se aplică în interiorul dosarului.
+
+⛔ **Niciun index unic pe `nr_unic_inreg`** — imposibil (documente în coliziune au deja
+semnături QES) și inutil după fixul structural. `PUT /api/formulare-df/:id` refuză
+`409 nr_unic_duplicat` DOAR la **schimbarea efectivă** a numărului (comparație TRIMMED) într-unul
+folosit de alt dosar — o gardă necondiționată ar bloca documentele vii aflate deja în coliziune.
+Lista afișează badge-ul „⚠ nr. partajat" (`nr_partajat`, calculat server-side) ca semnal, fără
+blocaj. Detalii + datele din producție: `docs/incidents/DF-NR-DUPLICAT.md`. Teste:
+`server/tests/db/df-revizii-pe-dosar.test.mjs`.
+
+**Rămas deliberat pe număr:** verificarea de duplicat la CREARE (`POST /api/formulare-df`) și
+`services/clasa8.mjs` (`DISTINCT ON (nr_unic_inreg)` în consumul de buget — de reevaluat separat).
+
+---
+
+## Confirmarea manuală a plății ALOP — doar compartimentul CAB (din v3.9.755)
+
+`POST /api/alop/:id/confirma-plata` cere, peste `canEditAlop` (rămâne apărarea de tenant/dosar),
+ca actorul să fie din `organizations.cab_compartiment` — separare de atribuții: inițiatorul
+dosarului nu-și confirmă singur plata.
+
+- `actor.role === 'admin'` (platform) ⇒ exceptat. ⛔ `org_admin` NU e exceptat.
+- CAB nesetat pe organizație ⇒ **409 `cab_compartiment_nesetat`** (fail-closed).
+- Alt compartiment ⇒ **403 `doar_cab`**.
+- Calea AUTOMATĂ (OPME → `applyPlataConfirmedSideEffects`) NU trece prin rută ⇒ neafectată.
+
+Frontend (`alop.js`): butonul se dezactivează doar când ambele compartimente sunt cunoscute în
+client (`ST.cabCompartiment` se populează abia după `/api/formulare/utilizatori-org`); altfel
+rămâne activ și 403-ul se afișează cu `message`-ul serverului. Serverul e poarta.
+Test: `server/tests/db/alop-confirma-plata-cab.test.mjs`.
+
+---
+
+## OPME — al patrulea criteriu de potrivire: IBAN beneficiar (din v3.9.755)
+
+`server/services/opme-matcher.mjs` potrivește pe (cod_angajament, indicator_angajament,
+cif_beneficiar) **+ iban_beneficiar**. Fără migrație: `opme_lines.iban_beneficiar` și
+`formulare_ord.iban_beneficiar` existau deja.
+
+- **Normalizare obligatorie** (`_normIban`): majuscule + fără separatori — „RO49 AAAA…" ≡
+  „RO49AAAA…". Fără ea, criteriul respinge potriviri corecte.
+- **DECIZIE:** criteriul se aplică DOAR când AMBELE părți au IBAN (`_ibanVerdict` →
+  `match|mismatch|no_iban`). Altfel toate ALOP-urile deja în „plata" (documente vechi fără IBAN)
+  ar deveni nepotrivibile. Lipsa se loghează ca `opme.match.candidate.no_iban`.
+- ⚠️ Regula trăiește într-un **singur helper**, apelat identic în selecția candidaților ȘI în
+  `_processAlop`. Dacă divergă, un OP se potrivește la selecție dar nu se agregă la sumă =
+  clasa de bug de la #115 (plată sub-numărată).
+- Câștig funcțional: două ALOP cu același triplet și conturi diferite se **dezambiguizează**
+  (înainte: `ambiguous`). Linia respinsă primește `match_notes` „IBAN diferit față de ordonanțare".
+
+Test: `server/tests/db/opme-match-iban.test.mjs`.
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:

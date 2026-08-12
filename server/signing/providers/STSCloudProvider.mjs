@@ -237,7 +237,23 @@ export class STSCloudProvider {
         body: JSON.stringify({ id: stsOpId }),
         signal: AbortSignal.timeout(10_000),
       });
-      const json = await resp.json();
+      // #125: nu mai parsăm orbește — corp gol / non-JSON = eșec de transport,
+      // clasificat explicit ca TRANZITORIU (nu ca „waiting" și nici ca eroare permanentă).
+      const raw = await resp.text();
+      if (!raw || !raw.trim()) {
+        logger.warn({ stsOpId, httpStatus: resp.status }, 'STS: corp gol la /callback');
+        return { ready: false, transient: true,
+          message: 'Serviciul STS nu a răspuns complet. Reîncercăm...' };
+      }
+      let json;
+      try { json = JSON.parse(raw); }
+      catch {
+        // bodyPreview DOAR în log — poate conține date sensibile
+        logger.warn({ stsOpId, httpStatus: resp.status, bodyPreview: raw.slice(0, 200) },
+          'STS: răspuns non-JSON la /callback');
+        return { ready: false, transient: true,
+          message: 'Răspuns invalid de la serviciul STS. Reîncercăm...' };
+      }
 
       if (json.errorCode === CLBK_WAIT)
         return { ready: false, waiting: true, message: 'Așteptăm aprobarea utilizatorului pe email/PUSH.' };
@@ -256,8 +272,12 @@ export class STSCloudProvider {
       return { ready: true, signByte: sigItem.signByte, signList: json.signList || [] };
 
     } catch(e) {
+      // #125: tranzitoriu (o pană de rețea de o secundă chiar e trecătoare).
+      // Abandonul „tranzitoriu la nesfârșit" îl decide sts-poll, pe vârsta sesiunii.
+      // Textul excepției rămâne în log, NICIODATĂ în mesajul către client.
       logger.warn({ err: e, stsOpId }, 'STS: poll error (se va reîncerca)');
-      return { ready: false, message: e.message };
+      return { ready: false, transient: true,
+        message: 'Eroare de comunicare cu STS. Reîncercăm...' };
     }
   }
 

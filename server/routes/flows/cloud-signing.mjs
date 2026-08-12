@@ -343,6 +343,9 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
     signers[signerIdx].stsToken     = accessToken;
     signers[signerIdx].stsSignUrl   = pd.signUrl;
     signers[signerIdx].stsPending   = true;
+    // #125: marcaj de vârstă pentru expirarea sesiunii STS (vezi STS_PENDING_MAX_MS).
+    // JSONB — fără migrație; fluxurile vechi cad pe data.updatedAt.
+    signers[signerIdx].stsPendingAt = new Date().toISOString();
     signers[signerIdx].stsCertPem   = certPem || null;
     signers[signerIdx].stsCertChain = certChainPem || [];
     data.signers   = signers;
@@ -358,6 +361,12 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
     return res.redirect(`/semdoc-signer.html?sts_error=${encodeURIComponent('Eroare internă server')}`);
   }
 });
+
+// #125: vârsta maximă a unei sesiuni STS „pending". Clientul renunță la 3 minute
+// (STS_POLL_MAX=60 × 3s), dar stsPending rămânea true în DB la nesfârșit, iar
+// shouldResumePoll repornea bucla la fiecare refresh — semnatari blocați zile întregi.
+// 30 min lasă loc unei aprobări întârziate pe email/PUSH, dar nu lasă nimic peste noapte.
+const STS_PENDING_MAX_MS = 30 * 60 * 1000;
 
 // ── GET /flows/:flowId/sts-poll — polling status semnătură STS ────────────
 // Apelat de frontend la interval de 3 secunde pentru a verifica aprobarea.
@@ -389,6 +398,25 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
         data.signers = signers; await saveFlow(flowId, data);
         return res.json({ status: 'error', message: pollResult.message });
       }
+
+      // #125: abandon pe VÂRSTĂ — nu pe un poll eșuat. Fail-safe: dacă niciun
+      // timestamp nu se poate parsa, vârsta = 0 (nu abandonăm o semnare nedatabilă).
+      const _startedRaw = signer.stsPendingAt || data.updatedAt || null;
+      const _startedMs  = _startedRaw ? Date.parse(_startedRaw) : NaN;
+      const _ageMs      = Number.isFinite(_startedMs) ? (Date.now() - _startedMs) : 0;
+      if (_ageMs > STS_PENDING_MAX_MS) {
+        // NU marcăm semnatarul ca 'error' și NU scriem signError* — semnătura n-a
+        // eșuat criptografic, doar sesiunea a expirat; semnatarul poate reîncerca.
+        logger.warn({ flowId, signerEmail: signer.email, ageMs: _ageMs },
+          'STS: sesiune pending expirată — eliberăm stsPending');
+        signers[idx].stsPending = false;
+        data.signers = signers;
+        data.updatedAt = new Date().toISOString();
+        await saveFlow(flowId, data);
+        return res.json({ status: 'error',
+          message: 'Sesiunea de semnare STS a expirat. Reîncearcă semnarea.' });
+      }
+
       return res.json({ status: 'waiting', message: pollResult.message });
     }
 
@@ -577,6 +605,51 @@ router.get('/flows/:flowId/sts-poll', async (req, res) => {
 
   } catch(e) {
     logger.error({ err: e }, 'STS poll error');
+    res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── POST /flows/:flowId/sts-cancel — semnatarul renunță la sesiunea STS ───
+// #125: fără asta, butonul „Anulează" din UI oprea doar intervalul din browser —
+// stsPending rămânea true în DB și shouldResumePoll repornea bucla la refresh.
+// Autorizare IDENTICĂ cu sts-poll (token de semnatar din query sau header).
+router.post('/flows/:flowId/sts-cancel', async (req, res) => {
+  try {
+    if (requireDb(res)) return;
+    const { flowId }  = req.params;
+    const signerToken = req.query.token || req.headers['x-signer-token'];
+    if (!signerToken) return res.status(400).json({ error: 'token_required' });
+
+    const data = await getFlowData(flowId);
+    if (!data) return res.status(404).json({ error: 'not_found' });
+
+    const signers = Array.isArray(data.signers) ? data.signers : [];
+    const idx     = signers.findIndex(s => s.token === signerToken);
+    if (idx === -1) return res.status(400).json({ error: 'invalid_token' });
+
+    const signer = signers[idx];
+    // Idempotentă: a doua anulare nu e o eroare.
+    if (!signer.stsPending) return res.json({ ok: true, alreadyCancelled: true });
+
+    // NU ștergem stsOpId/stsToken/stsCertPem — urmă de audit. NU atingem signer.status.
+    signers[idx].stsPending = false;
+    data.signers   = signers;
+    data.updatedAt = new Date().toISOString();
+    if (!Array.isArray(data.events)) data.events = [];
+    data.events.push({
+      at: new Date().toISOString(),
+      type: 'STS_CANCELLED',
+      by: signer.email,
+      order: signer.order,
+      provider: 'sts-cloud',
+    });
+    await saveFlow(flowId, data);
+
+    logger.info({ flowId, signerEmail: signer.email }, 'STS: sesiune anulată de semnatar');
+    return res.json({ ok: true, cancelled: true });
+
+  } catch(e) {
+    logger.error({ err: e }, 'STS cancel error');
     res.status(500).json({ error: 'server_error' });
   }
 });
