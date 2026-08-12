@@ -165,9 +165,9 @@ describe('GET /api/clasa8', () => {
     expect(sql).toContain('JOIN flows f');
     expect(sql).toMatch(/f\.data->>'status'\s*=\s*'completed'/);
     expect(sql).toMatch(/f\.data->>'completed'/);
-    // Ultima revizie per nr_unic_inreg
-    expect(sql).toContain('DISTINCT ON (fd.nr_unic_inreg)');
-    expect(sql).toMatch(/ORDER BY fd\.nr_unic_inreg,\s*fd\.revizie_nr DESC/);
+    // Ultima revizie per DOSAR ALOP (#127) — cheia din df-dosar-key.mjs, NU nr_unic_inreg
+    expect(sql).toContain("DISTINCT ON (COALESCE(fd.source_alop_id::text, fd.nr_unic_inreg))");
+    expect(sql).toMatch(/ORDER BY COALESCE\(fd\.source_alop_id::text, fd\.nr_unic_inreg\),\s*fd\.revizie_nr DESC/);
     // Angajamente: Sec.B col.10 = sum_rezv_crdt_bug_act
     expect(sql).toContain('rows_ctrl');
     expect(sql).toContain('sum_rezv_crdt_bug_act');

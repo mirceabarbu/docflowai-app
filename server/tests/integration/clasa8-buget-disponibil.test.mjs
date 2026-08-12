@@ -9,7 +9,7 @@
  *   ✓ 200 exclude_df omis → $2 = null
  *   ✓ 200 mapping items (buget/disponibil null tolerat, numere parse-uite)
  *   ✓ SQL: aceeași regulă Clasa 8 (col.10 + flow aprobat + ultima revizie) +
- *          clauza de excludere pe nr_unic_inreg
+ *          clauza de excludere pe DOSARUL ALOP al DF-ului (#127, NU nr_unic_inreg)
  *   ✓ 500 când BD aruncă eroare
  */
 
@@ -118,12 +118,14 @@ describe('GET /api/clasa8/buget/disponibil', () => {
     const sql = dbModule.pool.query.mock.calls[0][0];
     // aceeași sursă de adevăr ca agregatul Clasa 8
     expect(sql).toContain('sum_rezv_crdt_bug_act');         // col.10
-    expect(sql).toContain('DISTINCT ON (fd.nr_unic_inreg)'); // ultima revizie
-    expect(sql).toMatch(/ORDER BY fd\.nr_unic_inreg,\s*fd\.revizie_nr DESC/);
+    // Ultima revizie per DOSAR ALOP (#127) — cheia din df-dosar-key.mjs
+    expect(sql).toContain("DISTINCT ON (COALESCE(fd.source_alop_id::text, fd.nr_unic_inreg))");
+    expect(sql).toMatch(/ORDER BY COALESCE\(fd\.source_alop_id::text, fd\.nr_unic_inreg\),\s*fd\.revizie_nr DESC/);
     expect(sql).toMatch(/f\.data->>'status'\s*=\s*'completed'/);
     expect(sql).toContain('clasa8_buget');
-    // clauza de excludere pe nr_unic_inreg al DF-ului în lucru
-    expect(sql).toMatch(/\$2::uuid IS NULL OR fd\.nr_unic_inreg IS DISTINCT FROM/);
+    // clauza de excludere pe DOSARUL ALOP al DF-ului în lucru (fd2 = subquery pe id)
+    expect(sql).toMatch(/\$2::uuid IS NULL OR COALESCE\(fd\.source_alop_id::text, fd\.nr_unic_inreg\) IS DISTINCT FROM/);
+    expect(sql).toContain('COALESCE(fd2.source_alop_id::text, fd2.nr_unic_inreg)');
   });
 
   it('500 când BD aruncă eroare', async () => {

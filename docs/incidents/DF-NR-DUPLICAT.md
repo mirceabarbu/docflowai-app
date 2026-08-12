@@ -96,10 +96,17 @@ Nu blochează nimic — e doar semnal.
 - `POST /api/formulare-df` — verificarea de duplicat la **creare** (`409 nr_unic_duplicat`)
   rămâne pe număr: la creare încă nu există un dosar de comparat, iar scopul e exact să nu se
   mai nască coliziuni noi.
-- `services/clasa8.mjs` — `DISTINCT ON (nr_unic_inreg)` pentru „ultima revizie aprobată" în
-  calculul consumului de buget Clasa 8. **Neatins în #126** (zonă de validare bugetară, scope
-  separat). Efect posibil: două dosare cu același număr ⇒ unul singur contorizat la consum.
-  **De reevaluat într-un task dedicat.**
+- `services/clasa8.mjs` — **REZOLVAT în #127 (12.08.2026, v3.9.756).** `DISTINCT ON` pentru
+  „ultima revizie aprobată" (raportul Clasa 8 + verificarea de plafon `getBugetDisponibil`)
+  cheia acum pe DOSARUL ALOP (`dosarKeyExpr` din `df-dosar-key.mjs`), nu pe `nr_unic_inreg`.
+  **Impact financiar înainte de fix:** două dosare ALOP diferite cu același număr ⇒ `DISTINCT
+  ON (nr_unic_inreg)` păstra un singur DF ⇒ angajamentele bugetare (col.10) ale celuilalt
+  dosar erau **sub-numărate complet** în raportul Clasa 8. Mai grav, la `getBugetDisponibil`
+  (verificarea de plafon apelată de CAB la completarea Sec.B), excluderea `excludeDfId` compara
+  pe număr ⇒ exclude un DOSAR STRĂIN care doar întâmplător partajează numărul, nu doar dosarul
+  propriu ⇒ plafonul se putea valida față de un consum sub-raportat, permițând angajarea de
+  cheltuieli PESTE creditele bugetare aprobate. Aceeași clasă de bug cu #115 (plată
+  sub-numărată), de data asta pe bani ANGAJAȚI, nu plătiți.
 - `services/alop-link.mjs` — self-heal-ul folosește `nr_unic_inreg` ca al doilea criteriu, dar
   ancorat pe `a.df_id`/`source_alop_id`, deci nu amestecă dosare.
 
@@ -110,3 +117,9 @@ ALOP diferite, ambele DF cu `nr_unic_inreg = '40339'`): revizuire independentă,
 `/aprobate`, lanț `/revizii` separat, `has_newer_revision` pe dosar, PUT nemodificat ⇒ 200,
 PUT cu număr schimbat în coliziune ⇒ 409 (inclusiv normalizarea spațiilor), lanț **legacy**
 fără regresie, badge-ul de număr partajat.
+
+`server/tests/db/clasa8-dosar-key.test.mjs` (#127) — aceeași fixtură de coliziune, pe agregatul
+Clasa 8: raportul însumează angajamentele AMBELOR dosare (nu doar unul), `getBugetDisponibil`
+cu `excludeDfId` NU mai exclude dosarul STRĂIN care partajează numărul, excluderea rămâne
+corectă ÎN INTERIORUL dosarului propriu (R0+R1 excluse împreună, fără dublă numărare), lanțul
+legacy (`source_alop_id` NULL) nu regresează, non-regresie pe un singur dosar cu R0→R1→R2.
