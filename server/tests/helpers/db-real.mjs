@@ -141,11 +141,14 @@ export async function seedUser({ orgId, email = 'p2@x.ro', role = 'user', compar
 // anReferinta (opțional) → formulare_df.an_referinta (FEATURE buget multi-anual). NULL = legacy.
 // rowsCtrl (opțional) → rows_ctrl JSONB (Secțiunea B); col.10 `sum_rezv_crdt_bug_act` = PLAFONUL
 //   de ordonanțare (fix 12). ckbxSting (opțional) → ckbx_sting_ang_in_ancrt ('1'/''), bifa „Stingere".
-export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null, nrUnic = 'DF-2026-001', revizieNr = 0, parentDfId = null, assignedTo = null, rowsVal = null, rowsPlati = null, anReferinta = null, rowsCtrl = null, ckbxSting = null } = {}) {
+// sourceAlopId (opțional) → formulare_df.source_alop_id (proveniență ALOP, migrarea 084).
+//   E CHEIA lanțului de revizii din #126 (vezi services/df-dosar-key.mjs): două DF-uri cu
+//   același nr_unic_inreg dar dosare diferite sunt lanțuri INDEPENDENTE.
+export async function seedDf({ orgId, createdBy, status = 'draft', flowId = null, nrUnic = 'DF-2026-001', revizieNr = 0, parentDfId = null, assignedTo = null, rowsVal = null, rowsPlati = null, anReferinta = null, rowsCtrl = null, ckbxSting = null, sourceAlopId = null } = {}) {
   const { rows } = await pool.query(
-    `INSERT INTO formulare_df (org_id, created_by, status, flow_id, nr_unic_inreg, revizie_nr, parent_df_id, este_revizie, assigned_to, rows_val, rows_plati, an_referinta, rows_ctrl, ckbx_sting_ang_in_ancrt)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10::jsonb,'[]'::jsonb),COALESCE($11::jsonb,'[]'::jsonb),$12,COALESCE($13::jsonb,'[]'::jsonb),$14) RETURNING id`,
-    [orgId, createdBy, status, flowId, nrUnic, revizieNr, parentDfId, (revizieNr || 0) > 0, assignedTo, rowsVal ? JSON.stringify(rowsVal) : null, rowsPlati ? JSON.stringify(rowsPlati) : null, anReferinta, rowsCtrl ? JSON.stringify(rowsCtrl) : null, ckbxSting]
+    `INSERT INTO formulare_df (org_id, created_by, status, flow_id, nr_unic_inreg, revizie_nr, parent_df_id, este_revizie, assigned_to, rows_val, rows_plati, an_referinta, rows_ctrl, ckbx_sting_ang_in_ancrt, source_alop_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10::jsonb,'[]'::jsonb),COALESCE($11::jsonb,'[]'::jsonb),$12,COALESCE($13::jsonb,'[]'::jsonb),$14,$15) RETURNING id`,
+    [orgId, createdBy, status, flowId, nrUnic, revizieNr, parentDfId, (revizieNr || 0) > 0, assignedTo, rowsVal ? JSON.stringify(rowsVal) : null, rowsPlati ? JSON.stringify(rowsPlati) : null, anReferinta, rowsCtrl ? JSON.stringify(rowsCtrl) : null, ckbxSting, sourceAlopId]
   );
   return rows[0].id;
 }

@@ -17,6 +17,8 @@
  *        OR (f.data->>'completed')::boolean = true)
  */
 
+import { dosarKeyExpr } from './df-dosar-key.mjs';
+
 /**
  * Returnează arborele de trasabilitate pornind de la un DF sau ORD.
  *
@@ -34,24 +36,27 @@ export async function getTrasabilitate(pool, orgId, type, id) {
     throw new Error(`trasabilitate.getTrasabilitate: type invalid '${type}', acceptate: 'df' | 'ord'`);
   }
 
-  // ── Q1: Validare root + extracție context (nr_unic_inreg DF) ──────────────
-  let dfNrUnic = null;
+  // ── Q1: Validare root + extracție context (cheia de dosar a DF-ului) ──────
+  // #126: lanțul de revizii se cheie pe DOSARUL ALOP, nu pe număr — altfel
+  // reviziile unui dosar STRĂIN cu același nr_unic_inreg apăreau în același lanț
+  // („R0 ✓ | R0 ⏳" în modalul Trasabilitate).
+  let dfNrUnic = null;      // cheia de dosar (source_alop_id sau, legacy, numărul)
   let dfRootId = null;     // doar pentru type='ord': id-ul DF-ului direct legat
   let rootIsOrd = type === 'ord';
 
   if (type === 'df') {
     const { rows } = await pool.query(
-      `SELECT id, nr_unic_inreg
-         FROM formulare_df
+      `SELECT id, ${dosarKeyExpr('fd')} AS dosar_key
+         FROM formulare_df fd
         WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL`,
       [id, orgId]
     );
     if (!rows.length) return null;
-    dfNrUnic = rows[0].nr_unic_inreg;
+    dfNrUnic = rows[0].dosar_key;
   } else { // ord
     const { rows } = await pool.query(
       `SELECT fo.id, fo.df_id,
-              fd.nr_unic_inreg AS df_nr_unic_inreg
+              ${dosarKeyExpr('fd')} AS df_nr_unic_inreg
          FROM formulare_ord fo
          LEFT JOIN formulare_df fd ON fd.id = fo.df_id AND fd.org_id = $2
         WHERE fo.id = $1 AND fo.org_id = $2 AND fo.deleted_at IS NULL`,
@@ -80,7 +85,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
               ) AS valoare_totala
          FROM formulare_df fd
          LEFT JOIN flows f ON f.id::text = fd.flow_id
-        WHERE fd.nr_unic_inreg = $1
+        WHERE ${dosarKeyExpr('fd')} = $1
           AND fd.org_id = $2
           AND fd.deleted_at IS NULL
         ORDER BY fd.revizie_nr ASC NULLS FIRST`,

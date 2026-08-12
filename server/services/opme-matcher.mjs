@@ -4,6 +4,8 @@
  * Conectează liniile dintr-un import OPME (F1129) la ALOP-urile active aflate
  * în status='plata' folosind tripletul:
  *   (cod_angajament, indicator_angajament, cif_beneficiar)
+ * plus, din #126, al PATRULEA criteriu: iban_beneficiar (normalizat), aplicat
+ * DOAR când ambele părți îl au — vezi `_ibanVerdict` pentru decizie și motiv.
  *
  * Reguli (per prompt Pachet B):
  *   • Candidați = alop_instances a JOIN formulare_ord o ON o.id = a.ord_id
@@ -49,6 +51,30 @@ import { applyPlataConfirmedSideEffects } from '../routes/alop.mjs';
 const TOLERANCE = 0.01;
 const _eq = (a, b) => Math.abs(Number(a) - Number(b)) < TOLERANCE;
 
+// ── #126 Etapa C: al PATRULEA criteriu — IBAN-ul beneficiarului ──────────────
+// Pregătește ORD-urile cu mai multe CONTURI (același furnizor, conturi diferite):
+// tripletul (cod, indicator, CIF) nu mai e suficient pentru dezambiguizare.
+//
+// ⛔ Normalizarea e OBLIGATORIE: „RO49 AAAA…" și „RO49AAAA…" sunt același IBAN.
+//    Fără ea, criteriul ar respinge potriviri corecte — regresie mai gravă decât
+//    problema rezolvată.
+const _normIban = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+// DECIZIE (#126 C2): criteriul IBAN se aplică DOAR când AMBELE părți au IBAN.
+// Dacă ORD-ul n-are `iban_beneficiar` (documente vechi) SAU linia OPME n-are,
+// potrivirea cade pe cele trei criterii existente — altfel toate ALOP-urile deja
+// în „plata" ar deveni brusc nepotrivibile și s-ar confirma manual sute de plăți.
+// ⚠️ Regula trăiește AICI, într-un singur helper, și e apelată IDENTIC în ambele
+//    căi (selecția candidaților ȘI `_processAlop`). Dacă divergă, un OP s-ar
+//    potrivi la selecție dar nu s-ar agrega la sumă = clasa de bug de la #115.
+// @returns {'match'|'mismatch'|'no_iban'}
+function _ibanVerdict(ordIbanRaw, lineIbanRaw) {
+  const a = _normIban(ordIbanRaw);
+  const b = _normIban(lineIbanRaw);
+  if (!a || !b) return 'no_iban';
+  return a === b ? 'match' : 'mismatch';
+}
+
 /**
  * matchImport — procesează toate liniile pending dintr-un import.
  *
@@ -89,7 +115,7 @@ export async function matchImport(importId, opts = {}) {
 
     // ── 2. Linii pending din acest import ───────────────────────────────────
     const { rows: lines } = await client.query(`
-      SELECT id, cod_angajament, indicator_angajament, cif_beneficiar, suma_op, nr_op
+      SELECT id, cod_angajament, indicator_angajament, cif_beneficiar, iban_beneficiar, suma_op, nr_op
         FROM opme_lines
        WHERE opme_import_id = $1
          AND match_status = 'pending'
@@ -117,8 +143,8 @@ export async function matchImport(importId, opts = {}) {
         report.unmatched++;
         continue;
       }
-      const { rows: cands } = await client.query(`
-        SELECT a.id AS alop_id
+      const { rows: candsRaw } = await client.query(`
+        SELECT a.id AS alop_id, o.iban_beneficiar AS ord_iban
           FROM alop_instances a
           JOIN formulare_ord  o ON o.id = a.ord_id
          WHERE a.org_id = $1
@@ -133,10 +159,27 @@ export async function matchImport(importId, opts = {}) {
            )
       `, [imp.org_id, cif, cod, ind]);
 
+      // #126 C: al patrulea criteriu (IBAN) se aplică în JS, prin ACELAȘI helper
+      // folosit de `_processAlop` — SQL-ul ar fi o a doua implementare a normalizării.
+      let ibanRespinse = 0;
+      let ibanNedeclarat = false;
+      const cands = candsRaw.filter(c => {
+        const v = _ibanVerdict(c.ord_iban, line.iban_beneficiar);
+        if (v === 'no_iban') { ibanNedeclarat = true; return true; }
+        if (v === 'mismatch') { ibanRespinse++; return false; }
+        return true;
+      });
+      if (ibanNedeclarat) {
+        logger.info({ line_id: line.id, triplet: { cif, cod, ind } }, 'opme.match.candidate.no_iban');
+      }
+
       if (cands.length === 0) {
-        logger.info({ line_id: line.id, triplet: { cif, cod, ind } }, 'opme.match.unmatched');
+        logger.info({ line_id: line.id, triplet: { cif, cod, ind }, iban_respinse: ibanRespinse },
+          'opme.match.unmatched');
         await _markLine(client, line.id, 'unmatched',
-          'Nu există ALOP activ în plată cu acest beneficiar și angajament.');
+          ibanRespinse > 0
+            ? 'IBAN diferit față de ordonanțare (beneficiar și angajament potrivite).'
+            : 'Nu există ALOP activ în plată cu acest beneficiar și angajament.');
         report.unmatched++;
       } else if (cands.length > 1) {
         const list = cands.map(c => c.alop_id).slice(0, 5).join(', ');
@@ -307,7 +350,7 @@ async function _processAlop(client, args) {
 
   // (0) ORD-ul ALOP-ului: cif + setul de triplete (cod,indicator) din rânduri.
   const { rows: aRows } = await client.query(`
-    SELECT TRIM(o.cif_beneficiar) AS cif, o.rows AS ord_rows
+    SELECT TRIM(o.cif_beneficiar) AS cif, o.rows AS ord_rows, o.iban_beneficiar AS ord_iban
       FROM alop_instances a
       JOIN formulare_ord  o ON o.id = a.ord_id
      WHERE a.id = $1
@@ -316,6 +359,7 @@ async function _processAlop(client, args) {
     return { alop_id: alopId, result: 'ord_missing', expected: 0, actual: 0, line_count: 0 };
   }
   const cif = aRows[0].cif;
+  const ordIban = aRows[0].ord_iban;
   const ordRows = Array.isArray(aRows[0].ord_rows) ? aRows[0].ord_rows : [];
   const tripSet = new Set();
   for (const r of ordRows) {
@@ -342,7 +386,7 @@ async function _processAlop(client, args) {
   //     cod/indicator la același beneficiar). Garda matched_alop_id protejează
   //     liniile deja legate de alt ALOP.
   const { rows: poolLines } = await client.query(`
-    SELECT id, cod_angajament, indicator_angajament, suma_op, nr_op, opme_import_id
+    SELECT id, cod_angajament, indicator_angajament, iban_beneficiar, suma_op, nr_op, opme_import_id
       FROM opme_lines
      WHERE org_id = $1
        AND TRIM(cif_beneficiar) = $2
@@ -358,6 +402,13 @@ async function _processAlop(client, args) {
     const cod = (ln.cod_angajament || '').trim();
     const ind = (ln.indicator_angajament || '').trim();
     if (!tripSet.has(`${cod}||${ind}`)) continue;   // doar tripletele ORD-ului
+    // #126 C: al patrulea criteriu (IBAN), IDENTIC cu selecția candidaților —
+    // altfel o linie s-ar potrivi la selecție dar nu s-ar agrega la sumă (#115).
+    const ibanV = _ibanVerdict(ordIban, ln.iban_beneficiar);
+    if (ibanV === 'mismatch') continue;
+    if (ibanV === 'no_iban') {
+      logger.info({ alop_id: alopId, line_id: ln.id }, 'opme.match.candidate.no_iban');
+    }
     lineIds.add(ln.id);
     actual += Number(ln.suma_op || 0);
     if (ln.nr_op) nrOps.push(ln.nr_op);

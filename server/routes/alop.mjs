@@ -1561,6 +1561,27 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
       const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const authz = await canEditAlop(pool, actor, alopRows[0], actorComp, { cabComp });
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
+
+      // #126 B1: confirmarea MANUALĂ a plății e rezervată compartimentului CAB —
+      // separare de atribuții (inițiatorul dosarului NU își confirmă singur plata).
+      // canEditAlop de mai sus rămâne apărarea de tenant/dosar; asta e deasupra ei.
+      // ⛔ `org_admin` NU e exceptat (e separare de atribuții, nu poartă de tenant);
+      //    doar platform-adminul e. ⛔ Calea AUTOMATĂ (OPME) NU trece pe aici.
+      if (actor.role !== 'admin') {
+        if (!cabComp) {
+          return res.status(409).json({
+            error: 'cab_compartiment_nesetat',
+            message: 'Compartimentul CAB nu este configurat pentru organizație. '
+              + 'Setați-l în Organizații → Date generale.',
+          });
+        }
+        if (actorComp !== cabComp) {
+          return res.status(403).json({
+            error: 'doar_cab',
+            message: 'Doar utilizatorii din compartimentul CAB pot confirma plata.',
+          });
+        }
+      }
     }
 
     const { notes, nr_ordin_plata, data_plata, suma_efectiva, observatii } = req.body;

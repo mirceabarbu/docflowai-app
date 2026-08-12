@@ -590,8 +590,13 @@ function _renderLstTable(rows,type){
     const istoricBadgeLst=(type==='df'&&row.has_newer_revision===true)
       ?`<span style="vertical-align:middle;margin-left:4px;padding:1px 7px;border-radius:8px;font-size:.65rem;font-weight:600;background:rgba(148,163,184,.15);color:#94a3b8;border:1px solid rgba(148,163,184,.25);text-transform:uppercase;letter-spacing:.04em" title="Există o revizie mai recentă pentru acest DF">istoric</span>`
       :'';
+    // #126 A6: semnal discret — alt DOSAR ALOP folosește același număr unic.
+    // Calculat server-side (nr_partajat); NU blochează nimic.
+    const nrPartajatBadge=(type==='df'&&row.nr_partajat===true)
+      ?`<span style="vertical-align:middle;margin-left:4px;padding:1px 7px;border-radius:8px;font-size:.65rem;font-weight:600;background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.3)" title="Alt document folosește același număr unic — verificați dacă nu trebuia o revizie">⚠ nr. partajat</span>`
+      :'';
     return`<tr onclick="openDocFromList('${type}','${safeId}')" style="cursor:pointer">
-      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}</a><button type="button" class="trasab-inline-btn" onclick="event.stopPropagation();openTrasabilitate('${type}','${safeId}');return false" title="Vezi trasabilitate (lanț DF↔ALOP↔ORD)">🔗</button>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
+      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}${nrPartajatBadge}</a><button type="button" class="trasab-inline-btn" onclick="event.stopPropagation();openTrasabilitate('${type}','${safeId}');return false" title="Vezi trasabilitate (lanț DF↔ALOP↔ORD)">🔗</button>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
       <td>${esc(row.initiator||'—')}</td>
       <td>${esc(row.initiator_comp||'—')}</td>

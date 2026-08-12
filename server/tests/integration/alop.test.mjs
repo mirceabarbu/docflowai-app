@@ -165,6 +165,16 @@ function mockAuthzAlopCreator(createdBy = 1, alopExtra = {}) {
     .mockResolvedValueOnce({ rows: [{ compartiment: '' }] });
 }
 
+// #126 B: confirmarea MANUALĂ a plății cere ca actorul să fie din compartimentul CAB
+// al organizației (separare de atribuții; fail-closed dacă CAB nu e configurat).
+// Aceleași două rânduri ca `mockAuthzAlopCreator`, dar `loadActorCompAndCab` întoarce
+// actorComp === cabComp. Folosit DOAR de testele /confirma-plata.
+function mockAuthzAlopCabActor(createdBy = 1, alopExtra = {}) {
+  dbModule.pool.query
+    .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, created_by: createdBy, compartiment: 'CAB', ...alopExtra }] })
+    .mockResolvedValueOnce({ rows: [{ compartiment: 'CAB', cab_compartiment: 'CAB' }] });
+}
+
 // P0-03 (#122): `checkFlowLinkable` / `checkFlowSigned` (services/flow-provenance.mjs)
 // adaugă UN SELECT pe `flows` între authz și UPDATE. Rândul de mai jos acoperă ambele
 // forme (same_org/live pentru linkare, semnat pentru completed) — implicit „totul e ok".
@@ -792,7 +802,7 @@ describe('POST /api/alop/:id/confirma-lichidare', () => {
 describe('POST /api/alop/:id/confirma-plata', () => {
   it('400 — user normal fără status plata → status_invalid', async () => {
     const app = createTestApp();
-    mockAuthzAlopCreator();
+    mockAuthzAlopCabActor();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'angajare', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
       .mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 rows (status != 'plata')
@@ -806,7 +816,7 @@ describe('POST /api/alop/:id/confirma-plata', () => {
   });
 
   it('400 — respinge dacă nr_ordin_plata lipsește (UPDATE returnează 0 rows pe status wrong)', async () => {
-    mockAuthzAlopCreator();
+    mockAuthzAlopCabActor();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'angajare', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
       .mockResolvedValueOnce({ rows: [] }); // UPDATE → 0 (status != 'plata')
@@ -822,7 +832,7 @@ describe('POST /api/alop/:id/confirma-plata', () => {
   });
 
   it('400 — respinge dacă suma_efectiva <= 0 (status greșit)', async () => {
-    mockAuthzAlopCreator();
+    mockAuthzAlopCabActor();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'angajare', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
       .mockResolvedValueOnce({ rows: [] });
@@ -844,7 +854,7 @@ describe('POST /api/alop/:id/confirma-plata', () => {
       plata_suma_efectiva: '1500.00',
       completed_at:    new Date().toISOString(),
     });
-    mockAuthzAlopCreator();
+    mockAuthzAlopCabActor();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'plata', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
       .mockResolvedValueOnce({ rows: [completed] }); // UPDATE → completed
@@ -863,7 +873,7 @@ describe('POST /api/alop/:id/confirma-plata', () => {
 
   it('200 — admin global poate confirma plata', async () => {
     const completed = makeAlopRow({ status: 'completed', completed_at: new Date().toISOString() });
-    mockAuthzAlopCreator();
+    mockAuthzAlopCabActor();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'plata', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
       .mockResolvedValueOnce({ rows: [completed] }); // UPDATE → completed
@@ -879,7 +889,7 @@ describe('POST /api/alop/:id/confirma-plata', () => {
   });
 
   it('400 — plata_peste_ord: suma_efectiva > total ORD → block hard (P0.2)', async () => {
-    mockAuthzAlopCreator();
+    mockAuthzAlopCabActor();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'plata', plata_confirmed_at: null, ord_id: ORD_ID }] }) // FOR UPDATE lock
       .mockResolvedValueOnce({ rows: [{ ord_total: '1000' }] }); // SELECT SUM ord rows
@@ -901,7 +911,7 @@ describe('POST /api/alop/:id/confirma-plata', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('POST /api/alop/:id/confirma-plata — user normal', () => {
-  it('200 — user normal (non-admin) poate confirma plata dacă ALOP e în status plata', async () => {
+  it('200 — user normal (non-admin) din compartimentul CAB poate confirma plata dacă ALOP e în status plata', async () => {
     const completed = makeAlopRow({
       status:             'completed',
       plata_confirmed_by: 1,
@@ -909,7 +919,7 @@ describe('POST /api/alop/:id/confirma-plata — user normal', () => {
       plata_suma_efectiva: '1200.00',
       completed_at:       new Date().toISOString(),
     });
-    mockAuthzAlopCreator();
+    mockAuthzAlopCabActor();
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ id: ALOP_ID, status: 'plata', plata_confirmed_at: null, ord_id: null }] }) // P0.2 FOR UPDATE lock
       .mockResolvedValueOnce({ rows: [completed] }); // UPDATE → completed

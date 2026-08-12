@@ -19,7 +19,15 @@ const ABSENT_UUID = '00000000-0000-0000-0000-000000000999';
 d('ALOP — gărzi rute de tranziție', () => {
   let app;
   beforeAll(migrate);
-  beforeEach(async () => { await truncateAll(); await seedOrgUser({ role: 'user' }); app = buildApp(); });
+  beforeEach(async () => {
+    await truncateAll();
+    await seedOrgUser({ role: 'user', compartiment: 'CAB' });
+    // #126 B: confirmarea MANUALĂ a plății cere actor din compartimentul CAB al
+    // organizației (separare de atribuții, fail-closed dacă CAB nu e configurat).
+    // Actorul acestor teste e pus în CAB ca să rămână pe calea autorizată.
+    await pool.query("UPDATE organizations SET cab_compartiment='CAB' WHERE id=1");
+    app = buildApp();
+  });
   afterAll(() => pool.end());
 
   const cookie = (over = {}) => makeAuthCookie({ userId: 1, role: 'user', orgId: 1, ...over });

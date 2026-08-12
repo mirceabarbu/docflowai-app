@@ -24,6 +24,7 @@ import {
   submitFormular, completeFormular, returnFormular, linkFlowFormular, stergeFormular,
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
+import { dosarKeyExpr, dosarKeyOf } from '../../services/df-dosar-key.mjs';
 import { codSsiBlockResponse } from '../../services/cod-ssi-validate.mjs';
 import { normalizeRowsCtrl } from '../../services/angajament-normalize.mjs';
 import { serializeNotafd } from '../../services/alop-xml/notafd-serializer.mjs';
@@ -35,6 +36,11 @@ const _csrf  = csrfMiddleware;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isUuid(s) { return typeof s === 'string' && UUID_RE.test(s); }
+
+// Cheia lanțului de revizii = DOSARUL ALOP (#126). Definiție unică în
+// services/df-dosar-key.mjs — vezi comentariul de acolo. Folosită în toate
+// interogările care grupează revizii: /aprobate, detaliu, /revizii, /revizuieste,
+// garda de la PUT, plus lista centralizată din routes/formulare/shared.mjs.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DOCUMENT DE FUNDAMENTARE (DF)
@@ -82,7 +88,17 @@ router.get('/api/formulare-df', async (req, res) => {
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-             THEN true ELSE false END AS aprobat
+             THEN true ELSE false END AS aprobat,
+        -- #126 A6: semnal (NU blocaj) — alt DOSAR folosește același număr unic.
+        -- Calculat server-side ca să nu existe divergență cu regula de cheie.
+        EXISTS(
+          SELECT 1 FROM formulare_df fdx
+          WHERE fdx.org_id = fd.org_id
+            AND fdx.deleted_at IS NULL
+            AND COALESCE(TRIM(fd.nr_unic_inreg), '') <> ''
+            AND TRIM(fdx.nr_unic_inreg) = TRIM(fd.nr_unic_inreg)
+            AND ${dosarKeyExpr('fdx')} IS DISTINCT FROM ${dosarKeyExpr('fd')}
+        ) AS nr_partajat
       FROM formulare_df fd
       JOIN users p1 ON p1.id = fd.created_by
       LEFT JOIN users p2 ON p2.id = fd.assigned_to
@@ -104,7 +120,7 @@ router.get('/api/formulare-df/aprobate', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows } = await pool.query(`
-      SELECT DISTINCT ON (fd.nr_unic_inreg)
+      SELECT DISTINCT ON (${dosarKeyExpr('fd')})
         fd.id, fd.nr_unic_inreg, fd.subtitlu_df, fd.data_revizuirii,
         fd.rows_ctrl, fd.revizie_nr
       FROM formulare_df fd
@@ -113,7 +129,7 @@ router.get('/api/formulare-df/aprobate', async (req, res) => {
         AND fd.deleted_at IS NULL
         AND fd.flow_id IS NOT NULL
         AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-      ORDER BY fd.nr_unic_inreg, fd.revizie_nr DESC
+      ORDER BY ${dosarKeyExpr('fd')}, fd.revizie_nr DESC
     `, [actor.orgId]);
     res.json({ ok: true, documents: rows });
   } catch (e) {
@@ -152,14 +168,16 @@ router.get('/api/formulare-df/:id', async (req, res) => {
         (SELECT a.valoare_totala FROM alop_instances a
          WHERE a.df_id = fd.id AND a.cancelled_at IS NULL
          LIMIT 1) AS alop_valoare,
+        -- #126 A3: lanțul de revizii se cheie pe DOSARUL ALOP — altfel un dosar
+        -- STRĂIN care întâmplător împarte numărul marca documentul „are revizie mai nouă".
         (SELECT COALESCE(MAX(fd2.revizie_nr), 0)
          FROM formulare_df fd2
-         WHERE fd2.nr_unic_inreg = fd.nr_unic_inreg
+         WHERE ${dosarKeyExpr('fd2')} = ${dosarKeyExpr('fd')}
            AND fd2.org_id = fd.org_id
            AND fd2.deleted_at IS NULL) AS latest_revizie_nr,
         EXISTS(
           SELECT 1 FROM formulare_df fd3
-          WHERE fd3.nr_unic_inreg = fd.nr_unic_inreg
+          WHERE ${dosarKeyExpr('fd3')} = ${dosarKeyExpr('fd')}
             AND fd3.org_id = fd.org_id
             AND fd3.deleted_at IS NULL
             AND fd3.revizie_nr > fd.revizie_nr
@@ -383,6 +401,39 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
       if (block) return res.status(block.status).json(block.body);
     }
 
+    // #126 A5: gardă pe numărul unic — DOAR când numărul se SCHIMBĂ efectiv.
+    // ⚠️ O gardă necondiționată ar BLOCA documentele vii aflate deja în coliziune
+    // (ele s-ar vedea pe ele însele prin celălalt dosar → 409 la orice salvare).
+    // Efect: coliziunile EXISTENTE rămân salvabile, dar nu se mai pot CREA altele.
+    // ⛔ NU se aplică pe calea /revizuieste — acolo copierea numărului e LEGITIMĂ.
+    if ('nr_unic_inreg' in data) {
+      const nrNou   = String(data.nr_unic_inreg ?? '').trim();
+      const nrVechi = String(doc.nr_unic_inreg ?? '').trim();
+      if (nrNou && nrNou !== nrVechi) {
+        const { rows: conflict } = await pool.query(
+          `SELECT fd.id FROM formulare_df fd
+            WHERE fd.org_id = $1
+              AND fd.deleted_at IS NULL
+              AND fd.id <> $2
+              AND TRIM(fd.nr_unic_inreg) = $3
+              AND COALESCE(fd.revizie_nr, 0) = $4
+              AND ${dosarKeyExpr('fd')} IS DISTINCT FROM $5
+            LIMIT 1`,
+          [actor.orgId, doc.id, nrNou, doc.revizie_nr || 0, dosarKeyOf(doc)]
+        );
+        if (conflict.length) {
+          return res.status(409).json({
+            error: 'nr_unic_duplicat',
+            message: `Numărul ${nrNou} este deja folosit de alt document. Dacă e o cheltuială `
+              + `următoare pe același obiect, nu deschideți un dosar nou — revizuiți documentul `
+              + `existent (butonul Revizuiește pe DF-ul aprobat), revizia păstrează numărul.`,
+          });
+        }
+      }
+      // Normalizează la scriere: „40339 " și „40339" trebuie să fie același număr.
+      if (typeof data.nr_unic_inreg === 'string') data.nr_unic_inreg = nrNou;
+    }
+
     const { sets, vals } = buildUpdate(data, allowedFields, 1);
 
     // Asamblare query
@@ -469,16 +520,18 @@ router.get('/api/formulare-df/:id/revizii', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows } = await pool.query(`
-      SELECT id, revizie_nr, status, created_at, revizie_motiv, revizie_at, este_revizie
-      FROM formulare_df
-      WHERE (id = $1
-          OR parent_df_id = $1
-          OR nr_unic_inreg = (
-               SELECT nr_unic_inreg FROM formulare_df
-               WHERE id = $1 AND deleted_at IS NULL LIMIT 1))
-        AND org_id = $2
-        AND deleted_at IS NULL
-      ORDER BY revizie_nr ASC
+      SELECT fd.id, fd.revizie_nr, fd.status, fd.created_at, fd.revizie_motiv, fd.revizie_at, fd.este_revizie
+      FROM formulare_df fd
+      WHERE (fd.id = $1
+          OR fd.parent_df_id = $1
+          -- #126 A4: ramura pe DOSAR (nu pe număr) — altfel reviziile unui dosar
+          -- străin cu același număr intrau în același lanț („R0 ✓ | R0 ⏳").
+          OR ${dosarKeyExpr('fd')} = (
+               SELECT ${dosarKeyExpr('fdk')} FROM formulare_df fdk
+               WHERE fdk.id = $1 AND fdk.deleted_at IS NULL LIMIT 1))
+        AND fd.org_id = $2
+        AND fd.deleted_at IS NULL
+      ORDER BY fd.revizie_nr ASC
     `, [req.params.id, actor.orgId]);
     res.json({ revizii: rows });
   } catch (e) {
@@ -518,12 +571,15 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
 
     const { motiv } = req.body || {};
 
-    // Determină numărul reviziei noi (max existent + 1)
+    // Determină numărul reviziei noi (max existent + 1) — pe DOSARUL ALOP (#126 A1).
+    // Înainte, cheia era numărul: după ce un dosar ajungea la R1, celălalt dosar cu
+    // același număr primea „Această revizie (R0) nu mai este cea curentă" PE VIAȚĂ.
+    // Garda „doar revizia curentă poate fi revizuită" RĂMÂNE — dar în interiorul dosarului.
     const { rows: maxRows } = await pool.query(
-      `SELECT COALESCE(MAX(revizie_nr), 0) AS max_rev
-       FROM formulare_df
-       WHERE nr_unic_inreg = $1 AND org_id = $2 AND deleted_at IS NULL`,
-      [df.nr_unic_inreg, actor.orgId]
+      `SELECT COALESCE(MAX(fd.revizie_nr), 0) AS max_rev
+       FROM formulare_df fd
+       WHERE ${dosarKeyExpr('fd')} = $1 AND fd.org_id = $2 AND fd.deleted_at IS NULL`,
+      [dosarKeyOf(df), actor.orgId]
     );
     const maxRev = maxRows[0]?.max_rev ?? 0;
 
