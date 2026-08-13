@@ -83,6 +83,8 @@ describe('POST /api/formulare-atasamente/:type/:id', () => {
   it('upload reușit → INSERT + atașament în răspuns', async () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ created_by: 1, assigned_to: 2, status: 'draft' }], rowCount: 1 })
+      // #124i: SELECT de dedup — niciun duplicat existent
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       .mockResolvedValueOnce({
         rows: [{ id: ATT_ID, filename: 'factura.pdf', mime_type: 'application/pdf', size_bytes: 1234, created_at: '2026-05-22' }],
         rowCount: 1
@@ -110,6 +112,8 @@ describe('POST /api/formulare-atasamente/:type/:id', () => {
     const NUME = 'Plan de acțiune propus.pdf';
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ created_by: 1, assigned_to: 2, status: 'draft' }], rowCount: 1 })
+      // #124i: SELECT de dedup — niciun duplicat existent
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       .mockResolvedValueOnce({
         rows: [{ id: ATT_ID, filename: NUME, mime_type: 'application/pdf', size_bytes: 1234, created_at: '2026-05-22' }],
         rowCount: 1

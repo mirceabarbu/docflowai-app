@@ -82,6 +82,8 @@ describe('POST upload cu slot', () => {
   it('?slot=2 → INSERT cu slot=2', async () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ created_by: 1, assigned_to: 2, status: 'draft' }], rowCount: 1 })
+      // #124i: SELECT de dedup — niciun duplicat existent
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       .mockResolvedValueOnce({
         rows: [{ id: ATT_S2, filename: 'sectB.pdf', mime_type: 'application/pdf', size_bytes: 500, slot: 2, created_at: '2026-05-22' }],
         rowCount: 1
@@ -107,6 +109,8 @@ describe('POST upload cu slot', () => {
   it('fără ?slot → default slot=1 (backward compat ORD v3.9.500)', async () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ created_by: 1, assigned_to: 2, status: 'draft' }], rowCount: 1 })
+      // #124i: SELECT de dedup — niciun duplicat existent
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       .mockResolvedValueOnce({
         rows: [{ id: ATT_S1, filename: 'x.pdf', mime_type: 'application/pdf', size_bytes: 100, slot: 1, created_at: '2026-05-22' }],
         rowCount: 1
@@ -128,6 +132,8 @@ describe('POST upload cu slot', () => {
   it('?slot=99 (invalid) → cădere la slot=1', async () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ created_by: 1, assigned_to: 2, status: 'draft' }], rowCount: 1 })
+      // #124i: SELECT de dedup — niciun duplicat existent
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
       .mockResolvedValueOnce({
         rows: [{ id: ATT_S1, slot: 1 }],
         rowCount: 1
