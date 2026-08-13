@@ -262,6 +262,37 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
         });
       }
     }
+    // #124e′ — idempotență pe FEREASTRĂ DE TIMP (nu pe cheie unică).
+    // ⚠️ Spre deosebire de DF, `formulare_ord` NU poate primi un index unic pe
+    // `source_alop_id`: ORD nu are revizii, deci mai multe ordonanțări pe același dosar ALOP
+    // sunt starea CORECTĂ (fiecare cu alt `nr_ordonant_pl`). Datele din producție (12.08.2026)
+    // confirmă: 8 grupuri multi-ORD, distanța minimă între două ordonanțări legitime = 2 zile
+    // și 20 de ore; în schimb duplicatele accidentale apar la 109–782 ms. Discriminatorul e
+    // timpul, nu conținutul. Fereastra de 10 s e cu peste patru ordine de mărime sub cea mai
+    // scurtă distanță legitimă observată.
+    // Cauza vizată nu e doar dublu-clicul: `saveDoc` (public/js/formular/doc.js:1024) ramifică
+    // pe `if(!docId)` → POST, deci două autosalvări plecate înainte de primul răspuns creează
+    // două documente. O gardă de buton nu ar acoperi-o; asta e poarta.
+    const srcAlopId = isUuid(body.source_alop_id) ? body.source_alop_id : null;
+    if (srcAlopId) {
+      const { rows: dup } = await pool.query(
+        `SELECT * FROM formulare_ord
+          WHERE source_alop_id = $1
+            AND org_id         = $2
+            AND created_by     = $3
+            AND deleted_at IS NULL
+            AND created_at > NOW() - INTERVAL '10 seconds'
+          ORDER BY created_at ASC
+          LIMIT 1`,
+        [srcAlopId, actor.orgId, actor.userId]
+      );
+      if (dup.length) {
+        logger.warn({ existingId: dup[0].id, srcAlopId, actor: actor.email },
+          'formulare-ord: creare duplicat în fereastra de 10s — s-a returnat documentul existent');
+        dup[0].capabilities = computeDocCapabilities(dup[0], actor, 'ordnt');
+        return res.json({ ok: true, document: dup[0], deduplicated: true });
+      }
+    }
     const cols = ['org_id', 'created_by'];
     const vals = [actor.orgId, actor.userId];
 
