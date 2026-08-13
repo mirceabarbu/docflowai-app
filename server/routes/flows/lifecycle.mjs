@@ -50,6 +50,31 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     const isAdmin = isAdminOrOrgAdmin(actor) && actorCanAccessOrg(actor, data.orgId);
     const isInit = (data.initEmail || '').toLowerCase() === actor.email.toLowerCase();
     if (!isAdmin && !isInit) return res.status(403).json({ error: 'forbidden', message: 'Doar inițiatorul sau un administrator poate reiniția fluxul.' });
+    // #124f: `reinitiatedAs` (setat mai jos) era SCRIS dar NICIODATĂ CITIT pe server, deși
+    // comentariul de la scriere pretindea că „previne reinițializare dublă". Precondiția
+    // `hasRefused` rămâne adevărată pe PĂRINTE (refuzatul e eliminat doar din COPIL), deci al
+    // doilea clic crea un al doilea flux copil, cu tokenuri noi și încă un email de notificare.
+    // Dovadă în producție: părintele PZ_3083883725 avea 2 copii la 18,9 s distanță.
+    // Garda de mai jos face ruta idempotentă. Poziția contează: DUPĂ verificarea de autorizare,
+    // ca un actor neîndreptățit să primească 403, nu id-ul fluxului copil.
+    if (data.reinitiatedAs) {
+      const child = await getFlowData(data.reinitiatedAs);
+      // `getFlowData` filtrează deja `deleted_at IS NULL` ⇒ un copil soft-șters vine `null`.
+      // Copil ANULAT ⇒ pointerul e mort, se permite o reinițiere nouă (altfel fluxul rămâne
+      // blocat definitiv). Copil REFUZAT ⇒ pointerul rămâne valid: traseul corect e reinițierea
+      // COPILULUI, nu a părintelui.
+      const childAlive = !!child && child.status !== 'cancelled';
+      if (childAlive) {
+        logger.info(`↩️ reinitiate idempotent: ${flowId} era deja reinițiat ca ${data.reinitiatedAs} (cerere de la ${actor.email})`);
+        return res.json({
+          ok: true,
+          newFlowId: data.reinitiatedAs,
+          signers: (child.signers || []).length,
+          alreadyReinitiated: true,
+        });
+      }
+      logger.warn(`reinitiate: pointer reinitiatedAs=${data.reinitiatedAs} către un flux mort (anulat/șters) — se permite o reinițiere nouă pentru ${flowId}`);
+    }
     const hasRefused = (data.signers || []).some(s => s.status === 'refused');
     if (!hasRefused) return res.status(409).json({ error: 'no_refused_signer', message: 'Fluxul nu are niciun semnatar care a refuzat.' });
     // Blocăm reinițializarea dacă refuzatorul are rol APROBAT — aprobatorul finalizează procesul
