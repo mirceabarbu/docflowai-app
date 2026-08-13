@@ -173,6 +173,31 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     try { filename = decodeURIComponent(filename); } catch { /* valoare ne-encodată/legacy — lasă crud */ }
     if (!filename) filename = `atasament_${Date.now()}`;
 
+    // #124i — deduplicare la upload. Producția avea 16 grupuri de fișiere duplicate, cel mai
+    // mare cu 25 de copii ale aceluiași PDF de 1,1 MB pe același document și același slot
+    // (~28 MB de BYTEA pentru un singur atașament). Cheia: (form_type, form_id, slot, filename,
+    // size_bytes) — același nume ȘI aceeași dimensiune, pe același slot, e același fișier.
+    // ⛔ Fără fereastră de timp (spre deosebire de #124e′ la ORD): aici nu există niciun caz
+    // legitim de „aceeași anexă de două ori pe același slot", iar duplicatele reale erau
+    // împrăștiate pe minute și zeci de minute, deci o fereastră n-ar fi prins nimic.
+    // ⛔ Fără index unic: producția are deja duplicate, indexul ar eșua la creare (tiparul 095).
+    // Un fișier CORECTAT cu același nume are aproape sigur altă dimensiune, deci trece; dacă
+    // vreodată nu trece, calea rămasă e ștergerea atașamentului vechi și reîncărcarea.
+    const { rows: dupAtt } = await pool.query(`
+      SELECT id, filename, mime_type, size_bytes, slot, created_at
+        FROM formulare_atasamente
+       WHERE form_type = $1 AND form_id = $2 AND slot = $3
+         AND filename = $4 AND size_bytes = $5
+         AND deleted_at IS NULL
+       ORDER BY created_at ASC
+       LIMIT 1
+    `, [type, id, slot, filename, data.length]);
+    if (dupAtt.length) {
+      logger.warn({ type, id, slot, filename, existingId: dupAtt[0].id, actor: actor.email },
+        'formulare-atasament: upload duplicat — s-a returnat atașamentul existent');
+      return res.json({ ok: true, atasament: dupAtt[0], deduplicated: true });
+    }
+
     const { rows: inserted } = await pool.query(`
       INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

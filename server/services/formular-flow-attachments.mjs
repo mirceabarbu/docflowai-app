@@ -34,11 +34,29 @@ export async function copyFormularAttachmentsToFlow(pool, { flowId, formType, fo
   if (!pool || !flowId || !formId) return 0;
   if (formType !== 'df' && formType !== 'ord') return 0;
 
-  // INSERT...SELECT atomic cu guard NOT EXISTS pe (flow_id, filename) → idempotent.
-  // Copiază bytes-ul direct (fa.data → flow_attachments.data), păstrând nume + content-type.
+  // INSERT...SELECT atomic. DOUĂ gărzi, pentru două curse diferite:
+  //  (1) NOT EXISTS pe (flow_id, filename) — apără RE-RULAREA copierii (a doua chemare a
+  //      funcției nu mai adaugă nimic);
+  //  (2) #124i: DISTINCT ON (fa.filename, fa.size_bytes) — apără de duplicatele din SURSĂ.
+  //      `NOT EXISTS` se evaluează față de starea tabelei la ÎNCEPUTUL instrucțiunii, NU față
+  //      de rândurile inserate de aceeași instrucțiune ⇒ înainte de fix, N rânduri sursă cu
+  //      același `filename` produceau N rânduri în flow_attachments dintr-o singură execuție.
+  //      Comentariul vechi („→ idempotent") era fals; duplicatele găsite în producție pe
+  //      flow_attachments (12.08.2026) erau exact asta.
+  //      ⚠️ Cheia include `size_bytes` DELIBERAT. Copierea ia atașamentele de pe AMBELE
+  //      sloturi ale documentului; două fișiere DIFERITE care împart numele (ex. „Anexa.pdf"
+  //      pe slot 1 și pe slot 2) trebuie să ajungă AMÂNDOUĂ în pachetul de semnare. Un
+  //      `DISTINCT ON (fa.filename)` singur le-ar topi într-unul și ar scoate tăcut un
+  //      document din pachet — regresie mai gravă decât bugul reparat aici. Cu `size_bytes`
+  //      în cheie se colapsează doar duplicatele reale (același nume ȘI aceeași dimensiune,
+  //      inclusiv aceeași anexă pusă din greșeală pe ambele sloturi). Listarea și
+  //      previzualizarea din flux cheiază pe `id` (attachments.mjs:108-112), deci două rânduri
+  //      cu același `filename` se afișează corect, separat.
+  //      Se păstrează cel mai VECHI rând sursă per (filename, size_bytes).
   const { rows } = await pool.query(
     `INSERT INTO flow_attachments (flow_id, filename, mime_type, size_bytes, data)
-     SELECT $1, fa.filename, fa.mime_type, fa.size_bytes, fa.data
+     SELECT DISTINCT ON (fa.filename, fa.size_bytes)
+            $1, fa.filename, fa.mime_type, fa.size_bytes, fa.data
        FROM formulare_atasamente fa
       WHERE fa.form_type = $2
         AND fa.form_id   = $3
@@ -47,6 +65,7 @@ export async function copyFormularAttachmentsToFlow(pool, { flowId, formType, fo
           SELECT 1 FROM flow_attachments fla
            WHERE fla.flow_id = $1 AND fla.filename = fa.filename
         )
+      ORDER BY fa.filename, fa.size_bytes, fa.created_at ASC
      RETURNING id, filename`,
     [flowId, formType, formId]
   );
