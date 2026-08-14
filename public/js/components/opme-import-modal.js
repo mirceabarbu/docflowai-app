@@ -4,7 +4,7 @@
  *   window.DFOpmeImportModal.open({ onSuccess: (match_report) => void })
  *
  * Flux:
- *   1) Drag&drop sau click pe „Alege fișier" → validare client (.pdf, ≤5 MB)
+ *   1) Drag&drop sau click pe „Alege fișier" → validare client (.pdf, ≤10 MB)
  *   2) Preview: nume + dimensiune + buton „Încarcă"
  *   3) XHR POST /api/opme/import cu progres
  *   4) 201 → toast verde + onSuccess(match_report); 409 → toast galben cu
@@ -15,7 +15,7 @@
 (function () {
   'use strict';
 
-  const MAX_BYTES = 5 * 1024 * 1024;
+  const MAX_BYTES = 10 * 1024 * 1024;
   const esc = (s) => (window.df && window.df.esc ? window.df.esc(s) : String(s || ''));
   const csrf = () => (window.df && window.df.getCsrf ? window.df.getCsrf() : '');
 
@@ -41,7 +41,7 @@
         <strong>Trage fișierul aici</strong> sau
         <button type="button" class="df-opme-modal__dz-btn" id="df-opme-btn-pick">Alege fișier</button>
       </div>
-      <div class="df-opme-modal__dz-hint">Doar PDF F1129 · max 5 MB</div>
+      <div class="df-opme-modal__dz-hint">Doar PDF F1129 · max 10 MB</div>
       <input type="file" id="df-opme-file-input" accept=".pdf,application/pdf" style="display:none">
     </div>
 
@@ -134,7 +134,7 @@
       return;
     }
     if (file.size > MAX_BYTES) {
-      setMsg('Fișierul depășește 5 MB.', 'err');
+      setMsg('Fișierul depășește 10 MB.', 'err');
       return;
     }
     _selectedFile = file;

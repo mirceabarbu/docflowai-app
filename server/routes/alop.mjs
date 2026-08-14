@@ -595,12 +595,14 @@ router.get('/api/alop/:id', async (req, res) => {
   try {
     const detailParams = [req.params.id, actor.orgId];
     let extraWhere = '';
+    // #130: aceeași rundă DB (loadActorComp existentă) extinsă cu cab_compartiment-ul org-ului —
+    // folosită mai jos atât pentru filtrul de vizibilitate CÂT ȘI pentru computeAlopCapabilities,
+    // ca interfața și garda #126 B1 să folosească EXACT aceleași valori. Sărită pentru admin/
+    // org_admin (is_owner e deja true pentru ei, is_cab n-are efect) — păstrează numărul de
+    // query-uri identic cu înainte pe calea admin (contract mock-urilor de test existente).
+    let actorComp = '', cabComp = '';
     if (actor.role !== 'admin' && actor.role !== 'org_admin') {
-      const actorCompRes = await pool.query(
-        'SELECT compartiment FROM users WHERE id=$1',
-        [actor.userId]
-      );
-      const actorComp = (actorCompRes.rows[0]?.compartiment || '').trim();
+      ({ actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId));
       detailParams.push(actor.userId);
       const userIdx = detailParams.length;
       let compClause = '';
@@ -978,7 +980,7 @@ router.get('/api/alop/:id', async (req, res) => {
     const sumaPlatita = parseFloat(alop.suma_platita_total || 0);
     alop.ramas = dfVal > 0 ? Math.max(0, dfVal - sumaPlatita) : 0;
 
-    alop.capabilities = computeAlopCapabilities(alop, actor);
+    alop.capabilities = computeAlopCapabilities(alop, actor, { actorComp, cabComp });
     res.json({ alop });
   } catch (e) {
     logger.error({ err: e }, 'alop get error');
