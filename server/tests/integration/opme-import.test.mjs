@@ -210,8 +210,8 @@ describe('POST /api/opme/import — validări fișier', () => {
     expect(mockClientQuery).not.toHaveBeenCalled();
   });
 
-  it('413 dacă fișierul depășește 5 MB', async () => {
-    const big = Buffer.alloc(5 * 1024 * 1024 + 1024); // 5 MB + 1 KB
+  it('413 dacă fișierul depășește 10 MB', async () => {
+    const big = Buffer.alloc(10 * 1024 * 1024 + 1024); // 10 MB + 1 KB
     const tok = makeToken();
     const r = await request(makeApp())
       .post('/api/opme/import')

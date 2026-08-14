@@ -20,7 +20,7 @@ import { matchImport, summarizeReport } from '../services/opme-matcher.mjs';
 
 const router = Router();
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_BYTES = 10 * 1024 * 1024; // 10 MB (#129 — ridicat de la 5 MB; fișierele F1129 reale de la trezorerie depășeau limita)
 
 function _requireDb(res) {
   if (!pool) { res.status(503).json({ error: 'db_unavailable' }); return true; }
