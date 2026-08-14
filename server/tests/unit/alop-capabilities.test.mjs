@@ -116,3 +116,78 @@ describe('computeAlopCapabilities — can_delete (detaliu, owner-gated)', () => 
   it('non-owner → fără delete chiar fără df/ord', () =>
     expect(computeAlopCapabilities(A({ created_by: 99, status: 'draft' }), ACTOR).can_delete).toBe(false));
 });
+
+describe('computeAlopCapabilities — #130 CAB (is_cab, membru CAB non-creator vede acțiuni)', () => {
+  const NON_OWNER = { userId: 2, role: 'user', orgId: 1 };
+  const CAB_OPTS = { actorComp: 'Serviciul Buget', cabComp: 'Serviciul Buget' };
+
+  it('membru CAB, NU e creatorul, ALOP în plata → confirma_plata + is_cab=true (acceptanța bugului)', () => {
+    const c = computeAlopCapabilities(
+      A({ created_by: 1, status: 'plata', df_id: 'd', df_status: 'aprobat', ord_id: 'o' }),
+      NON_OWNER,
+      CAB_OPTS
+    );
+    expect(c.is_cab).toBe(true);
+    expect(c.phase_action).toBe('confirma_plata');
+  });
+
+  it('membru CAB, NU e creatorul → can_delete=false (regresia A.4)', () => {
+    const c = computeAlopCapabilities(
+      A({ created_by: 1, status: 'draft', df_id: null, ord_id: null }),
+      NON_OWNER,
+      CAB_OPTS
+    );
+    expect(c.is_cab).toBe(true);
+    expect(c.can_delete).toBe(false);
+  });
+
+  it('creatorul, NU e din CAB, ALOP în plata → confirma_plata + is_cab=false', () => {
+    const c = computeAlopCapabilities(
+      A({ created_by: 1, status: 'plata', df_id: 'd', df_status: 'aprobat', ord_id: 'o' }),
+      ACTOR,
+      { actorComp: 'Alt Compartiment', cabComp: 'Serviciul Buget' }
+    );
+    expect(c.phase_action).toBe('confirma_plata');
+    expect(c.is_cab).toBe(false);
+  });
+
+  it('nici creator, nici CAB → totul null/false (non-regresie)', () => {
+    const c = computeAlopCapabilities(
+      A({ created_by: 1, status: 'plata', df_id: 'd', ord_id: 'o' }),
+      NON_OWNER,
+      { actorComp: 'Alt Compartiment', cabComp: 'Serviciul Buget' }
+    );
+    expect(c.is_cab).toBe(false);
+    expect(c.is_owner).toBe(false);
+    expect(c.phase_action).toBeNull();
+    expect(c.df_action).toBeNull();
+    expect(c.can_delete).toBe(false);
+  });
+
+  it('apel fără al treilea parametru (compatibilitate) → is_cab=false, restul identic', () => {
+    const c = computeAlopCapabilities(A({ created_by: 1, status: 'angajare' }), ACTOR);
+    expect(c.is_cab).toBe(false);
+    expect(c.is_owner).toBe(true);
+  });
+
+  it('cabComp gol / actorComp gol → is_cab=false, fără excepție', () => {
+    const c1 = computeAlopCapabilities(
+      A({ created_by: 1, status: 'plata' }), NON_OWNER, { actorComp: 'Serviciul Buget', cabComp: '' }
+    );
+    expect(c1.is_cab).toBe(false);
+    const c2 = computeAlopCapabilities(
+      A({ created_by: 1, status: 'plata' }), NON_OWNER, { actorComp: '', cabComp: 'Serviciul Buget' }
+    );
+    expect(c2.is_cab).toBe(false);
+  });
+
+  it('completed sau cancelled + membru CAB → tot return devreme (starea terminală bate)', () => {
+    const c1 = computeAlopCapabilities(A({ created_by: 1, status: 'completed' }), NON_OWNER, CAB_OPTS);
+    expect(c1.is_cab).toBe(true);
+    expect(c1.phase_action).toBeNull();
+    expect(c1.df_action).toBeNull();
+    const c2 = computeAlopCapabilities(A({ created_by: 1, status: 'cancelled' }), NON_OWNER, CAB_OPTS);
+    expect(c2.is_cab).toBe(true);
+    expect(c2.phase_action).toBeNull();
+  });
+});

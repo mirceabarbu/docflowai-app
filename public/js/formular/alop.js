@@ -657,7 +657,11 @@ function renderAlopDetail(a,container){
         const _isAdm=window.ST?.user?.role==='admin';
         const _cabC=(window.ST?.cabCompartiment||'').trim();
         const _actC=(window.ST?.user?.compartiment||window.ST?.actorCompartiment||'').trim();
-        const _blocatCab=!_isAdm&&!!_cabC&&!!_actC&&_actC!==_cabC;
+        // #130: serverul trimite acum `is_cab` în capabilities — sursă autoritară, aliniată cu
+        // garda #126 B1. Ghicitul din ST rămâne doar ca fallback pentru răspunsuri vechi.
+        const _blocatCab = (typeof caps.is_cab === 'boolean')
+          ? (!_isAdm && !caps.is_cab)
+          : (!_isAdm && !!_cabC && !!_actC && _actC !== _cabC);
         actionsHtml+=_blocatCab
           ?`<button class="df-action-btn primary" disabled title="Doar utilizatorii din compartimentul ${esc(_cabC)} (CAB) pot confirma plata.">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`
           :`<button class="df-action-btn primary" onclick="openAlopConfirmPlata('${id}',${parseFloat(a.ord_valoare||0)})">${_alopIcoBtn('ico-landmark')}Confirmă Plata</button>`;

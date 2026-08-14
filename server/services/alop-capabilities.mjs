@@ -5,9 +5,12 @@
  * ⚠️ Hint de AFIȘARE, NU autorizare. Mutațiile rămân păzite de rutele ALOP (org/comp/owner checks).
  * Funcție PURĂ (fără DB). Toate intrările sunt date server (nu există stare client gen hasPdf).
  */
-export function computeAlopCapabilities(alop, actor) {
+import { isCabDept } from './authz-formular.mjs';
+
+export function computeAlopCapabilities(alop, actor, opts = {}) {
   const caps = {
     is_owner: false,
+    is_cab: false,
     is_completed: false,
     is_cancelled: false,
     df_action: null,        // 'completeaza'|'revizuieste_neaprobat'|'deschide'|'in_lucru_disabled'|'flow_waiting'
@@ -38,7 +41,14 @@ export function computeAlopCapabilities(alop, actor) {
     && alop.df_aprobat === true          // doar dacă DF-ul curent e APROBAT
     && !alop.df_revizie_in_lucru;        // și nu există deja o revizie în lucru
 
-  if (caps.is_completed || caps.is_cancelled || !caps.is_owner) return caps;
+  // #130: membrul compartimentului CAB are DEJA drept de editare pe orice ALOP al organizației
+  // (canEditAlop → role 'cab_dept', din #ALOP-CAB v3.9.690). `computeAlopCapabilities` nu aflase
+  // niciodată, deci ieșea devreme pe `!is_owner` și `phase_action` rămânea null ⇒ butonul
+  // „Confirmă Plata" nu se randa DELOC pentru CAB, în timp ce garda #126 B1 îl rezervă tocmai
+  // lor. Rezultat: nimeni nu putea confirma plata, în afară de cineva simultan creator ȘI CAB.
+  caps.is_cab = isCabDept(opts.actorComp, opts.cabComp);
+
+  if (caps.is_completed || caps.is_cancelled || (!caps.is_owner && !caps.is_cab)) return caps;
 
   // FIX 4: DF action se calculează DOAR în faza de creare/aprobare a DF-ului ('draft' +
   // 'angajare'). Post-aprobare (lichidare/ordonantare/plata) butonul „Completează/Deschide DF"
@@ -68,6 +78,8 @@ export function computeAlopCapabilities(alop, actor) {
     caps.phase_action = 'confirma_plata';
   }
 
-  caps.can_delete = !alop.df_id && !alop.ord_id;
+  // canDestroyOnly (routes/alop.mjs /cancel) permite DOAR creator+admin, NU cab_dept —
+  // owner-gatat explicit ca să nu apară un buton care eșuează la clic pentru membri CAB.
+  caps.can_delete = caps.is_owner && !alop.df_id && !alop.ord_id;
   return caps;
 }
