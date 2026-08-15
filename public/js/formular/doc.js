@@ -73,16 +73,25 @@ function stLabel(s,aprobat){
 // ── Colectare date formular → DB ──────────────────────────────────────────────
 // v3.9.499 (Finding D): img2 ELIMINAT din collectOrdDb. Captura 2 se persistă
 // exclusiv via /api/formulare-capturi/ord/:id?slot=2 (vezi uploadCaptura).
-function collectOrdDb(){return{
-  cif:g('o-cif'),den_inst_pb:g('o-den'),nr_ordonant_pl:g('o-nr'),data_ordont_pl:g('o-data'),
-  nr_unic_inreg:g('o-nrUnic'),beneficiar:g('o-benef'),documente_justificative:g('o-docsj'),
-  iban_beneficiar:g('o-iban'),cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
-  inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rows:getOR(),
-  df_id:document.getElementById('o-df-id')?.value||null,
-  // v3.9.554: proveniență ALOP — backend-ul o persistă DOAR la creare (POST);
-  // permite self-heal relink dacă link-ord eșuează silențios.
-  source_alop_id:window._alopContext?.alopId||null,
-};}
+// #128f — sursa de adevăr devine `blocuri` (aliniat la POST/PUT /api/formulare-ord din #128c,
+// care citește `body.blocuri` direct, NU câmpurile plate din `data`). Fiecare rând ORD
+// primește `bloc_idx` — azi toate rândurile aparțin blocului 0 (un singur container DOM).
+const ORD_BLOC_FLDS_DB=['nr_unic_inreg','beneficiar','documente_justificative','iban_beneficiar',
+  'cif_beneficiar','banca_beneficiar','inf_pv_plata','inf_pv_plata1'];
+function collectOrdDb(){
+  const blocuri=blocEls().map((_,i)=>{
+    const o={bloc_idx:i};ORD_BLOC_FLDS_DB.forEach(f=>o[f]=bg(i,f));return o;
+  });
+  return{
+    cif:g('o-cif'),den_inst_pb:g('o-den'),nr_ordonant_pl:g('o-nr'),data_ordont_pl:g('o-data'),
+    blocuri,
+    rows:getOR().map(r=>({...r,bloc_idx:0})),
+    df_id:document.getElementById('o-df-id')?.value||null,
+    // v3.9.554: proveniență ALOP — backend-ul o persistă DOAR la creare (POST);
+    // permite self-heal relink dacă link-ord eșuează silențios.
+    source_alop_id:window._alopContext?.alopId||null,
+  };
+}
 function collectDfP1Db(){return{
   cif:g('n-cif'),den_inst_pb:g('n-den'),subtitlu_df:g('n-subtitlu'),
   nr_unic_inreg:g('n-nrUnic'),revizuirea:g('n-rev'),data_revizuirii:g('n-data'),

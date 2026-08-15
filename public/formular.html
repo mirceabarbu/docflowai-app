@@ -773,7 +773,10 @@
 <div class="status" id="sBar"></div>
 
 <!-- ═══ ORDNT ═══════════════════════════════════════════════════════════════ -->
-<div id="form-ordnt">
+<!-- #128f: data-bloc="0" pe strămoșul comun al câmpurilor blocului beneficiar (o-nrUnic e în
+     BLOC ANTET, o-benef..o-inf2 în BLOC P1, o-tbody în BLOC P2) — cele trei div-uri df-block nu
+     au un container comun mai apropiat fără să mutăm markup, deci atributul stă aici. -->
+<div id="form-ordnt" data-bloc="0">
 <div class="df-alop-ctx" id="alop-ctx-ordnt"></div>
 <div id="motiv-bar-ordnt" style="display:none;max-width:1200px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-ordnt"></span></div>
 <div class="actions" id="actions-ordnt"></div>
@@ -819,7 +822,7 @@
       <select id="o-df-sel" class="di" style="max-width:280px;font-size:11px;background:#0d1630;color:#e8eeff;border:1px solid rgba(255,255,255,.15);-webkit-appearance:none;appearance:none" onchange="selectDfAprobat()">
         <option value="" style="background:#0d1630;color:#e8eeff">— selectare DF aprobat —</option>
       </select>
-      <input id="o-nrUnic" type="hidden"/>
+      <input id="o-nrUnic" type="hidden" data-fld="nr_unic_inreg"/>
       <input type="hidden" id="o-df-id"/>
     </div>
   </div>
@@ -841,7 +844,7 @@
       <div>
         <div class="dl req">Beneficiar</div>
         <div class="ac-wrap">
-          <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off"></textarea>
+          <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off" data-fld="beneficiar"></textarea>
           <div id="o-benef-drop" class="ac-drop"></div>
           <div id="o-benef-status" style="margin-top:6px;min-height:0;" aria-live="polite"></div>
         </div>
@@ -850,7 +853,7 @@
     <div class="df-row df-row-1">
       <div>
         <div class="dl req">Documente justificative <span style="font-weight:400;font-size:10px">(max 90 car.)</span></div>
-        <input id="o-docsj" class="di" maxlength="90"/>
+        <input id="o-docsj" class="di" maxlength="90" data-fld="documente_justificative"/>
       </div>
     </div>
     <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
@@ -863,25 +866,25 @@
     <div class="df-row df-row-3">
       <div>
         <div class="dl req">CIF beneficiar <span id="o-cifb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
-        <input id="o-cifb" class="di" maxlength="12" onblur="window._lookupByCif&&window._lookupByCif()" autocomplete="off"/>
+        <input id="o-cifb" class="di" maxlength="12" onblur="window._lookupByCif&&window._lookupByCif()" autocomplete="off" data-fld="cif_beneficiar"/>
       </div>
       <div>
         <div class="dl req">IBAN beneficiar</div>
-        <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..."/>
+        <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..." data-fld="iban_beneficiar"/>
       </div>
       <div>
         <div class="dl req">Bancă beneficiar</div>
-        <input id="o-banca" class="di" maxlength="100"/>
+        <input id="o-banca" class="di" maxlength="100" data-fld="banca_beneficiar"/>
       </div>
     </div>
     <div class="df-row df-row-2">
       <div>
         <div class="dl">Informații privind plata</div>
-        <input id="o-inf1" class="di" maxlength="70"/>
+        <input id="o-inf1" class="di" maxlength="70" data-fld="inf_pv_plata"/>
       </div>
       <div>
         <div class="dl">Informații privind plata (cont.)</div>
-        <input id="o-inf2" class="di" maxlength="70"/>
+        <input id="o-inf2" class="di" maxlength="70" data-fld="inf_pv_plata1"/>
       </div>
     </div>
   </div>
@@ -1471,7 +1474,7 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.708"></script>
-<script src="/js/formular/core.js?v=3.9.693" defer></script>
+<script src="/js/formular/core.js?v=3.9.766" defer></script>
 <script src="/js/formular/verif.js?v=3.9.693" defer></script>
 <script src="/js/shared/pagin.js?v=3.9.722" defer></script>
 <script src="/js/formular/alop.js?v=3.9.761" defer></script>
@@ -1482,7 +1485,7 @@
 <script src="/js/formular/facturi.js?v=3.9.703" defer></script>
 <script src="/js/formular/list.js?v=3.9.755" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
-<script src="/js/formular/doc.js?v=3.9.736" defer></script>
+<script src="/js/formular/doc.js?v=3.9.766" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>
 <script src="/js/shared/file-item.js?v=3.9.693" defer></script>
 <script src="/js/formular/formular.js?v=3.9.693" defer></script>

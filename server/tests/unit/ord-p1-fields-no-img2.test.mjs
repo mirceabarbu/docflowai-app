@@ -31,7 +31,10 @@ describe('ORD_P1_FIELDS: img2 eliminat (v3.9.499)', () => {
 
   it('collectOrdDb în doc.js nu mai trimite img2', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
-    const m = src.match(/function collectOrdDb\(\)\s*\{return\s*\{([\s\S]*?)\};\}/);
+    // #128f: corpul funcției a căpătat o construcție `blocuri` ÎNAINTE de `return{...}`
+    // (rezolvare pe bloc) — regexul tolerează orice cod premergător și whitespace/newline
+    // înainte de `}` de închidere a funcției; invarianta protejată (fără img2) rămâne aceeași.
+    const m = src.match(/function collectOrdDb\(\)\s*\{[\s\S]*?return\s*\{([\s\S]*?)\}\s*;\s*\}/);
     expect(m, 'collectOrdDb nu e găsit').toBeTruthy();
     expect(m[1]).not.toMatch(/img2\s*:\s*imgs\['o-cimg2'\]/);
   });

@@ -419,16 +419,31 @@ function anrefSync(){
 const g=id=>(document.getElementById(id)?.value||'').trim();
 const cb=id=>document.getElementById(id)?.checked?'1':'';
 
-function colO(){return{
-  Cif:g('o-cif'),DenInstPb:g('o-den'),NrOrdonantPl:g('o-nr'),DataOrdontPl:g('o-data'),
-  captureImageBase64:imgs['o-cimg']||null,
-  captureImageBase64_2:imgs['o-cimg2']||null,
-  attachments:JSON.parse(document.getElementById('o-adata').value||'[]'),
-  docFd:{nr_unic_inreg:g('o-nrUnic'),beneficiar:g('o-benef'),
-    documente_justificative:g('o-docsj'),iban_beneficiar:g('o-iban'),
-    cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
-    inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rowTfd:getOR()},
-};}
+// #128f — rezolvare pe bloc: colO()/valF() nu mai citesc câmpurile beneficiarului ORD
+// după id global, ci în interiorul containerului [data-bloc="i"]. Azi există un singur
+// container (data-bloc="0", pe #form-ordnt) ⇒ comportament identic cu varianta pe id-uri.
+const ORD_BLOC_FLDS=['nr_unic_inreg','beneficiar','documente_justificative','iban_beneficiar',
+  'cif_beneficiar','banca_beneficiar','inf_pv_plata','inf_pv_plata1'];
+const blocEls=()=>[...document.querySelectorAll('[data-bloc]')];
+const blocEl=(i)=>document.querySelector(`[data-bloc="${i}"]`);
+const bg=(i,fld)=>(blocEl(i)?.querySelector(`[data-fld="${fld}"]`)?.value||'').trim();
+function rowsOfBloc(i){
+  const el=blocEl(i);if(!el)return[];
+  return[...el.querySelectorAll('tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(inp=>o[inp.dataset.f]=inp.dataset.money?String(pMR(inp.value)||0):inp.value);return o;});
+}
+
+function colO(){
+  const docFd=blocEls().map((_,i)=>{
+    const o={};ORD_BLOC_FLDS.forEach(f=>o[f]=bg(i,f));o.rowTfd=rowsOfBloc(i);return o;
+  });
+  return{
+    Cif:g('o-cif'),DenInstPb:g('o-den'),NrOrdonantPl:g('o-nr'),DataOrdontPl:g('o-data'),
+    captureImageBase64:imgs['o-cimg']||null,
+    captureImageBase64_2:imgs['o-cimg2']||null,
+    attachments:JSON.parse(document.getElementById('o-adata').value||'[]'),
+    docFd,
+  };
+}
 
 function colN(){return{
   Cif:g('n-cif'),DenInstPb:g('n-den'),SubtitluDF:g('n-subtitlu'),
@@ -459,16 +474,26 @@ function colN(){return{
 /* Validation */
 const DR=/^([1-9]|0[1-9]|[12]\d|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}$/;
 const CR=/^[1-9]\d{1,9}$/;
-function markE(id,bad){const e=document.getElementById(id);if(e)e.classList.toggle('err',bad);}
+function markEl(el,bad){if(el)el.classList.toggle('err',bad);}
+function markE(id,bad){markEl(document.getElementById(id),bad);}
 function valF(ft){
   let ok=true;
   const req=(id,c)=>{markE(id,!c);if(!c)ok=false;};
   if(ft==='ordnt'){
     req('o-den',g('o-den').length>0);req('o-cif',CR.test(g('o-cif')));
     req('o-nr',g('o-nr').length>0);req('o-data',DR.test(g('o-data')));
-    req('o-nrUnic',g('o-nrUnic').length>0);req('o-benef',g('o-benef').length>0);
-    req('o-docsj',g('o-docsj').length>0);req('o-iban',g('o-iban').length>0);
-    req('o-cifb',CR.test(g('o-cifb')));req('o-banca',g('o-banca').length>0);
+    // #128f — câmpurile beneficiarului sunt validate PE BLOC: markEl cade pe elementul
+    // rezolvat din containerul blocului i, nu pe un id global (scopare reală la bloc 2+).
+    blocEls().forEach((_,i)=>{
+      const fldEl=(f)=>blocEl(i)?.querySelector(`[data-fld="${f}"]`);
+      const reqFld=(f,c)=>{markEl(fldEl(f),!c);if(!c)ok=false;};
+      reqFld('nr_unic_inreg',bg(i,'nr_unic_inreg').length>0);
+      reqFld('beneficiar',bg(i,'beneficiar').length>0);
+      reqFld('documente_justificative',bg(i,'documente_justificative').length>0);
+      reqFld('iban_beneficiar',bg(i,'iban_beneficiar').length>0);
+      reqFld('cif_beneficiar',CR.test(bg(i,'cif_beneficiar')));
+      reqFld('banca_beneficiar',bg(i,'banca_beneficiar').length>0);
+    });
     if(!getOR().length){setS('Adăugați cel puțin un rând angajament.','err');ok=false;}
   }else{
     req('n-den',g('n-den').length>0);req('n-cif',CR.test(g('n-cif')));
@@ -630,9 +655,12 @@ function mkFlow(ft){
   window.delR               = delR;
 
   window.colO               = colO;
+  window.blocEls            = blocEls;
+  window.bg                 = bg;
   window.colN               = colN;
   window.upTot              = upTot;
   window.markE              = markE;
+  window.markEl             = markEl;
 
   window.p4toggle           = p4toggle;
   window.p5toggle           = p5toggle;
