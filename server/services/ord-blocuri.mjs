@@ -143,4 +143,45 @@ function pregatesteScriereBlocuri({ body, data, docExistent = null }) {
   return { blocuri, oglinda, rows };
 }
 
-export { blocuriDinOrd, randuriBloc, randuriPeBlocuri, oglindaBloc1, pregatesteScriereBlocuri };
+/**
+ * #128d — profilul de POTRIVIRE al fiecărui bloc: cine e beneficiarul (cif + iban) și
+ * ce triplete `cod||indicator` îi aparțin.
+ *
+ * PURĂ. Consumată de `opme-matcher.mjs`, care până la #128d citea `cif_beneficiar` /
+ * `iban_beneficiar` ca pe niște coloane plate UNICE și lua tripletele din TOATE rândurile
+ * ORD-ului — cu blocuri multiple asta potrivește plata pe furnizorul greșit, TĂCUT.
+ *
+ * Retrocompatibil prin construcție: un ORD legacy (`blocuri` NULL) dă exact UN profil,
+ * derivat din coloanele plate, cu toate rândurile (fără `bloc_idx` ⇒ blocul 0).
+ *
+ * ⛔ Verdictul de IBAN NU se calculează aici — rămâne în `_ibanVerdict` din
+ *    `opme-matcher.mjs`, un singur loc pentru ambele căi (selecție + agregare). Profilul
+ *    livrează doar IBAN-ul brut (trimuit).
+ *
+ * Un profil fără `cif` sau cu `triplete` goale se întoarce ORICUM — filtrarea o face
+ * apelantul, ca să poată raporta motivul.
+ *
+ * @param {object} ord  { blocuri?, rows?, + coloanele plate pentru fallback-ul legacy }
+ * @returns {{ bloc_idx: number, cif: string, iban: string, triplete: Set<string> }[]}
+ */
+function profiluriBlocuri(ord) {
+  const o = ord || {};
+  const rows = Array.isArray(o.rows) ? o.rows : [];
+  return blocuriDinOrd(o).map((b) => {
+    const triplete = new Set();
+    for (const r of randuriBloc(rows, b.bloc_idx)) {
+      const cod = String(r?.cod_angajament ?? '').trim();
+      const ind = String(r?.indicator_angajament ?? '').trim();
+      if (cod && ind) triplete.add(`${cod}||${ind}`);
+    }
+    return {
+      bloc_idx: b.bloc_idx,
+      cif: String(b?.cif_beneficiar ?? '').trim(),
+      iban: String(b?.iban_beneficiar ?? '').trim(),
+      triplete,
+    };
+  });
+}
+
+export { blocuriDinOrd, randuriBloc, randuriPeBlocuri, oglindaBloc1, pregatesteScriereBlocuri,
+         profiluriBlocuri };

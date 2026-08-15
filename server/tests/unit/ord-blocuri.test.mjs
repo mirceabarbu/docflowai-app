@@ -1,7 +1,8 @@
 // server/tests/unit/ord-blocuri.test.mjs
 // FEATURE #128b — fundația ORD multi-bloc. Teste pure pentru modulul de interpretare.
 import { describe, it, expect } from 'vitest';
-import { blocuriDinOrd, randuriBloc, randuriPeBlocuri, oglindaBloc1 } from '../../services/ord-blocuri.mjs';
+import { blocuriDinOrd, randuriBloc, randuriPeBlocuri, oglindaBloc1,
+         profiluriBlocuri } from '../../services/ord-blocuri.mjs';
 
 const ORD_LEGACY = {
   nr_unic_inreg: 'NR-1',
@@ -157,5 +158,79 @@ describe('oglindaBloc1', () => {
       expect(v).not.toBeUndefined();
       expect(v).toBe('');
     }
+  });
+});
+
+// FEATURE #128d — profilul de potrivire per bloc, consumat de opme-matcher.
+describe('profiluriBlocuri', () => {
+  it('ORD legacy (blocuri NULL) → UN profil din coloanele plate, cu toate rândurile', () => {
+    const result = profiluriBlocuri({
+      ...ORD_LEGACY,
+      rows: [
+        { cod_angajament: 'COD1', indicator_angajament: 'AAB' },
+        { cod_angajament: 'COD1', indicator_angajament: 'AA2' },
+      ],
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].bloc_idx).toBe(0);
+    expect(result[0].cif).toBe('RO123456');
+    expect(result[0].iban).toBe('RO49AAAA1B31007593840000');
+    expect([...result[0].triplete].sort()).toEqual(['COD1||AA2', 'COD1||AAB']);
+  });
+
+  it('două blocuri → tripletele NU se amestecă între blocuri', () => {
+    const result = profiluriBlocuri({
+      blocuri: [
+        { bloc_idx: 0, cif_beneficiar: 'CIF-A', iban_beneficiar: 'RO-A' },
+        { bloc_idx: 1, cif_beneficiar: 'CIF-B', iban_beneficiar: 'RO-B' },
+      ],
+      rows: [
+        { bloc_idx: 0, cod_angajament: 'C', indicator_angajament: 'T1' },
+        { bloc_idx: 1, cod_angajament: 'C', indicator_angajament: 'T2' },
+      ],
+    });
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({ bloc_idx: 0, cif: 'CIF-A', iban: 'RO-A' });
+    expect([...result[0].triplete]).toEqual(['C||T1']);
+    expect(result[1]).toMatchObject({ bloc_idx: 1, cif: 'CIF-B', iban: 'RO-B' });
+    expect([...result[1].triplete]).toEqual(['C||T2']);
+    // ⭐ miezul: tripletul blocului 1 NU apare la blocul 0 (potrivire încrucișată).
+    expect(result[0].triplete.has('C||T2')).toBe(false);
+  });
+
+  it('cif/iban se întorc trimuite; triplet incomplet (cod SAU indicator gol) e ignorat', () => {
+    const result = profiluriBlocuri({
+      blocuri: [{ bloc_idx: 0, cif_beneficiar: '  CIF-A  ', iban_beneficiar: ' RO-A ' }],
+      rows: [
+        { cod_angajament: ' C ', indicator_angajament: ' T1 ' },
+        { cod_angajament: 'C', indicator_angajament: '   ' },
+        { cod_angajament: '', indicator_angajament: 'T3' },
+      ],
+    });
+    expect(result[0].cif).toBe('CIF-A');
+    expect(result[0].iban).toBe('RO-A');
+    expect([...result[0].triplete]).toEqual(['C||T1']);
+  });
+
+  it('profil fără cif / fără triplete se întoarce ORICUM (filtrarea o face apelantul)', () => {
+    const result = profiluriBlocuri({
+      blocuri: [
+        { bloc_idx: 0 },                             // fără cif, fără rânduri
+        { bloc_idx: 1, cif_beneficiar: 'CIF-B' },    // cu cif, fără triplete
+      ],
+      rows: [],
+    });
+    expect(result).toHaveLength(2);
+    expect(result[0].cif).toBe('');
+    expect(result[0].triplete.size).toBe(0);
+    expect(result[1].cif).toBe('CIF-B');
+    expect(result[1].triplete.size).toBe(0);
+  });
+
+  it('caz negativ: ord null / fără rows → un profil gol, fără excepție', () => {
+    expect(() => profiluriBlocuri(null)).not.toThrow();
+    const result = profiluriBlocuri(null);
+    expect(result).toHaveLength(1);
+    expect(result[0].triplete.size).toBe(0);
   });
 });

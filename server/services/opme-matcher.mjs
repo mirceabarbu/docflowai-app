@@ -7,12 +7,24 @@
  * plus, din #126, al PATRULEA criteriu: iban_beneficiar (normalizat), aplicat
  * DOAR când ambele părți îl au — vezi `_ibanVerdict` pentru decizie și motiv.
  *
+ * #128d — potrivirea e conștientă de BLOCURI (un ORD, N beneficiari). Sursa de adevăr
+ * nu mai e perechea de coloane plate `(cif_beneficiar, iban_beneficiar)` plus tripletele
+ * din TOATE rândurile, ci un PROFIL per bloc: `profiluriBlocuri(ord)` din
+ * `services/ord-blocuri.mjs` întoarce `{ bloc_idx, cif, iban, triplete }`, unde tripletele
+ * sunt DOAR ale rândurilor blocului. O linie OPME se potrivește dacă EXISTĂ un bloc cu
+ * `cif`-ul ei, cu tripletul ei și cu IBAN necontradictoriu. Un ORD legacy (`blocuri` NULL)
+ * dă exact un profil din coloanele plate ⇒ comportament identic cu înainte.
+ * ⚠️ Un `mismatch` de IBAN pe UN bloc NU mai respinge linia global — se încearcă blocul
+ *    următor. E singura schimbare semantică, și e cerută: doi beneficiari = două IBAN-uri.
+ *
  * Reguli (per prompt Pachet B):
  *   • Candidați = alop_instances a JOIN formulare_ord o ON o.id = a.ord_id
  *       a.org_id = line.org_id
  *       a.status = 'plata' AND a.plata_confirmed_at IS NULL AND a.cancelled_at IS NULL
- *       o.cif_beneficiar = line.cif_beneficiar (TEXT, trimmed)
- *       EXISTS jsonb_array_elements(o.rows) care matchează (cod, indicator)
+ *       CIF-ul liniei apare pe coloana plată SAU într-un bloc (SUPERSET în SQL)
+ *       EXISTS jsonb_array_elements(o.rows) care matchează (cod, indicator) — tot superset
+ *       …iar regula AUTORITARĂ (cif+triplet+IBAN, PER BLOC) se aplică în JS, prin ACELAȘI
+ *       helper folosit la agregare (vezi #126 C mai jos).
  *
  *   • 0 candidați → 'unmatched'
  *   • >1 candidați → 'ambiguous'
@@ -21,7 +33,7 @@
  *     multe rânduri) e plătit de mai multe OP-uri, iar ALOP-ul se închide când
  *     suma TUTUROR OP-urilor == valoarea TOTALĂ a ORD-ului. `_processAlop`
  *     grupează TOATE liniile pending/unmatched/partial din aceeași org cu
- *     CIF-ul ORD-ului (filtrate în JS la tripletele ORD-ului) și agregă:
+ *     CIF-urile blocurilor ORD-ului (filtrate în JS per bloc) și agregă:
  *       expected = SUM(rows.suma_ordonantata_plata) pe TOATE rândurile ORD-ului
  *       actual   = SUM(opme_lines.suma_op) pe toate liniile matchate
  *       (c1) actual === expected  → confirmă ALOP O SINGURĂ DATĂ, cu suma
@@ -47,6 +59,7 @@
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { applyPlataConfirmedSideEffects } from '../routes/alop.mjs';
+import { profiluriBlocuri } from './ord-blocuri.mjs';
 
 const TOLERANCE = 0.01;
 const _eq = (a, b) => Math.abs(Number(a) - Number(b)) < TOLERANCE;
@@ -73,6 +86,33 @@ function _ibanVerdict(ordIbanRaw, lineIbanRaw) {
   const b = _normIban(lineIbanRaw);
   if (!a || !b) return 'no_iban';
   return a === b ? 'match' : 'mismatch';
+}
+
+// ── #128d: regula AUTORITARĂ de potrivire linie ↔ ORD, PER BLOC, într-un SINGUR loc ──
+// Apelată IDENTIC în selecția candidaților (`matchImport`, `tryAutoConfirmAlop`) ȘI în
+// agregarea sumei (`_processAlop`). Dacă cele două căi divergă, o linie se potrivește la
+// selecție dar nu se agregă la sumă = exact clasa de bug de la #115 (plată sub-numărată).
+//
+// O linie e acceptată de un bloc când, SIMULTAN: `profil.cif === cif-ul liniei`,
+// `profil.triplete` conține `cod||ind`, iar `_ibanVerdict(profil.iban, linie.iban)` NU e
+// 'mismatch'. Prima potrivire câștigă (blocurile sunt disjuncte pe (cif, triplet)).
+// ⛔ Un 'mismatch' pe un bloc NU respinge linia global — se încearcă blocul următor:
+//    un ORD cu doi beneficiari are două IBAN-uri, iar linia se compară cu al ei.
+//
+// @returns {{ profil: object|null, noIban: boolean, ibanRespins: boolean }}
+//          `ibanRespins` e true DOAR când singurul motiv de respingere a fost IBAN-ul
+//          (folosit pentru contorul/mesajul de raport, neschimbate ca formă).
+function _potrivireBloc(profile, { cif, cod, ind, iban }) {
+  const trip = `${cod}||${ind}`;
+  let ibanRespins = false;
+  for (const p of profile) {
+    if (!p.cif || p.cif !== cif) continue;
+    if (!p.triplete.has(trip)) continue;
+    const v = _ibanVerdict(p.iban, iban);
+    if (v === 'mismatch') { ibanRespins = true; continue; }
+    return { profil: p, noIban: v === 'no_iban', ibanRespins: false };
+  }
+  return { profil: null, noIban: false, ibanRespins };
 }
 
 /**
@@ -143,15 +183,27 @@ export async function matchImport(importId, opts = {}) {
         report.unmatched++;
         continue;
       }
+      // #128d: SQL-ul selectează un SUPERSET (CIF-ul poate veni de pe coloana plată SAU
+      // dintr-un bloc; `EXISTS`-ul pe rânduri rămâne peste TOATE rândurile, indiferent de
+      // bloc). Regula autoritară — cif+triplet+IBAN PER BLOC — se aplică imediat după, în
+      // JS, prin `_potrivireBloc`: același helper folosit de `_processAlop` la agregare.
+      // ⛔ NU muta regula în SQL peste JSONB — ar deveni o a doua implementare (#126 C).
       const { rows: candsRaw } = await client.query(`
-        SELECT a.id AS alop_id, o.iban_beneficiar AS ord_iban
+        SELECT a.id AS alop_id, o.cif_beneficiar, o.iban_beneficiar,
+               o.rows AS ord_rows, o.blocuri
           FROM alop_instances a
           JOIN formulare_ord  o ON o.id = a.ord_id
          WHERE a.org_id = $1
            AND a.status = 'plata'
            AND a.plata_confirmed_at IS NULL
            AND a.cancelled_at IS NULL
-           AND TRIM(o.cif_beneficiar) = $2
+           AND (
+             TRIM(o.cif_beneficiar) = $2
+             OR EXISTS (
+               SELECT 1 FROM jsonb_array_elements(COALESCE(o.blocuri,'[]'::jsonb)) AS b
+                WHERE TRIM(b->>'cif_beneficiar') = $2
+             )
+           )
            AND EXISTS (
              SELECT 1 FROM jsonb_array_elements(COALESCE(o.rows,'[]'::jsonb)) AS r
               WHERE r->>'cod_angajament' = $3
@@ -164,9 +216,16 @@ export async function matchImport(importId, opts = {}) {
       let ibanRespinse = 0;
       let ibanNedeclarat = false;
       const cands = candsRaw.filter(c => {
-        const v = _ibanVerdict(c.ord_iban, line.iban_beneficiar);
-        if (v === 'no_iban') { ibanNedeclarat = true; return true; }
-        if (v === 'mismatch') { ibanRespinse++; return false; }
+        const profile = profiluriBlocuri({
+          blocuri: c.blocuri, rows: c.ord_rows,
+          cif_beneficiar: c.cif_beneficiar, iban_beneficiar: c.iban_beneficiar,
+        });
+        const hit = _potrivireBloc(profile, { cif, cod, ind, iban: line.iban_beneficiar });
+        if (!hit.profil) {
+          if (hit.ibanRespins) ibanRespinse++;
+          return false;
+        }
+        if (hit.noIban) ibanNedeclarat = true;
         return true;
       });
       if (ibanNedeclarat) {
@@ -271,8 +330,8 @@ export async function tryAutoConfirmAlop(alopId, opts = {}) {
     // 1. Încarcă ALOP + ORD asociat
     const { rows: aRows } = await client.query(`
       SELECT a.id, a.org_id, a.status, a.plata_confirmed_at, a.created_by,
-             o.id AS ord_id, TRIM(o.cif_beneficiar) AS cif_beneficiar,
-             o.rows AS ord_rows
+             o.id AS ord_id, o.cif_beneficiar, o.iban_beneficiar,
+             o.rows AS ord_rows, o.blocuri
         FROM alop_instances a
         LEFT JOIN formulare_ord o ON o.id = a.ord_id
        WHERE a.id = $1
@@ -290,22 +349,26 @@ export async function tryAutoConfirmAlop(alopId, opts = {}) {
       if (ownClient) await client.query('COMMIT');
       return { confirmed: false, reason: 'already_confirmed' };
     }
-    if (!alop.ord_id || !alop.cif_beneficiar) {
+    // #128d: „are beneficiar" / „are triplete" se citesc de pe PROFILELE de bloc, nu de pe
+    // coloanele plate. ORD legacy (`blocuri` NULL) ⇒ un profil din coloanele plate, deci
+    // aceleași verdicte ca înainte. Codurile de rezultat rămân NESCHIMBATE.
+    const profileAll = profiluriBlocuri({
+      blocuri: alop.blocuri, rows: alop.ord_rows,
+      cif_beneficiar: alop.cif_beneficiar, iban_beneficiar: alop.iban_beneficiar,
+    });
+    if (!alop.ord_id || !profileAll.some(p => p.cif)) {
       if (ownClient) await client.query('COMMIT');
       return { confirmed: false, reason: 'ord_missing' };
     }
 
-    // 2. Verifică că ORD-ul are cel puțin un triplet valid (cod+indicator).
-    const ordRows = Array.isArray(alop.ord_rows) ? alop.ord_rows : [];
-    const hasTriplet = ordRows.some(r =>
-      (r?.cod_angajament || '').trim() && (r?.indicator_angajament || '').trim());
-    if (!hasTriplet) {
+    // 2. Verifică că ORD-ul are cel puțin un triplet valid (cod+indicator) într-un bloc.
+    if (!profileAll.some(p => p.triplete.size > 0)) {
       if (ownClient) await client.query('COMMIT');
       return { confirmed: false, reason: 'no_triplets_in_ord' };
     }
 
     // 3. Procesează ALOP-ul ÎNTREG (toate tripletele ORD-ului) o singură dată.
-    //    _processAlop re-citește cif + rândurile ORD și agregă suma tuturor OP-urilor.
+    //    _processAlop re-citește profilele de bloc și agregă suma tuturor OP-urilor.
     const out = await _processAlop(client, {
       alopId,
       org_id: alop.org_id,
@@ -348,9 +411,11 @@ async function _processAlop(client, args) {
   // punct de choke ca înainte (serializează cu confirma-plata manuală FOR UPDATE).
   await client.query('SELECT id FROM alop_instances WHERE id=$1 FOR UPDATE', [alopId]);
 
-  // (0) ORD-ul ALOP-ului: cif + setul de triplete (cod,indicator) din rânduri.
+  // (0) ORD-ul ALOP-ului: un PROFIL per bloc — (cif, iban, tripletele rândurilor SALE).
+  //     #128d: înainte se citeau coloanele plate ca sursă unică de adevăr, iar tripletele
+  //     din TOATE rândurile — cu N beneficiari asta potrivea plata pe furnizorul greșit.
   const { rows: aRows } = await client.query(`
-    SELECT TRIM(o.cif_beneficiar) AS cif, o.rows AS ord_rows, o.iban_beneficiar AS ord_iban
+    SELECT o.cif_beneficiar, o.iban_beneficiar, o.rows AS ord_rows, o.blocuri
       FROM alop_instances a
       JOIN formulare_ord  o ON o.id = a.ord_id
      WHERE a.id = $1
@@ -358,18 +423,17 @@ async function _processAlop(client, args) {
   if (!aRows[0]) {
     return { alop_id: alopId, result: 'ord_missing', expected: 0, actual: 0, line_count: 0 };
   }
-  const cif = aRows[0].cif;
-  const ordIban = aRows[0].ord_iban;
-  const ordRows = Array.isArray(aRows[0].ord_rows) ? aRows[0].ord_rows : [];
-  const tripSet = new Set();
-  for (const r of ordRows) {
-    const cod = (r?.cod_angajament || '').trim();
-    const ind = (r?.indicator_angajament || '').trim();
-    if (cod && ind) tripSet.add(`${cod}||${ind}`);
-  }
-  if (tripSet.size === 0 || !cif) {
+  const profileAll = profiluriBlocuri({
+    blocuri: aRows[0].blocuri, rows: aRows[0].ord_rows,
+    cif_beneficiar: aRows[0].cif_beneficiar, iban_beneficiar: aRows[0].iban_beneficiar,
+  });
+  // Un bloc fără CIF (document incomplet) sau fără triplete e ignorat — restul funcționează.
+  const profile = profileAll.filter(p => p.cif && p.triplete.size > 0);
+  if (profile.length === 0) {
+    // ⛔ Cod de rezultat NESCHIMBAT — consumat de raport și de teste.
     return { alop_id: alopId, result: 'no_triplets', expected: 0, actual: 0, line_count: 0 };
   }
+  const cifuri = Array.from(new Set(profile.map(p => p.cif)));
 
   // (a) expected = SUM(suma_ordonantata_plata) pe TOATE rândurile ORD (valoarea totală ORD).
   const { rows: expRows } = await client.query(`
@@ -381,18 +445,19 @@ async function _processAlop(client, args) {
   `, [alopId]);
   const expected = Number(expRows[0]?.expected || 0);
 
-  // (b) toate liniile pending/unmatched/partial ale org-ului cu CIF-ul ORD-ului,
-  //     filtrate în JS la tripletele ORD-ului (evită liniile altui ALOP cu alt
-  //     cod/indicator la același beneficiar). Garda matched_alop_id protejează
-  //     liniile deja legate de alt ALOP.
+  // (b) toate liniile pending/unmatched/partial ale org-ului cu CIF-ul ORICĂRUI bloc,
+  //     filtrate în JS per bloc (evită liniile altui ALOP cu alt cod/indicator la același
+  //     beneficiar, ȘI combinațiile încrucișate triplet-dintr-un-bloc / CIF-din-altul).
+  //     Garda matched_alop_id protejează liniile deja legate de alt ALOP.
   const { rows: poolLines } = await client.query(`
-    SELECT id, cod_angajament, indicator_angajament, iban_beneficiar, suma_op, nr_op, opme_import_id
+    SELECT id, cod_angajament, indicator_angajament, cif_beneficiar, iban_beneficiar,
+           suma_op, nr_op, opme_import_id
       FROM opme_lines
      WHERE org_id = $1
-       AND TRIM(cif_beneficiar) = $2
+       AND TRIM(cif_beneficiar) = ANY($2::text[])
        AND match_status IN ('pending','unmatched','partial')
        AND (matched_alop_id IS NULL OR matched_alop_id = $3)
-  `, [org_id, cif, alopId]);
+  `, [org_id, cifuri, alopId]);
 
   const lineIds = new Set();
   let actual = 0;
@@ -401,13 +466,15 @@ async function _processAlop(client, args) {
   for (const ln of poolLines) {
     const cod = (ln.cod_angajament || '').trim();
     const ind = (ln.indicator_angajament || '').trim();
-    if (!tripSet.has(`${cod}||${ind}`)) continue;   // doar tripletele ORD-ului
-    // #126 C: al patrulea criteriu (IBAN), IDENTIC cu selecția candidaților —
+    // #126 C + #128d: regula per bloc, prin ACELAȘI helper ca la selecția candidaților —
     // altfel o linie s-ar potrivi la selecție dar nu s-ar agrega la sumă (#115).
-    const ibanV = _ibanVerdict(ordIban, ln.iban_beneficiar);
-    if (ibanV === 'mismatch') continue;
-    if (ibanV === 'no_iban') {
-      logger.info({ alop_id: alopId, line_id: ln.id }, 'opme.match.candidate.no_iban');
+    const hit = _potrivireBloc(profile, {
+      cif: (ln.cif_beneficiar || '').trim(), cod, ind, iban: ln.iban_beneficiar,
+    });
+    if (!hit.profil) continue;
+    if (hit.noIban) {
+      logger.info({ alop_id: alopId, line_id: ln.id, bloc_idx: hit.profil.bloc_idx },
+        'opme.match.candidate.no_iban');
     }
     lineIds.add(ln.id);
     actual += Number(ln.suma_op || 0);
@@ -473,7 +540,9 @@ async function _processAlop(client, args) {
         nr_op_list: nrOps,
         suma_efectiva: actual,
         data_op: importDataOp,
-        cif_beneficiar: cif,
+        // #128d: un ORD multi-bloc are N beneficiari. Un singur bloc ⇒ string identic cu
+        // înainte (non-regresie pe payload-ul de audit al documentelor de azi).
+        cif_beneficiar: cifuri.join(', '),
         actor_user_id: actorUserId,
       })]);
     } catch (_auditErr) {
