@@ -56,13 +56,22 @@ function validateOrdnt(d) {
   if (!/^[1-9]\d{1,9}$/.test(d.Cif || '')) errs.push('Cif format invalid');
   if (!/^([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}$/.test(d.DataOrdontPl || ''))
     errs.push('DataOrdontPl format invalid (DD.MM.YYYY)');
-  const df = d.docFd || {};
-  if (!df.beneficiar)      errs.push('beneficiar obligatoriu');
-  if (!df.iban_beneficiar) errs.push('iban_beneficiar obligatoriu');
-  if (!df.cif_beneficiar)  errs.push('cif_beneficiar obligatoriu');
-  if (!/^[1-9]\d{1,9}$/.test(df.cif_beneficiar || '')) errs.push('cif_beneficiar format invalid');
-  if (!Array.isArray(df.rowTfd) || df.rowTfd.length === 0)
-    errs.push('Cel putin un rand rowTfd obligatoriu');
+  // #128e — `docFd` poate fi un ARRAY de blocuri (multi-beneficiar). Normalizare identică
+  // cu cea din `serializeOrdnt` (ordnt-serializer.mjs) — ⛔ un singur tipar, nu inventa altul.
+  const docs = Array.isArray(d.docFd) ? d.docFd : [d.docFd || {}];
+  if (docs.length === 0) errs.push('Cel putin un bloc docFd obligatoriu');
+  // ⭐ Prefixul `blocul N: ` apare DOAR când există mai multe blocuri — la un singur bloc
+  // (tot ce există azi în producție) mesajele rămân byte-identice cu cele dinainte de #128e.
+  docs.forEach((df0, i) => {
+    const df = df0 || {};
+    const p  = docs.length > 1 ? `blocul ${i + 1}: ` : '';
+    if (!df.beneficiar)      errs.push(p + 'beneficiar obligatoriu');
+    if (!df.iban_beneficiar) errs.push(p + 'iban_beneficiar obligatoriu');
+    if (!df.cif_beneficiar)  errs.push(p + 'cif_beneficiar obligatoriu');
+    if (!/^[1-9]\d{1,9}$/.test(df.cif_beneficiar || '')) errs.push(p + 'cif_beneficiar format invalid');
+    if (!Array.isArray(df.rowTfd) || df.rowTfd.length === 0)
+      errs.push(p + 'Cel putin un rand rowTfd obligatoriu');
+  });
   return errs;
 }
 
@@ -833,7 +842,24 @@ async function generatePdfSimple(formType, data) {
   // ── Conținut ORDNT ─────────────────────────────────────────────────────────
 
   function buildOrdnt() {
-    const df = data.docFd || {};
+    // #128e — `docFd` poate fi un ARRAY de blocuri (multi-beneficiar). Normalizare identică cu
+    // `validateOrdnt` / `serializeOrdnt`. Un singur bloc ⇒ ieșire IDENTICĂ cu cea de dinainte:
+    // niciun antet, niciun separator, niciun `ensureY` în plus (totul e gardat de `i > 0`).
+    const docs = Array.isArray(data.docFd) ? data.docFd : [data.docFd || {}];
+    docs.forEach((df0, i) => {
+      // Titlu discret înaintea blocurilor 2..N, ca cititorul să știe al cui e tabelul.
+      // ⛔ Fără `addPage()` per bloc — formularul MF nu paginează per beneficiar; `ensureY`
+      // doar evită ca titlul să rămână orfan la baza paginii.
+      if (i > 0) {
+        ensureY(LH * 3);
+        txt(`Beneficiar ${i + 1} din ${docs.length}`, ML, y, { font: fB, size: 8.5 });
+        y -= LH;
+      }
+      buildOrdntBloc(df0 || {});
+    });
+  }
+
+  function buildOrdntBloc(df) {
 
     // ── Numar unic de inregistrare al documentului de fundamentare ─────────
     boxedField('Numar unic de inregistrare al documentului de fundamentare:',
