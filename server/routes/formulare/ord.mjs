@@ -23,6 +23,7 @@ import {
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
 import { normalizeAngajamentRows } from '../../services/angajament-normalize.mjs';
+import { blocuriDinOrd, pregatesteScriereBlocuri } from '../../services/ord-blocuri.mjs';
 import { serializeOrdnt } from '../../services/alop-xml/ordnt-serializer.mjs';
 import { ordRowToXsd } from '../../services/alop-xml/ord-to-xsd.mjs';
 import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
@@ -179,6 +180,10 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         doc.cicluri_arhivate = ctx.cicluriArhivate;
       }
     } catch (_) { /* non-fatal: atenționarea inline e best-effort, garda hard rămâne pe server */ }
+    // #128c — un document vechi (`blocuri` NULL în DB) întoarce totuși un array cu blocul
+    // derivat din coloanele plate, ca #128e să scrie frontendul contra unei singure forme.
+    // ⛔ DOAR detaliul: listele ar căra payload fără consumator.
+    doc.blocuri = blocuriDinOrd(doc);
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord get error');
@@ -293,6 +298,14 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
         return res.json({ ok: true, document: dup[0], deduplicated: true });
       }
     }
+    // #128c — sursa de adevăr devine `blocuri`; cele 8 coloane plate se scriu EXCLUSIV ca
+    // OGLINDĂ a blocului 1 (un singur loc de scriere: `oglindaBloc1`). Un payload FĂRĂ
+    // `blocuri` — adică tot ce trimite clientul azi — dă un singur bloc derivat din câmpurile
+    // plate, deci coloanele scrise rămân identice cu cele de dinainte de #128c.
+    const { blocuri, oglinda, rows: rowsCuBloc } = pregatesteScriereBlocuri({ body, data });
+    if (rowsCuBloc !== undefined) data.rows = rowsCuBloc;   // bloc_idx, DUPĂ derivarea de identitate
+    Object.assign(data, oglinda);                           // intră pe traseul ORD_P1_FIELDS de mai jos
+
     const cols = ['org_id', 'created_by'];
     const vals = [actor.orgId, actor.userId];
 
@@ -305,6 +318,10 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
       cols.push(f);
       vals.push(typeof data[f] === 'object' ? JSON.stringify(data[f]) : data[f]);
     }
+    // Tratat SEPARAT (ca `source_alop_id`), NU adăugat în ORD_P1_FIELDS: dacă ar intra în lista
+    // generică, un client ar putea trimite `blocuri` direct, ocolind normalizarea.
+    cols.push('blocuri');
+    vals.push(JSON.stringify(blocuri));
 
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
     const { rows } = await pool.query(
@@ -381,6 +398,27 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
           message: 'Numărul ordonanțării există deja. Folosiți alt număr.'
         });
       }
+    }
+    // #128c — oglinda blocului 1 + coloana `blocuri` (vezi POST). `docExistent: doc` e
+    // OBLIGATORIU: PUT-urile sunt frecvent parțiale (doar `beneficiar`, doar `rows`), iar fără
+    // fuziune oglinda ar scrie peste câmpuri pe care utilizatorul nu le-a atins.
+    {
+      const prep = pregatesteScriereBlocuri({ body: req.body || {}, data, docExistent: doc });
+      if (prep.rows !== undefined) data.rows = prep.rows;   // bloc_idx, DUPĂ derivarea de identitate
+      // ⚠️ Bucla de mai jos consumă `extraSets[i]` ↔ `extraVals[i]`, dar ramura de reopen
+      // adaugă 2 seturi FĂRĂ valoare (`completed_at=NULL`, `submitted_at=NULL`). Aliniem
+      // înainte de a adăuga perechi noi, altfel valorile s-ar decala cu 2 poziții.
+      while (extraVals.length < extraSets.length) extraVals.push(undefined);
+      for (const [k, v] of Object.entries(prep.oglinda)) {
+        // Cele 8 sunt toate în ORD_P1_FIELDS; pe calea P2-only (`ORD_P2_FIELDS = ['rows']`)
+        // NU sunt, iar `buildUpdate` le-ar înghiți tăcut → le scriem explicit prin extraSets
+        // (valorile vin din `doc`, deci scrierea e un no-op — P2 nu schimbă beneficiarul).
+        // ⛔ NU lărgi `allowedFields`: ar deschide și scrierea directă de la client.
+        if (allowedFields.includes(k)) data[k] = v;
+        else { extraSets.push(`${k}=$__`); extraVals.push(v); }
+      }
+      extraSets.push('blocuri=$__');
+      extraVals.push(JSON.stringify(prep.blocuri));
     }
     const { sets, vals } = buildUpdate(data, allowedFields, 1);
 

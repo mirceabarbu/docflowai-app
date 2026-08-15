@@ -79,4 +79,68 @@ function oglindaBloc1(blocuri) {
   return out;
 }
 
-export { blocuriDinOrd, randuriBloc, randuriPeBlocuri, oglindaBloc1 };
+/**
+ * #128c — pregătește SCRIEREA unui ORD (POST create / PUT update).
+ *
+ * PURĂ: nu atinge DB-ul, nu mută input-urile.
+ *
+ * @param {object}  body        body-ul brut al cererii (poate conține `blocuri`)
+ * @param {object}  data        câmpurile deja filtrate prin `pick(body, …_FIELDS)` și trecute
+ *                              prin `normalizeAngajamentRows` + `deriveOrdIdentityCols`
+ * @param {object?} docExistent rândul curent din DB (PUT); `null` la creare
+ * @returns {{ blocuri: Array, oglinda: object, rows: Array|undefined }}
+ *
+ * `oglinda` = coloanele plate de scris. Conține DOAR cheile care trebuie efectiv scrise:
+ * un câmp pe care nici payload-ul, nici documentul existent nu-l cunosc rămâne NEATINS
+ * (altfel oglinda ar scrie '' peste NULL — o modificare de date deghizată în non-regresie).
+ * Când clientul trimite `blocuri` explicit, oglinda acoperă toate cele 8 chei: blocul 1 e
+ * atunci sursa completă de adevăr.
+ */
+function pregatesteScriereBlocuri({ body, data, docExistent = null }) {
+  const b = body || {};
+  const d = data || {};
+  const prev = docExistent || null;
+  const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+
+  let blocuri;
+  let oglindaCompleta;
+  if (Array.isArray(b.blocuri) && b.blocuri.length > 0) {
+    blocuri = blocuriDinOrd({ blocuri: b.blocuri });
+    oglindaCompleta = true;
+  } else {
+    // Un singur bloc, fuzionat: payload > document existent > necunoscut.
+    // ⚠️ Fuziunea peste `docExistent` e miezul corectitudinii la PUT — clientul trimite
+    // frecvent payload-uri PARȚIALE (doar `beneficiar`, doar `rows`).
+    const bloc = { bloc_idx: 0 };
+    for (const key of BLOC_KEYS) {
+      if (has(d, key)) bloc[key] = d[key];
+      else if (has(prev, key) && prev[key] !== null && prev[key] !== undefined) bloc[key] = prev[key];
+      else bloc[key] = null;
+    }
+    blocuri = [bloc];
+    oglindaCompleta = false;
+  }
+
+  const plate = oglindaBloc1(blocuri);
+  const bloc1 = blocuri.find((x) => x?.bloc_idx === 0) || blocuri[0] || {};
+  const oglinda = {};
+  for (const key of BLOC_KEYS) {
+    if (!oglindaCompleta && (bloc1[key] === null || bloc1[key] === undefined)) continue;
+    oglinda[key] = plate[key];
+  }
+
+  // `bloc_idx` pe rânduri — se aplică DUPĂ normalizeAngajamentRows/deriveOrdIdentityCols
+  // (constrângere de ordonare în rute: ambele reconstruiesc obiectele rândurilor).
+  let rows;
+  if (has(d, 'rows')) {
+    rows = Array.isArray(d.rows)
+      ? d.rows.map((r) => (r && typeof r === 'object' && !Array.isArray(r)
+        ? { ...r, bloc_idx: typeof r.bloc_idx === 'number' ? r.bloc_idx : 0 }
+        : r))
+      : d.rows;
+  }
+
+  return { blocuri, oglinda, rows };
+}
+
+export { blocuriDinOrd, randuriBloc, randuriPeBlocuri, oglindaBloc1, pregatesteScriereBlocuri };
