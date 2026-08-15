@@ -2452,6 +2452,23 @@ export const MIGRATIONS = [
               OR f.data->>'status' = 'refused' );
       END $g$;
     `
+  },
+  {
+    // #128b — fundația ORD multi-bloc (multi-furnizor / multi-cont), varianta (A) din
+    // docs/audits/ORD-128-RECON-2026-08.md.
+    // `blocuri` = array de anteturi de bloc (beneficiar/cif/iban/banca/documente/inf plată).
+    // Rândurile din `rows` rămân o listă PLATĂ; apartenența la bloc se marchează cu cheia
+    // `bloc_idx` PE RÂND (fără schimbare de schemă — `rows` e deja JSONB).
+    // ⚠️ FĂRĂ BACKFILL, DELIBERAT: rândurile existente rămân cu `blocuri = NULL`, iar NULL se
+    // interpretează la CITIRE ca „un singur bloc, derivat din coloanele plate" (vezi
+    // server/services/ord-blocuri.mjs). Zero date mutate ⇒ migrația e reversibilă instantaneu
+    // și nu depinde de un backup pg_dump.
+    // `formulare_ord` e creată în bootstrap-ul inline (index.mjs ~939), deci NU are nevoie de
+    // garda `IF NOT EXISTS (information_schema.tables)` folosită la migrațiile pe tabele V4-only.
+    id: '105_formulare_ord_blocuri',
+    sql: `
+      ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS blocuri JSONB;
+    `
   }
 ];
 
