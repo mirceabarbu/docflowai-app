@@ -31,7 +31,9 @@ describe('I-2: wrap captura 2 vizibil mereu + setModeP2Ord pe o-czone2', () => {
     // #128g: fereastra era 2000 — arbitrară, iar orice linie adăugată în capul lui populateOrd
     // o depășea (aici: re-ștampilarea ctrl_idx pe rândurile ORD). 3000 păstrează intenția
     // („display='' apare în populateOrd, nu oriunde în fișier") fără fragilitate la lungime.
-    const m = src.match(/populateOrd[\s\S]{0,3000}/);
+    // #128k: ancorare pe DECLARAȚIA funcției, nu pe prima MENȚIUNE a numelui — un comentariu
+    // care pomenește `populateOrd` mai sus în fișier muta fereastra pe text irelevant.
+    const m = src.match(/async function populateOrd\([\s\S]{0,3000}/);
     expect(m).toBeTruthy();
     expect(m[0]).toMatch(/_wrap2\.style\.display=''/);
   });

@@ -677,6 +677,10 @@ async function addBlocOrd(){
   const rows=await _getOrdDfCtrlRows();
   if(rows.length)prefillOrdRowsFromCtrl(rows,el,{readOnly:true});
   else addOR(el);
+  // #128k — blocul adăugat DUPĂ ce prefill-ul a rulat primește și el „plăți anterioare"
+  // (col.3 e a angajamentului, nu a furnizorului), din valoarea MEMOIZATĂ în doc.js —
+  // fără un al doilea fetch pe /api/alop/:id.
+  if(typeof window.applyPlatiAntPrefill==='function')window.applyPlatiAntPrefill(el);
   _renumberOrdBlocuri();
   upTot();
   if(typeof window._draftSchedule==='function')window._draftSchedule('ordnt');

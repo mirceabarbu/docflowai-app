@@ -83,6 +83,46 @@ window.lockOrdIdentityCols=lockOrdIdentityCols;
 window._ordAllRowInputs=_ordAllRowInputs;  // #128i — rândurile TUTUROR blocurilor (testabil)
 window.lockDfSelectIfLinked=lockDfSelectIfLinked;
 
+// ── Prefill „plăți anterioare" (col.3) — ciclu ALOP 2+ ───────────────────────
+// #128k — coloana 3 e o proprietate a ANGAJAMENTULUI (cod_angajament / indicator /
+// cod_SSI), NU a furnizorului ⇒ aceeași valoare în ORICE bloc. Înainte scria doar în
+// blocul 0 (`#o-tbody`), deci furnizorul 2 pornea cu 0,00 și col.5 ieșea prea mare.
+// Sigur intern: verificarea de buget și `expected` din opme-matcher însumează EXCLUSIV
+// col.4, iar #128e a stabilit că nu există total general peste blocuri ⇒ valoarea
+// repetată nu se dublează în niciun calcul.
+//
+// Sursele valorii rămân NESCHIMBATE ca semantică (`window._alopSumaPlataAnterioara` în
+// populateOrd; `SUM(cicluri_istorice[].plata_suma_efectiva)` în openDoc / ORD nou) —
+// aici se MEMOIZEAZĂ doar rezultatul, ca un bloc adăugat ulterior (#128h) să-l primească
+// fără un al doilea fetch pe `/api/alop/:id`. Cache-ul se invalidează la newDoc / resetF.
+let _platiAntCache=null;                    // {alopId:string|null, val:number}
+function _platiAntSet(alopId,val){_platiAntCache={alopId:alopId||null,val:Number(val)||0};}
+function _platiAntReset(){_platiAntCache=null;}
+// `blocEl` lipsă/null ⇒ TOATE blocurile (fallback fără containere [data-bloc]: `#o-tbody`,
+// adică exact comportamentul de dinainte de #128h). `opts.val` lipsă ⇒ valoarea memoizată.
+// `opts.force` ⇒ suprascriere necondiționată (garda din populateOrd); altfel scrie doar
+// peste un prim rând rămas la 0 (garda din openDoc / ORD nou).
+// ⚠️ §5.2 #128k: gărzile NU se unifică în lotul ăsta — fiecare sit își păstrează garda de azi.
+function applyPlatiAntPrefill(blocEl,opts){
+  const o=opts||{};
+  const val=(o.val!=null)?(Number(o.val)||0):(_platiAntCache?_platiAntCache.val:0);
+  if(!(val>0))return 0;
+  const scopes=blocEl?[blocEl]:(_ordBlocScopes().length?_ordBlocScopes():[null]);
+  let n=0;
+  scopes.forEach(sc=>{
+    const inp=sc?sc.querySelector('tbody input[data-f="plati_anterioare"]')
+               :document.querySelector('#o-tbody input[data-f="plati_anterioare"]');
+    if(!inp)return;
+    if(!o.force&&(parseFloat(inp.value)||0)!==0)return;
+    inp.value=fMR(val);
+    if(typeof calcORRow==='function')calcORRow(inp);
+    n++;
+  });
+  return n;
+}
+window.applyPlatiAntPrefill=applyPlatiAntPrefill;
+window._platiAntReset=_platiAntReset;
+
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
@@ -204,11 +244,12 @@ async function populateOrd(doc){
     // NU ascunde wrap-ul pe eroare — vrem ca P2 să poată retry upload
   }
   upTot();
-  // Ciclu 2+: prefill plati_anterioare
+  // Ciclu 2+: prefill plati_anterioare — #128k: TOATE blocurile, garda de aici (suprascriere
+  // necondiționată) NESCHIMBATĂ.
   const _sumaAnt=window._alopSumaPlataAnterioara||0;
   if(_sumaAnt>0){
-    const _antInputs=document.querySelectorAll('#o-tbody input[data-f="plati_anterioare"]');
-    if(_antInputs.length){_antInputs[0].value=fMR(_sumaAnt);calcORRow(_antInputs[0]);}
+    _platiAntSet(doc.alop_id||window._alopContext?.alopId||null,_sumaAnt);
+    applyPlatiAntPrefill(null,{val:_sumaAnt,force:true});
   }
 }
 function populateDf(doc){
@@ -769,8 +810,9 @@ async function openDoc(ft,id){
         const _ra=await fetch(`/api/alop/${encodeURIComponent(_alopId)}`,{credentials:'include'}).then(r=>r.json()).catch(()=>null);
         const _totalAnt=(_ra?.alop?.cicluri_istorice||[]).reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
         if(_totalAnt>0){
-          const _firstRow=document.querySelector('#o-tbody input[data-f="plati_anterioare"]');
-          if(_firstRow&&(parseFloat(_firstRow.value)||0)===0){_firstRow.value=_totalAnt;calcORRow(_firstRow);}
+          // #128k — TOATE blocurile; garda „doar dacă primul rând e 0" NESCHIMBATĂ.
+          _platiAntSet(_alopId,_totalAnt);
+          applyPlatiAntPrefill(null,{val:_totalAnt});
         }
       }
     }
@@ -985,6 +1027,8 @@ function newDoc(ft){
     _resetOrdBuget(); // fără DF selectat → fără context de plafon (se încarcă la DF-select)
     // v3.9.500 (Issue I-1): prefill plati_anterioare la creare ord nou pe ciclu 2+
     // Înainte: prefill rula doar în loadDoc (existing ord) → P1 vedea 0,00, P2 vedea valoarea
+    // #128k — document NOU ⇒ valoarea memoizată a documentului precedent NU se moștenește.
+    _platiAntReset();
     const _ctx=window._alopContext;
     const _alopId=_ctx?.alopId||new URLSearchParams(location.search).get('alop_id');
     if(_alopId){
@@ -995,11 +1039,9 @@ function newDoc(ft){
           const _totalAnt=(_ra.alop.cicluri_istorice||[])
             .reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
           if(_totalAnt>0){
-            const _firstRow=document.querySelector('#o-tbody input[data-f="plati_anterioare"]');
-            if(_firstRow&&(parseFloat(_firstRow.value)||0)===0){
-              _firstRow.value=fMR(_totalAnt);
-              calcORRow(_firstRow);
-            }
+            // #128k — TOATE blocurile; garda „doar dacă primul rând e 0" NESCHIMBATĂ.
+            _platiAntSet(_alopId,_totalAnt);
+            applyPlatiAntPrefill(null,{val:_totalAnt});
           }
         });
     }
@@ -1880,7 +1922,7 @@ function resetF(ft){
   draftClear(ft);
   document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
     .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
-  if(ft==='ordnt'){if(typeof resetOrdBlocuri==='function')resetOrdBlocuri();document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';_resetOrdBuget();}
+  if(ft==='ordnt'){_platiAntReset();if(typeof resetOrdBlocuri==='function')resetOrdBlocuri();document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';_resetOrdBuget();}
   else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   document.getElementById('ff-'+ft).classList.remove('show');
