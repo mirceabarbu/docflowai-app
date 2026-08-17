@@ -46,9 +46,25 @@ window.lockDfSelectIfLinked=lockDfSelectIfLinked;
 // are valoare), ele se citesc, nu se scriu. readOnly, NU disabled — valorile tot ajung
 // în payload la salvare (collectOrdDb → getOR() citește .value, nu depinde de disabled).
 const ORD_IDENT_COLS=['cod_angajament','indicator_angajament','program','cod_SSI'];
+// #128i — sursă UNICĂ pentru „toate rândurile ORD, din TOATE blocurile". Fallback (niciun
+// container [data-bloc] în DOM — pagini/teste vechi): blocul 0 prin `#o-tbody`, adică exact
+// comportamentul de dinainte de #128h.
+function _ordBlocScopes(){return(typeof blocEls==='function'?blocEls():[]);}
+function _ordAllRows(){
+  const blocs=_ordBlocScopes();
+  if(!blocs.length)return[...document.querySelectorAll('#o-tbody tr')];
+  return blocs.flatMap(bl=>[...bl.querySelectorAll('tbody tr')]);
+}
+function _ordAllRowInputs(fld){
+  const blocs=_ordBlocScopes();
+  const sel=`input[data-f="${fld}"]`;
+  if(!blocs.length)return[...document.querySelectorAll(`#o-tbody ${sel}`)];
+  return blocs.flatMap(bl=>[...bl.querySelectorAll(`tbody ${sel}`)]);
+}
 function lockOrdIdentityCols(){
   const linked=!!(document.getElementById('o-df-id')?.value||'').trim();
-  document.querySelectorAll('#o-tbody tr').forEach(tr=>{
+  // #128i — TOATE blocurile, nu doar blocul 0 (`#o-tbody`).
+  _ordAllRows().forEach(tr=>{
     ORD_IDENT_COLS.forEach(f=>{
       const inp=tr.querySelector(`[data-f="${f}"]`);
       if(!inp)return;
@@ -58,10 +74,13 @@ function lockOrdIdentityCols(){
     });
   });
   // Rândurile ORD oglindesc rows_ctrl-ul DF-ului ⇒ cât timp e legat, nu se adaugă rânduri manual.
-  const badd=document.querySelector('#form-ordnt .badd');
-  if(badd)badd.disabled=linked;
+  // #128i — butonul „+" al FIECĂRUI bloc (înainte: doar primul `.badd` din #form-ordnt).
+  const blocs=_ordBlocScopes();
+  const badds=blocs.length?blocs.map(bl=>bl.querySelector('.badd')):[document.querySelector('#form-ordnt .badd')];
+  badds.forEach(b=>{if(b)b.disabled=linked;});
 }
 window.lockOrdIdentityCols=lockOrdIdentityCols;
+window._ordAllRowInputs=_ordAllRowInputs;  // #128i — rândurile TUTUROR blocurilor (testabil)
 window.lockDfSelectIfLinked=lockDfSelectIfLinked;
 
 // ── Status label ─────────────────────────────────────────────────────────────
@@ -420,8 +439,8 @@ function setModeP2Df(){
 function setModeP2Ord(){
   lockAll('ordnt',true);
   lockOrdIdentityCols();
-  // Deblochez receptii + plati_anterioare în tabel
-  document.querySelectorAll('#o-tbody input[data-f="receptii"],#o-tbody input[data-f="plati_anterioare"]').forEach(e=>{e.disabled=false;});
+  // Deblochez receptii + plati_anterioare în tabel — #128i: în TOATE blocurile
+  [..._ordAllRowInputs('receptii'),..._ordAllRowInputs('plati_anterioare')].forEach(e=>{e.disabled=false;});
   // v3.9.500 (Issue I-2): pointer-events pe AMBELE zone de captură pentru P2
   const czone=document.getElementById('o-czone');if(czone)czone.style.pointerEvents='';
   const czone2=document.getElementById('o-czone2');if(czone2)czone2.style.pointerEvents='';
@@ -816,7 +835,7 @@ async function openDoc(ft,id){
       setLockedBar(ft,'Completați câmpurile dvs. (marcate) și apăsați Finalizez.','info');
     }else if(status==='pending_p2'&&role==='p1'){
       lockAll(ft,true);
-      if(ft==='ordnt'){lockOrdIdentityCols();document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]').forEach(e=>{e.disabled=false;});}
+      if(ft==='ordnt'){lockOrdIdentityCols();_ordAllRowInputs('suma_ordonantata_plata').forEach(e=>{e.disabled=false;});}
       setLockedBar(ft,'Document trimis la Responsabil CAB. Așteptați completarea.','warn');
     }else if(status==='returnat'&&role==='p1'){
       lockAll(ft,false);
@@ -1373,9 +1392,27 @@ function _validateDf(){
   return errs;
 }
 
+// #128i — câmpurile obligatorii ale unui BLOC de furnizor, în ordinea de dinaintea lotului.
+// Rezolvate prin `data-fld` (blocurile 2+ NU au id-uri, prin construcție — #128h).
+const ORD_BLOC_REQ=[
+  ['beneficiar','Beneficiar'],
+  ['documente_justificative','Documente justificative'],
+  ['cif_beneficiar','CIF beneficiar'],
+  ['iban_beneficiar','IBAN beneficiar'],
+  ['banca_beneficiar','Bancă beneficiar'],
+  ['inf_pv_plata','Informații privind plata'],
+];
+const ORD_SUMA_ERR='Coloana 4 (Suma ordonanțată la plată): cel puțin un rând completat cu valoare > 0';
+
 function _validateOrd(){
   const errs=[];
   const req=(id,label)=>{if(!_vf(id)){errs.push({id,label});return false;}return true;};
+  // Variantă pe ELEMENT (blocurile 2+ n-au id). Păstrează `id` când elementul are unul
+  // (blocul 0) ⇒ marcarea și derularea rămân IDENTICE cu înainte pentru un singur bloc.
+  const reqEl=(el,label)=>{
+    if(!((el?.value||'').trim())){errs.push({id:el?.id||null,el:el||null,label,field:true});return false;}
+    return true;
+  };
 
   req('o-nr','Număr ORD');
   // DF selectat — validăm selectul vizibil (o-nrUnic e hidden, nu poate fi marcat)
@@ -1385,24 +1422,40 @@ function _validateOrd(){
   req('o-den','Instituția publică (auto-fill din DF)');
   req('o-cif','CIF instituție (auto-fill din DF)');
 
-  // Coloana 4 (suma_ordonantata_plata) — cel puțin un rând > 0
-  const hasSuma=[...document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]')].some(i=>pMR(i.value)>0);
-  if(!hasSuma) errs.push({id:null,label:'Coloana 4 (Suma ordonanțată la plată): cel puțin un rând completat cu valoare > 0'});
-
-  req('o-benef','Beneficiar');
-  req('o-docsj','Documente justificative');
-  req('o-cifb','CIF beneficiar');
-  req('o-iban','IBAN beneficiar');
-  req('o-banca','Bancă beneficiar');
-  req('o-inf1','Informații privind plata');
+  // #128i — coloana 4 + câmpurile beneficiarului se validează PENTRU FIECARE BLOC.
+  // Cu UN SINGUR bloc etichetele rămân byte-identice cu cele de dinaintea lotului (fără prefix);
+  // prefixul „Furnizor N — " apare DOAR când există mai multe blocuri.
+  const blocs=_ordBlocScopes();
+  const multi=blocs.length>1;
+  const pref=(i,label)=>multi?`Furnizor ${i+1} — ${label}`:label;
+  if(!blocs.length){
+    // Fallback fără containere [data-bloc] (pagini/teste vechi) — comportamentul istoric.
+    const hasSuma=[...document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]')].some(i=>pMR(i.value)>0);
+    if(!hasSuma) errs.push({id:null,label:ORD_SUMA_ERR});
+    req('o-benef','Beneficiar');
+    req('o-docsj','Documente justificative');
+    req('o-cifb','CIF beneficiar');
+    req('o-iban','IBAN beneficiar');
+    req('o-banca','Bancă beneficiar');
+    req('o-inf1','Informații privind plata');
+  }else{
+    blocs.forEach((bl,i)=>{
+      const hasSuma=[...bl.querySelectorAll('tbody input[data-f="suma_ordonantata_plata"]')].some(inp=>pMR(inp.value)>0);
+      // `el` (ținta derulării) doar la mai multe blocuri — la un singur bloc eroarea rămâne
+      // fără țintă, exact ca înainte (scroll-ul cade pe fallback-ul `.err`).
+      if(!hasSuma) errs.push({id:null,el:multi?(bl.querySelector('tbody')||bl):null,label:pref(i,ORD_SUMA_ERR)});
+      ORD_BLOC_REQ.forEach(([f,label])=>reqEl(bl.querySelector(`[data-fld="${f}"]`),pref(i,label)));
+    });
+  }
 
   return errs;
 }
 
 function _scrollToFirstErr(errs){
   for(const e of errs){
-    if(!e.id)continue;
-    const el=document.getElementById(e.id);
+    // #128i — erorile din blocurile 2+ n-au id; ținta vine ca ELEMENT (`e.el`).
+    // Pentru erorile CU id comportamentul rămâne neschimbat (folosite și de DF).
+    const el=e.id?document.getElementById(e.id):(e.el||null);
     if(el){el.scrollIntoView({behavior:'smooth',block:'center'});return;}
   }
   // fallback — scroll la primul element cu clasa err
@@ -1428,6 +1481,8 @@ async function showP2Modal(ft){
   if(valErrs.length){
     const fieldIds = valErrs.map(e=>e.id).filter(Boolean);
     _markInvalid(fieldIds);
+    // #128i — câmpurile din blocurile 2+ n-au id ⇒ se marchează direct pe element.
+    valErrs.forEach(e=>{if(e.field&&!e.id&&e.el)_markInvalidEl(e.el);});
     _showValErr('Completați câmpurile marcate înainte de a trimite la P2.');
     _scrollToFirstErr(valErrs);
     return;
@@ -1876,6 +1931,7 @@ function resetF(ft){
   // Validation
   window._validateDf                = _validateDf;
   window._validateOrd               = _validateOrd;
+  window._scrollToFirstErr          = _scrollToFirstErr;  // #128i — testabil (erori fără id)
   window._clearValErr               = _clearValErr;
   window._showValErr                = _showValErr;
 
