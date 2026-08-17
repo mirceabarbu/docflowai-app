@@ -85,7 +85,9 @@ function collectOrdDb(){
   return{
     cif:g('o-cif'),den_inst_pb:g('o-den'),nr_ordonant_pl:g('o-nr'),data_ordont_pl:g('o-data'),
     blocuri,
-    rows:getOR().map(r=>({...r,bloc_idx:0})),
+    // #128h — lista PLATĂ: blocurile concatenate în ordinea `bloc_idx`, fiecare rând purtând
+    // indexul blocului lui (înainte: fix 0, un singur bloc posibil).
+    rows:getOrdRowsAll(),
     df_id:document.getElementById('o-df-id')?.value||null,
     // v3.9.554: proveniență ALOP — backend-ul o persistă DOAR la creare (POST);
     // permite self-heal relink dacă link-ord eșuează silențios.
@@ -138,10 +140,19 @@ async function populateOrd(doc){
     _ordBugetCtx={buget_an_curent:doc.buget_an_curent,cicluri_arhivate:doc.cicluri_arhivate,an_exercitiu:doc.an_exercitiu};
   }else{_ordBugetCtx=null;}
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
+  // #128h — blocurile 2+ se RECREEAZĂ din `doc.blocuri` (GET detaliu întoarce mereu cel puțin
+  // blocul 1, vezi blocuriDinOrd). Blocul 0 rămâne populat prin id-uri (sv() mai sus, oglinda
+  // plată a blocului 1). Fără asta, un ORD salvat cu 2 furnizori s-ar redeschide cu unul
+  // singur — și l-ar pierde pe al doilea la prima salvare.
+  const _blocEls=(typeof renderOrdBlocuri==='function')?renderOrdBlocuri(doc.blocuri):[];
+  const _tbodyFor=(bi)=>{
+    if(!bi)return tbody;
+    return _blocEls[bi]?.querySelector('tbody')||tbody;
+  };
   // #128g: `ctrl_idx` e pointer, nu câmp (nu are input în rând) — fără re-ștampilarea lui pe
   // dataset s-ar pierde la PRIMA salvare de după reîncărcare, iar derivarea ar cădea înapoi pe
   // poziție (greșit la ORD multi-bloc). Vezi getOR() în core.js.
-  (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});if(row.ctrl_idx!=null&&row.ctrl_idx!=='')tr.dataset.ctrlIdx=String(row.ctrl_idx);});
+  (doc.rows||[]).forEach(row=>{const tb=_tbodyFor(Number(row.bloc_idx)||0);addOR(tb);const tr=tb.querySelector('tr:last-child');if(!tr)return;Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});if(row.ctrl_idx!=null&&row.ctrl_idx!=='')tr.dataset.ctrlIdx=String(row.ctrl_idx);});
   lockOrdIdentityCols(); // ORD legat de DF → coloanele de identitate needitabile
   // v3.9.500 (Issue I-2): wrap-ul captura 2 e VIZIBIL mereu, ca P2 să poată
   // încărca chiar și când DB nu are nimic în slot=2 yet. IMG-ul intern
@@ -941,6 +952,9 @@ function newDoc(ft){
   // Golim câmpurile
   document.querySelectorAll(`#form-${ft} input:not([type=file]):not([type=hidden]),#form-${ft} textarea`).forEach(e=>{if(e.type==='checkbox')e.checked=false;else if(e.type==='number')e.value='0';else e.value='';});
   if(ft==='ordnt'){
+    // #128h — document NOU: înapoi la un singur bloc de furnizor (blocurile 2+ ale documentului
+    // precedent ar fi persistat în SPA, ca la lockCaptureAndAttachments/v3.9.575).
+    if(typeof resetOrdBlocuri==='function')resetOrdBlocuri();
     document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');
     document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
     const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
@@ -1809,7 +1823,7 @@ function resetF(ft){
   draftClear(ft);
   document.querySelectorAll(`#form-${ft} input:not([type=file]),#form-${ft} textarea`)
     .forEach(e=>{if(e.type==='checkbox')e.checked=false;else e.value=(e.type==='number'?'0':'');});
-  if(ft==='ordnt'){document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';_resetOrdBuget();}
+  if(ft==='ordnt'){if(typeof resetOrdBlocuri==='function')resetOrdBlocuri();document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';_resetOrdBuget();}
   else{document.getElementById('n-vtbody').innerHTML='';document.getElementById('n-ptbody').innerHTML='';document.getElementById('n-ctbody').innerHTML='';addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');}
   document.getElementById('result-'+ft).classList.remove('show');
   document.getElementById('ff-'+ft).classList.remove('show');

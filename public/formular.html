@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.693">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.693">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.717">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.751">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.768">
   <script src="/js/df-utils.js?v=3.9.693"></script>
   <script src="/js/df-entitlements.js?v=3.9.693"></script>
   <script src="/js/df-shell.js?v=3.9.707"></script>
@@ -773,10 +773,12 @@
 <div class="status" id="sBar"></div>
 
 <!-- ═══ ORDNT ═══════════════════════════════════════════════════════════════ -->
-<!-- #128f: data-bloc="0" pe strămoșul comun al câmpurilor blocului beneficiar (o-nrUnic e în
-     BLOC ANTET, o-benef..o-inf2 în BLOC P1, o-tbody în BLOC P2) — cele trei div-uri df-block nu
-     au un container comun mai apropiat fără să mutăm markup, deci atributul stă aici. -->
-<div id="form-ordnt" data-bloc="0">
+<!-- #128h: data-bloc="0" a fost MUTAT de pe #form-ordnt pe containerul .ord-bloc care înfășoară
+     BLOC P1 + BLOC P2 (vezi #ord-blocuri mai jos). Dacă rămânea aici, blocurile 2+ adăugate în
+     formular ar fi devenit DESCENDENȚI ai blocului 0, iar rândurile lor s-ar fi scurs în
+     totalurile/colectarea blocului 0. `o-nrUnic` (BLOC ANTET) rămâne UNIC PE DOCUMENT și se
+     citește global pentru toate blocurile (ORD_FLD_GLOBAL_ID în core.js). -->
+<div id="form-ordnt">
 <div class="df-alop-ctx" id="alop-ctx-ordnt"></div>
 <div id="motiv-bar-ordnt" style="display:none;max-width:1200px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-ordnt"></span></div>
 <div class="actions" id="actions-ordnt"></div>
@@ -827,6 +829,11 @@
     </div>
   </div>
 </div>
+
+<!-- #128h — gazda blocurilor de furnizor. Blocul 0 e markup-ul istoric (BLOC P1 + BLOC P2,
+     id-uri neatinse); blocurile 2+ se adaugă aici ca FRAȚI ai lui, din șablonul din core.js. -->
+<div id="ord-blocuri">
+<div class="ord-bloc" data-bloc="0">
 
 <!-- BLOC P1 — Compartiment specialitate -->
 <div class="df-block df-block-p1" id="bloc-ord-p1">
@@ -927,10 +934,12 @@
         <tr class="df-total">
           <td class="tot">TOTAL</td>
           <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
-          <td class="num" id="o-t-rec">0</td>
-          <td class="num" id="o-t-plati">0</td>
-          <td class="num" id="o-t-suma">0</td>
-          <td class="num" id="o-t-neplat">0</td>
+          <!-- #128h: celulele blocului 0 poartă AMBELE — `id` istoric (upTot scrie în ele ca
+               până acum) + `data-tot` (calea generică per bloc). Aceeași valoare pe ambele. -->
+          <td class="num" id="o-t-rec" data-tot="rec">0</td>
+          <td class="num" id="o-t-plati" data-tot="plati">0</td>
+          <td class="num" id="o-t-suma" data-tot="suma">0</td>
+          <td class="num" id="o-t-neplat" data-tot="neplat">0</td>
           <td><button class="badd" onclick="addOR()" title="Adaugă rând">+</button></td>
         </tr>
       </tfoot>
@@ -956,6 +965,12 @@
     <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg2','o-cph2')"><svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-x"/></svg>Șterge imaginea</button></div>
     </div>
   </div>
+</div>
+
+</div><!-- /.ord-bloc[data-bloc=0] -->
+</div><!-- /#ord-blocuri -->
+<div style="max-width:1200px;margin:0 auto 10px;display:flex;justify-content:flex-end">
+  <button type="button" id="btn-add-bloc" class="df-action-btn" onclick="addBlocOrd()" title="Adaugă un al doilea furnizor pe aceeași ordonanțare">+ Adaugă furnizor</button>
 </div>
 
 <div class="result" id="result-ordnt">
@@ -1474,18 +1489,18 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.708"></script>
-<script src="/js/formular/core.js?v=3.9.767" defer></script>
+<script src="/js/formular/core.js?v=3.9.768" defer></script>
 <script src="/js/formular/verif.js?v=3.9.693" defer></script>
 <script src="/js/shared/pagin.js?v=3.9.722" defer></script>
 <script src="/js/formular/alop.js?v=3.9.761" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.760" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.693" defer></script>
-<script src="/js/formular/draft.js?v=3.9.693" defer></script>
+<script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.693" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.703" defer></script>
-<script src="/js/formular/list.js?v=3.9.767" defer></script>
+<script src="/js/formular/list.js?v=3.9.768" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
-<script src="/js/formular/doc.js?v=3.9.767" defer></script>
+<script src="/js/formular/doc.js?v=3.9.768" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>
 <script src="/js/shared/file-item.js?v=3.9.693" defer></script>
 <script src="/js/formular/formular.js?v=3.9.693" defer></script>

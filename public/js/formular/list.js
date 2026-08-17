@@ -170,22 +170,19 @@ async function onDfSelect(dfId){
     sv('o-den',doc.den_inst_pb||'');
     // Pre-fill rânduri tabel din rows_ctrl — număr corect de rânduri, fără sume (completate de CAB)
     const rows=Array.isArray(doc.rows_ctrl)?doc.rows_ctrl:JSON.parse(doc.rows_ctrl||'[]');
+    // #128h: un DF nou selectat resetează formularul la UN singur bloc (rândurile blocurilor
+    // 2+ ar fi rămas legate de DF-ul precedent), apoi cache-uiește rows_ctrl — blocurile de
+    // furnizor adăugate ulterior se pre-populează din ACELAȘI DF, fără un al doilea fetch.
+    if(typeof window.resetOrdBlocuri==='function')window.resetOrdBlocuri();
+    if(typeof window.setOrdDfCtrlRows==='function')window.setOrdDfCtrlRows(rows);
     const tbody=document.getElementById('o-tbody');
     tbody.innerHTML='';oI=0;
     if(!rows.length){addOR();if(typeof window.lockOrdIdentityCols==='function')window.lockOrdIdentityCols();return;}
-    rows.forEach((row,idx)=>{
-      addOR();
-      const tr=tbody.querySelector('tr:last-child');
-      if(!tr)return;
-      // #128g: pointer către rândul sursă din rows_ctrl. Serverul derivă identitatea din
-      // ctrlRows[ctrl_idx] (deriveOrdIdentityCols) — necesar la ORD cu mai multe blocuri,
-      // unde poziția în lista plată nu mai coincide cu indexul din DF.
-      tr.dataset.ctrlIdx=String(idx);
-      ['cod_angajament','indicator_angajament','program','cod_SSI'].forEach(f=>{
-        const inp=tr.querySelector(`[data-f="${f}"]`);
-        if(inp&&row[f]!=null)inp.value=row[f];
-      });
-    });
+    // #128h — pre-popularea rândurilor (inclusiv ștampila `ctrl_idx` din #128g) e EXTRASĂ în
+    // prefillOrdRowsFromCtrl (core.js), refolosită identic la crearea unui bloc nou.
+    // readOnly-ul coloanelor de identitate rămâne pe seama lui lockOrdIdentityCols pentru
+    // blocul 0 (comportament neschimbat).
+    prefillOrdRowsFromCtrl(rows,tbody);
     upTot();
     if(typeof window.lockOrdIdentityCols==='function')window.lockOrdIdentityCols(); // ORD legat de DF → coloanele de identitate needitabile
     // Încarcă contextul de buget al DF-ului selectat → atenționare inline ORD (paritate server).

@@ -298,6 +298,9 @@
     .df-block-title{font-size:12px;font-weight:700;color:var(--df-text)}
     .df-block-desc{font-size:11px;color:var(--df-text-3);margin-left:auto}
     .df-block-body{padding:18px 20px}
+    /* #128h — blocuri de furnizor ORD (blocul 0 = markup istoric, 2+ din șablonul din core.js) */
+    .ord-bloc+.ord-bloc{margin-top:18px;padding-top:14px;border-top:1px dashed var(--df-border-2)}
+    .ord-bloc-del{margin-left:auto;font-size:11px;padding:3px 10px}
     .df-badge{font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:.4px}
     .df-badge-auto{background:rgba(255,255,255,.08);color:var(--df-text-3)}
     .df-badge-p1{background:rgba(108,79,240,.2);color:#b0a0ff}
