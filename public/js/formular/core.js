@@ -525,7 +525,13 @@ function _sablonBloc(idx){
     <div class="df-row df-row-1">
       <div>
         <div class="dl req">Beneficiar</div>
-        <textarea class="dt" maxlength="150" rows="2" data-fld="beneficiar"></textarea>
+        <!-- #128j — elementele auxiliare poartă DOAR data-role (fără id): comportamentele
+             „vii" (autocomplete, badge ANAF, spinner) le rezolvă prin bloc, nu prin id. -->
+        <div class="ac-wrap">
+          <textarea class="dt" maxlength="150" rows="2" autocomplete="off" data-fld="beneficiar"></textarea>
+          <div class="ac-drop" data-role="benef-drop"></div>
+          <div style="margin-top:6px;min-height:0;" aria-live="polite" data-role="benef-status"></div>
+        </div>
       </div>
     </div>
     <div class="df-row df-row-1">
@@ -537,8 +543,8 @@ function _sablonBloc(idx){
     <div class="doc-hr"></div>
     <div class="df-row df-row-3">
       <div>
-        <div class="dl req">CIF beneficiar</div>
-        <input class="di" maxlength="12" data-fld="cif_beneficiar"/>
+        <div class="dl req">CIF beneficiar <span data-role="cifb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
+        <input class="di" maxlength="12" autocomplete="off" data-fld="cif_beneficiar"/>
       </div>
       <div>
         <div class="dl req">IBAN beneficiar</div>

@@ -190,39 +190,68 @@ async function onDfSelect(dfId){
   }catch(_){}
 }
 
-// ── Beneficiari autocomplete ──────────────────────────────────────────────────
-let _benefTimer=null;
-function debouncedBenefSearch(){
-  clearTimeout(_benefTimer);
-  _benefTimer=setTimeout(()=>_searchBenef(),400);
+// ── Beneficiari autocomplete (#128j — pe TOATE blocurile ORD, prin delegare) ──
+// Toate funcțiile de mai jos primesc un BLOC-ȚINTĂ (`[data-bloc]`) și rezolvă câmpurile
+// relativ la el (`[data-fld]` / `[data-role]`), NU prin id-uri globale. Default = blocul 0,
+// ca apelanții existenți (window.*) să funcționeze neschimbat.
+function _blocList(){
+  return[...document.querySelectorAll('[data-bloc]')]
+    .sort((a,b)=>(Number(a.getAttribute('data-bloc'))||0)-(Number(b.getAttribute('data-bloc'))||0));
 }
-async function _searchBenef(){
-  const q=(document.getElementById('o-benef')?.value||'').trim();
-  const drop=document.getElementById('o-benef-drop');
+function _blocOf(el){
+  return (el&&el.closest&&el.closest('[data-bloc]'))||document.querySelector('[data-bloc="0"]')||null;
+}
+function _bFld(bloc,fld){return bloc?bloc.querySelector(`[data-fld="${fld}"]`):null;}
+function _bRole(bloc,role){return bloc?bloc.querySelector(`[data-role="${role}"]`):null;}
+// Scrie beneficiarul ales în câmpurile blocului și închide dropdown-ul lui.
+function _applyBenef(bloc,b){
+  const sv2=(fld,val)=>{const e=_bFld(bloc,fld);if(e)e.value=val;};
+  sv2('beneficiar',b.den);sv2('cif_beneficiar',b.cif);
+  sv2('iban_beneficiar',b.iban);sv2('banca_beneficiar',b.banca);
+  const drop=_bRole(bloc,'benef-drop');
+  if(drop)drop.style.display='none';
+}
+
+// Debounce PER BLOC — un `_benefTimer` global ar face ca tastarea în blocul 2 să anuleze
+// căutarea pornită din blocul 1.
+const _benefTimers=new WeakMap();
+function debouncedBenefSearch(target){
+  const bloc=_blocOf(target);
+  if(!bloc)return;
+  clearTimeout(_benefTimers.get(bloc));
+  _benefTimers.set(bloc,setTimeout(()=>_searchBenef(bloc),400));
+}
+async function _searchBenef(target){
+  const bloc=_blocOf(target);
+  const drop=_bRole(bloc,'benef-drop');
   if(!drop)return;
+  const q=(_bFld(bloc,'beneficiar')?.value||'').trim();
   if(q.length<2){drop.style.display='none';return;}
   try{
     const r=await fetch('/api/beneficiari?q='+encodeURIComponent(q),{credentials:'include'});
     const j=await r.json();
     const list=j.beneficiari||[];
     if(!list.length){drop.style.display='none';return;}
+    // Datele beneficiarului merg în `dataset`, NU interpolate într-un șir JS dintr-un atribut
+    // `onclick` — acolo `esc()` (escape HTML) nu proteja contextul JS, iar o denumire cu
+    // apostrof („Ferma L'Aurora SRL") rupea atributul. Selecția e delegată (`.ac-opt`).
     drop.innerHTML=list.map(b=>`<div class="ac-opt" tabindex="0"
-        onclick="selectBenef(${b.id},'${esc(b.denumire)}','${esc(b.cif||'')}','${esc(b.iban||'')}','${esc(b.banca||'')}')">
+        data-ben-id="${esc(b.id)}" data-ben-den="${esc(b.denumire)}" data-ben-cif="${esc(b.cif||'')}"
+        data-ben-iban="${esc(b.iban||'')}" data-ben-banca="${esc(b.banca||'')}">
         <strong>${esc(b.denumire)}</strong><br>
         <small>CIF: ${esc(b.cif||'—')} · IBAN: ${esc(b.iban||'—')}</small>
       </div>`).join('');
     drop.style.display='block';
   }catch(_){drop.style.display='none';}
 }
+// Păstrată pentru compatibilitate (export window, semnătură neschimbată) — scrie în blocul 0.
+// Selecția din dropdown NU mai trece pe aici: e delegată prin dataset.
 function selectBenef(id,den,cif,iban,banca){
-  const sv2=(eid,val)=>{const e=document.getElementById(eid);if(e)e.value=val;};
-  sv2('o-benef',den);sv2('o-cifb',cif);sv2('o-iban',iban);sv2('o-banca',banca);
-  const drop=document.getElementById('o-benef-drop');
-  if(drop)drop.style.display='none';
+  _applyBenef(_blocOf(null),{den,cif,iban,banca});
 }
 // ── v3.9.627: badge stare beneficiar ANAF (oglindește logica din verif.js) ────
-function renderBenefStatusBadge(d){
-  const box = document.getElementById('o-benef-status');
+function renderBenefStatusBadge(d,target){
+  const box = _bRole(_blocOf(target),'benef-status');
   if(!box) return;
   if(!d){ box.innerHTML=''; return; }
   const esc = window.esc || (s=>String(s==null?'':s));
@@ -242,17 +271,18 @@ function renderBenefStatusBadge(d){
 window.renderBenefStatusBadge = renderBenefStatusBadge;
 
 // ── v3.9.504: CIF lookup → auto-fill beneficiar (local → ANAF fallback) ────────
-async function _lookupByCif(){
-  const cifEl=document.getElementById('o-cifb');
+async function _lookupByCif(target){
+  const bloc=_blocOf(target);
+  const cifEl=_bFld(bloc,'cif_beneficiar');
   if(!cifEl)return;
-  const _sb=document.getElementById('o-benef-status'); if(_sb) _sb.innerHTML='';
+  const _sb=_bRole(bloc,'benef-status'); if(_sb) _sb.innerHTML='';
   let cif=(cifEl.value||'').trim().toUpperCase().replace(/^RO\s*/,'');
   cifEl.value=cif;
   if(!/^\d{2,10}$/.test(cif))return;
 
-  const spin=document.getElementById('o-cifb-spin');
+  const spin=_bRole(bloc,'cifb-spin');
   const showSpin=v=>{if(spin)spin.style.display=v?'inline-block':'none';};
-  const setF=(id,val)=>{const e=document.getElementById(id);if(e&&val!=null)e.value=val;};
+  const setF=(fld,val)=>{const e=_bFld(bloc,fld);if(e&&val!=null)e.value=val;};
   const _setS=(msg,type)=>{if(typeof window.setS==='function')window.setS(msg,type);};
 
   showSpin(true);
@@ -265,9 +295,9 @@ async function _lookupByCif(){
       const j=await r.json();
       const match=(j.beneficiari||[]).find(b=>String(b.cif||'')===cif);
       if(match){
-        setF('o-benef',match.denumire||'');
-        setF('o-iban',match.iban||'');
-        setF('o-banca',match.banca||'');
+        setF('beneficiar',match.denumire||'');
+        setF('iban_beneficiar',match.iban||'');
+        setF('banca_beneficiar',match.banca||'');
         _setS('Beneficiar găsit local: '+(match.denumire||cif),'ok');
         resolved=true;
         // DB nu are starea ANAF — verifică starea separat (non-blocant, fail-open)
@@ -275,9 +305,10 @@ async function _lookupByCif(){
         fetch('/api/verify/cui?cui='+encodeURIComponent(cif),{credentials:'include'})
           .then(r=>r.ok?r.json():null)
           .then(j=>{
-            const cur=document.getElementById('o-cifb');
+            // Garda de cursă compară cu câmpul BLOCULUI, nu cu #o-cifb.
+            const cur=_bFld(bloc,'cif_beneficiar');
             if(!cur || (cur.value||'').trim().toUpperCase().replace(/^RO\s*/,'')!==_cifSnapshot) return;
-            if(j&&j.ok&&j.data) renderBenefStatusBadge(j.data);
+            if(j&&j.ok&&j.data) renderBenefStatusBadge(j.data,bloc);
           })
           .catch(()=>{});
       }
@@ -292,8 +323,8 @@ async function _lookupByCif(){
       if(r.ok){
         const j=await r.json();
         if(j.ok&&j.data&&j.data.name){
-          setF('o-benef',j.data.name);
-          renderBenefStatusBadge(j.data);
+          setF('beneficiar',j.data.name);
+          renderBenefStatusBadge(j.data,bloc);
           _setS('Denumire preluată ANAF: '+j.data.name,'ok');
           resolved=true;
         } else {
@@ -311,26 +342,56 @@ async function _lookupByCif(){
 }
 window._lookupByCif=_lookupByCif;
 
-// Închide dropdown la click în afară
+// ── #128j — DELEGARE: un singur set de handlere pe #ord-blocuri ───────────────
+// Orice bloc — existent, adăugat de utilizator, restaurat din draft sau recreat de
+// renderOrdBlocuri — e acoperit AUTOMAT, fără nicio cablare la creare. De aceea nu există
+// (și nu trebuie adăugat) niciun apel de „cablare" în addBlocOrd / renderOrdBlocuri / draft.js.
+(function _wireBenefDelegation(){
+  const host=document.getElementById('ord-blocuri')||document;
+  host.addEventListener('input',e=>{
+    const t=e.target;
+    if(t&&t.matches&&t.matches('[data-fld="beneficiar"]'))debouncedBenefSearch(t);
+  });
+  // `blur` nu bulează → `focusout`.
+  host.addEventListener('focusout',e=>{
+    const t=e.target;
+    if(t&&t.matches&&t.matches('[data-fld="cif_beneficiar"]'))_lookupByCif(t);
+  });
+  host.addEventListener('click',e=>{
+    const opt=e.target&&e.target.closest&&e.target.closest('.ac-opt');
+    if(!opt)return;
+    _applyBenef(_blocOf(opt),{
+      den:opt.dataset.benDen||'',cif:opt.dataset.benCif||'',
+      iban:opt.dataset.benIban||'',banca:opt.dataset.benBanca||'',
+    });
+  });
+})();
+
+// Închide dropdown-urile TUTUROR blocurilor la click în afară (mai puțin cel care conține ținta).
 document.addEventListener('click',e=>{
-  const drop=document.getElementById('o-benef-drop');
-  if(drop&&!drop.contains(e.target)&&e.target.id!=='o-benef')drop.style.display='none';
+  document.querySelectorAll('[data-role="benef-drop"]').forEach(drop=>{
+    if(drop.contains(e.target))return;
+    if(_bFld(_blocOf(drop),'beneficiar')===e.target)return;
+    drop.style.display='none';
+  });
 });
 
 // ── Salvare automată beneficiar la Trimite P2 ─────────────────────────────────
+// #128j — salvează beneficiarul FIECĂRUI bloc (sare peste cele cu denumirea goală).
 async function _saveBeneficiarIfNew(){
-  const den=(g('o-benef')||'').trim();
-  const cif=(g('o-cifb')||'').trim();
-  const iban=(g('o-iban')||'').trim();
-  const banca=(g('o-banca')||'').trim();
-  if(!den)return;
-  try{
-    await fetch('/api/beneficiari',{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
-      body:JSON.stringify({denumire:den,cif,iban,banca}),
-    });
-  }catch(_){}
+  const blocs=_blocList();
+  for(const bloc of blocs){
+    const v=fld=>(_bFld(bloc,fld)?.value||'').trim();
+    const den=v('beneficiar');
+    if(!den)continue;
+    try{
+      await fetch('/api/beneficiari',{
+        method:'POST',credentials:'include',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+        body:JSON.stringify({denumire:den,cif:v('cif_beneficiar'),iban:v('iban_beneficiar'),banca:v('banca_beneficiar')}),
+      });
+    }catch(_){}
+  }
 }
 
 // ── Centralizare: navigare secțiuni ──────────────────────────────────────────

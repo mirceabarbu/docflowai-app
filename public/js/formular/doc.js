@@ -361,7 +361,7 @@ function _resetOrdBuget(){
   _ordBugetCtx = null;
   const warn=document.getElementById('ord-buget-warn');
   if(warn){warn.style.display='none';warn.innerHTML='';}
-  document.querySelectorAll('#o-tbody tr.ord-buget-over').forEach(tr=>tr.classList.remove('ord-buget-over'));
+  _ordAllRows().forEach(tr=>tr.classList.remove('ord-buget-over'));
 }
 
 async function _loadOrdBuget(dfId){
@@ -379,19 +379,21 @@ async function _loadOrdBuget(dfId){
 
 function _checkOrdBuget(){
   const warn=document.getElementById('ord-buget-warn');
-  document.querySelectorAll('#o-tbody tr.ord-buget-over').forEach(tr=>tr.classList.remove('ord-buget-over'));
+  // #128j — rândurile TUTUROR blocurilor. Bugetul rămâne UNUL SINGUR pe document (ORD-ul are
+  // un singur DF) ⇒ suma comparată e totalul pe toate blocurile, iar marcajul se aplică peste tot.
+  _ordAllRows().forEach(tr=>tr.classList.remove('ord-buget-over'));
   if(!_ordBugetCtx){if(warn){warn.style.display='none';warn.innerHTML='';}return;}
   const buget=Number(_ordBugetCtx.buget_an_curent)||0;
   const arhivat=Number(_ordBugetCtx.cicluri_arhivate)||0;
   const an=_ordBugetCtx.an_exercitiu;
   // Σ col.4 (suma ordonanțată) peste rândurile curente din UI — același input ca newRows server.
-  const ordNou=[...document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]')]
+  const ordNou=_ordAllRowInputs('suma_ordonantata_plata')
     .reduce((s,i)=>s+(pMR(i.value)||0),0);
   const cumul=ordNou+arhivat;
   // ACEEAȘI toleranță ca backend (validateOrdBugetAnCurent): cumul > buget + 0.001 → depășire.
   const over=cumul>buget+0.001;
   if(over){
-    document.querySelectorAll('#o-tbody tr').forEach(tr=>tr.classList.add('ord-buget-over'));
+    _ordAllRows().forEach(tr=>tr.classList.add('ord-buget-over'));
     if(warn){
       const dep=cumul-buget;
       warn.innerHTML='⛔ Suma ordonanțată '+(arhivat>0?`cumulată în anul ${esc(an)} (${esc(fMR(cumul))} lei, din care ${esc(fMR(arhivat))} lei deja ordonanțați în cicluri anterioare)`:`(${esc(fMR(cumul))} lei)`)+

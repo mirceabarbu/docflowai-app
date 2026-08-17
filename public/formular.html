@@ -851,9 +851,11 @@
       <div>
         <div class="dl req">Beneficiar</div>
         <div class="ac-wrap">
-          <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off" data-fld="beneficiar"></textarea>
-          <div id="o-benef-drop" class="ac-drop"></div>
-          <div id="o-benef-status" style="margin-top:6px;min-height:0;" aria-live="polite"></div>
+          <!-- #128j — handlerele inline (oninput/onblur) au fost ÎNLOCUITE cu delegare pe
+               #ord-blocuri (list.js). NU le readăuga: s-ar declanșa de două ori. -->
+          <textarea id="o-benef" class="dt" maxlength="150" rows="2" autocomplete="off" data-fld="beneficiar"></textarea>
+          <div id="o-benef-drop" class="ac-drop" data-role="benef-drop"></div>
+          <div id="o-benef-status" style="margin-top:6px;min-height:0;" aria-live="polite" data-role="benef-status"></div>
         </div>
       </div>
     </div>
@@ -872,8 +874,8 @@
     <div class="doc-hr"></div>
     <div class="df-row df-row-3">
       <div>
-        <div class="dl req">CIF beneficiar <span id="o-cifb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
-        <input id="o-cifb" class="di" maxlength="12" onblur="window._lookupByCif&&window._lookupByCif()" autocomplete="off" data-fld="cif_beneficiar"/>
+        <div class="dl req">CIF beneficiar <span id="o-cifb-spin" data-role="cifb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
+        <input id="o-cifb" class="di" maxlength="12" autocomplete="off" data-fld="cif_beneficiar"/>
       </div>
       <div>
         <div class="dl req">IBAN beneficiar</div>
@@ -1489,7 +1491,7 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.708"></script>
-<script src="/js/formular/core.js?v=3.9.768" defer></script>
+<script src="/js/formular/core.js?v=3.9.770" defer></script>
 <script src="/js/formular/verif.js?v=3.9.693" defer></script>
 <script src="/js/shared/pagin.js?v=3.9.722" defer></script>
 <script src="/js/formular/alop.js?v=3.9.761" defer></script>
@@ -1498,9 +1500,9 @@
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.693" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.703" defer></script>
-<script src="/js/formular/list.js?v=3.9.768" defer></script>
+<script src="/js/formular/list.js?v=3.9.770" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
-<script src="/js/formular/doc.js?v=3.9.769" defer></script>
+<script src="/js/formular/doc.js?v=3.9.770" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>
 <script src="/js/shared/file-item.js?v=3.9.693" defer></script>
 <script src="/js/formular/formular.js?v=3.9.693" defer></script>
