@@ -147,7 +147,12 @@ function calcORRow(el){
   if(c5)c5.value=fMR(c2-c3-c4);
   upTot();
 }
-function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
+function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);
+  // #128g: doar rândurile pre-populate din DF poartă ctrl_idx (ștampilat în onDfSelect / la
+  // reîncărcarea documentului). Un rând adăugat manual prin addOR() rămâne FĂRĂ — serverul
+  // cade pe derivarea pozițională, exact ca înainte.
+  const ci=tr.dataset.ctrlIdx;if(ci!==undefined&&ci!=='')o.ctrl_idx=Number(ci);
+  return o;});}
 
 function addNV(){const i=window.nVI++;const tr=document.createElement('tr');tr.id='nv-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI" list="ssi-codes-list"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_rev_prec"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_actualiz" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;

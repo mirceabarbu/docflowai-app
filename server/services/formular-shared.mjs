@@ -68,15 +68,31 @@ export const ORD_IDENT_COLS = ['cod_angajament', 'indicator_angajament', 'progra
  * @param {Array}  ctrlRows    rows_ctrl al DF-ului legat
  * @returns {Array}            rândurile cu cele 4 coloane suprascrise din DF
  *
- * Corelare POZIȚIONALĂ — identică cu prefill-ul din onDfSelect (list.js:176).
+ * Corelare pe `ctrl_idx` când e prezent și valid, altfel POZIȚIONALĂ — identică cu prefill-ul
+ * din onDfSelect (list.js:176).
  * Rândurile din ORD peste lungimea rows_ctrl (dacă apar) rămân NEATINSE: nu inventăm coduri.
  */
 export function deriveOrdIdentityCols(clientRows, ctrlRows) {
   if (!Array.isArray(clientRows)) return clientRows;
   if (!Array.isArray(ctrlRows) || !ctrlRows.length) return clientRows;   // fără sursă ⇒ nu atingem
   return clientRows.map((row, i) => {
-    const src = ctrlRows[i];
     if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+    // #128g: `ctrl_idx` = indexul rândului sursă din rows_ctrl, ștampilat de frontend la
+    // pre-popularea din DF (list.js onDfSelect). Corelarea POZIȚIONALĂ (rândul i ← ctrlRows[i])
+    // se rupe la ORD cu mai multe blocuri: rândurile blocului 2 stau la coada listei plate, dar
+    // trimit la angajamente de la începutul DF-ului ⇒ identitate derivată din rândul greșit,
+    // tăcut. `ctrl_idx` face explicit ce era implicit; NU adaugă încredere în client — e doar un
+    // pointer într-o listă pe care serverul o citește el însuși din DF, iar valorile vin tot de
+    // acolo. Un `ctrl_idx` absent, nenumeric sau în afara intervalului cade pe poziție ⇒
+    // comportament identic cu cel de dinainte pentru tot ce există azi.
+    // Abatere DELIBERATĂ de la specul lotului: doar `number` și `string` sunt candidați.
+    // `Number(true) === 1` și `Number([]) === 0` ⇒ un `ctrl_idx: true` ar fi pointat mut la
+    // rândul 1. Tipurile astea nu vin din DOM niciodată; le respingem ca să cadă pe poziție.
+    const raw = row.ctrl_idx;
+    const parsed = (typeof raw === 'number' || (typeof raw === 'string' && raw !== ''))
+      ? Number(raw) : NaN;
+    const idx = (Number.isInteger(parsed) && parsed >= 0 && parsed < ctrlRows.length) ? parsed : i;
+    const src = ctrlRows[idx];
     if (!src || typeof src !== 'object') return row;
     const out = { ...row };
     for (const k of ORD_IDENT_COLS) out[k] = src[k] ?? null;

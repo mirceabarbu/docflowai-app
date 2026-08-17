@@ -173,10 +173,14 @@ async function onDfSelect(dfId){
     const tbody=document.getElementById('o-tbody');
     tbody.innerHTML='';oI=0;
     if(!rows.length){addOR();if(typeof window.lockOrdIdentityCols==='function')window.lockOrdIdentityCols();return;}
-    rows.forEach(row=>{
+    rows.forEach((row,idx)=>{
       addOR();
       const tr=tbody.querySelector('tr:last-child');
       if(!tr)return;
+      // #128g: pointer către rândul sursă din rows_ctrl. Serverul derivă identitatea din
+      // ctrlRows[ctrl_idx] (deriveOrdIdentityCols) — necesar la ORD cu mai multe blocuri,
+      // unde poziția în lista plată nu mai coincide cu indexul din DF.
+      tr.dataset.ctrlIdx=String(idx);
       ['cod_angajament','indicator_angajament','program','cod_SSI'].forEach(f=>{
         const inp=tr.querySelector(`[data-f="${f}"]`);
         if(inp&&row[f]!=null)inp.value=row[f];

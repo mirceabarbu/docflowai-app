@@ -138,7 +138,10 @@ async function populateOrd(doc){
     _ordBugetCtx={buget_an_curent:doc.buget_an_curent,cicluri_arhivate:doc.cicluri_arhivate,an_exercitiu:doc.an_exercitiu};
   }else{_ordBugetCtx=null;}
   const tbody=document.getElementById('o-tbody');tbody.innerHTML='';oI=0;
-  (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});});
+  // #128g: `ctrl_idx` e pointer, nu câmp (nu are input în rând) — fără re-ștampilarea lui pe
+  // dataset s-ar pierde la PRIMA salvare de după reîncărcare, iar derivarea ar cădea înapoi pe
+  // poziție (greșit la ORD multi-bloc). Vezi getOR() în core.js.
+  (doc.rows||[]).forEach(row=>{addOR();const tr=tbody.querySelector('tr:last-child');Object.entries(row).forEach(([f,v])=>{const inp=tr.querySelector(`[data-f="${f}"]`);if(inp)inp.value=inp.dataset.money?fMR(parseFloat(v)||0):v;});if(row.ctrl_idx!=null&&row.ctrl_idx!=='')tr.dataset.ctrlIdx=String(row.ctrl_idx);});
   lockOrdIdentityCols(); // ORD legat de DF → coloanele de identitate needitabile
   // v3.9.500 (Issue I-2): wrap-ul captura 2 e VIZIBIL mereu, ca P2 să poată
   // încărca chiar și când DB nu are nimic în slot=2 yet. IMG-ul intern
