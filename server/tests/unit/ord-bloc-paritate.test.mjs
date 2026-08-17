@@ -305,20 +305,20 @@ const ANCORE_PERMISE = {
   'doc.js': {
     'o-df-sel': [5, 'GLOBAL PRIN DESIGN — un singur DF per ORD (reconul #128a)'],
     'o-df-id': [5, 'GLOBAL PRIN DESIGN — id-ul DF-ului legat, unic pe document'],
-    'o-tbody': [8, 'BLOCUL 0 — fallback pentru pagini/teste fără [data-bloc]; ' +
-      'excepții raportate la #128k: _validateOrd fallback, pre-checkul din showP2Modal ' +
-      'și validateSecB (col.5≥0) citesc DOAR blocul 0'],
-    'o-captura2-wrap': [1, '#128l — capturi per bloc'],
-    'o-czone': [1, '#128l — capturi per bloc'],
-    'o-czone2': [1, '#128l — capturi per bloc'],
-    'o-alist': [2, '#128l — atașamente per bloc'],
-    'o-adata': [2, '#128l — atașamente per bloc'],
+    'o-tbody': [7, 'BLOCUL 0 — fallback pentru pagini/teste fără [data-bloc]. #128l a rezolvat ' +
+      'ultimele două excepții reale (pre-checkul din showP2Modal și validateSecB); ce a rămas ' +
+      'e fallback sau resetare de DOM (newDoc/resetF golesc blocul 0 după resetOrdBlocuri)'],
+    'o-captura2-wrap': [1, '#128m — capturi per bloc'],
+    'o-czone': [1, '#128m — capturi per bloc'],
+    'o-czone2': [1, '#128m — capturi per bloc'],
+    'o-alist': [2, '#128m — atașamente per bloc'],
+    'o-adata': [2, '#128m — atașamente per bloc'],
   },
   'core.js': {
     'o-data': [1, 'GLOBAL PRIN DESIGN — data ordonanțării, unică pe document'],
     'o-tbody': [2, 'BLOCUL 0 — _ordTbody(default) și getOR(); lista multi-bloc e getOrdRowsAll()'],
     'o-df-id': [1, 'GLOBAL PRIN DESIGN — un singur DF per ORD'],
-    'o-adata': [1, '#128l — atașamente per bloc'],
+    'o-adata': [1, '#128m — atașamente per bloc'],
   },
   'list.js': {
     'o-df-sel': [2, 'GLOBAL PRIN DESIGN — un singur DF per ORD'],

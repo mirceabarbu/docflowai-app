@@ -22,6 +22,7 @@ import { crediteBugetareAnCurent } from './buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
 import { codSsiBlockResponse } from './cod-ssi-validate.mjs';
 import { normalizeAngajamentRows } from './angajament-normalize.mjs';
+import { blocuriDinOrd, pregatesteScriereBlocuri, normalizeBlocIdx } from './ord-blocuri.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -187,6 +188,7 @@ export const FORMULAR_TYPES = {
     p2Fields: ORD_P2_FIELDS,
     submitStatuses: ['draft', 'returnat'],   // ASIMETRIE: fără 'de_revizuit'
     budgetCheck: 'hard_col5',                // ORD: validare hard col.5 ≥ 0 → 422
+    rowsBlocGuard: true,                     // ASIMETRIE: /complete refuză un `rows` care nu acoperă toate blocurile (#128l)
     codSsiValidate: false,                   // ASIMETRIE: validarea Cod SSI vs Clasa 8 nu s-a extins la ORD
 
     alopOnComplete: null,                    // ORD complete NU atinge ALOP
@@ -445,6 +447,38 @@ export async function completeFormular({ type, id, actor, body }) {
     // ORD.rows e câmpul efectiv potrivit de opme-matcher.mjs:127.
     if ('rows_ctrl' in data) data.rows_ctrl = normalizeAngajamentRows(data.rows_ctrl);
     if ('rows'      in data) data.rows      = normalizeAngajamentRows(data.rows);
+
+    // #128l — GARDĂ fail-closed: `/complete` REÎNLOCUIEȘTE `rows` în întregime. Un client vechi
+    // (sau o cale nemigrată) care trimite doar rândurile blocului 0 ștergea TĂCUT rândurile
+    // furnizorilor 2+ — beneficiarul lor supraviețuia în `blocuri`, deci simptomul era
+    // „bloc completat, tabel gol". NU fuzionăm automat cu rândurile din DB: un merge ar învia
+    // rânduri șterse intenționat de utilizator. Un 409 e vizibil; pierderea de date, nu.
+    // Sigur prin construcție: validarea de client cere cel puțin un rând per bloc, deci un
+    // `/complete` legitim acoperă mereu toate blocurile.
+    if (cfg.rowsBlocGuard && 'rows' in data) {
+      const blocuriDecl = blocuriDinOrd(doc);
+      if (blocuriDecl.length > 1) {
+        const primite = new Set(
+          (Array.isArray(data.rows) ? data.rows : [])
+            .map((r) => normalizeBlocIdx(r?.bloc_idx))
+        );
+        const lipsa = blocuriDecl.map((b) => b.bloc_idx).filter((i) => !primite.has(i));
+        if (lipsa.length) {
+          logger.warn({ ordId: id, blocuriDeclarate: blocuriDecl.length, blocIdxPrimite: [...primite] },
+            'complete ORD respins — rândurile unor blocuri lipsesc din payload');
+          const eticheta = lipsa.map((i) => `Furnizor ${i + 1}`).join(', ');
+          return { status: 409, body: {
+            error: 'rows_bloc_lipsa',
+            message: `Lipsesc rândurile pentru: ${eticheta}. Reîncărcați pagina (Ctrl+F5) și reluați finalizarea — altfel rândurile acestor furnizori s-ar pierde.`,
+            blocuri_lipsa: lipsa,
+          } };
+        }
+      }
+      // Normalizarea `bloc_idx` (numeric, implicit 0) — REFOLOSITĂ din ord-blocuri.mjs, nu
+      // duplicată. `body: {}` ⇒ nu recalculăm `blocuri`/oglinda aici: `/complete` scrie DOAR `rows`.
+      const { rows: rowsCuBloc } = pregatesteScriereBlocuri({ body: {}, data, docExistent: doc });
+      if (rowsCuBloc !== undefined) data.rows = rowsCuBloc;
+    }
 
     // GARDĂ Cod SSI (DF): finalizarea P2 e RESPINSĂ dacă rămâne un cod inexistent în Clasa 8.
     // Validăm starea EFECTIVĂ: rows_ctrl din body (editarea P2) + rows_val/rows_plati persistate

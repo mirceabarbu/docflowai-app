@@ -24,6 +24,19 @@ const BLOC_KEYS = [
 ];
 
 /**
+ * #128l — `bloc_idx` normalizat: număr întreg ≥ 0, implicit 0.
+ * Sursă UNICĂ pentru „cărui bloc îi aparține rândul ăsta" — folosită atât la SCRIERE
+ * (`pregatesteScriereBlocuri`) cât și de garda `rows_bloc_lipsa` din `/complete`.
+ * Dacă cele două ar diverge, un rând s-ar număra la gardă într-un bloc și s-ar scrie în
+ * altul — exact clasa de bug de la #115 (potrivire la selecție, agregare pe altceva).
+ * Acceptă și string numeric ('1'), fiindcă JSON-ul unui client vechi poate trimite așa.
+ */
+function normalizeBlocIdx(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : 0;
+}
+
+/**
  * Întoarce array-ul de blocuri al unui ORD, normalizat, niciodată gol.
  * `ord.blocuri` NULL / [] / tip neașteptat => un singur bloc legacy (bloc_idx 0),
  * construit din coloanele plate ale ORD-ului.
@@ -49,10 +62,7 @@ function blocuriDinOrd(ord) {
  */
 function randuriBloc(rows, blocIdx) {
   const list = Array.isArray(rows) ? rows : [];
-  return list.filter((r) => {
-    const idx = r?.bloc_idx === null || r?.bloc_idx === undefined ? 0 : r.bloc_idx;
-    return idx === blocIdx;
-  });
+  return list.filter((r) => normalizeBlocIdx(r?.bloc_idx) === blocIdx);
 }
 
 /**
@@ -135,7 +145,7 @@ function pregatesteScriereBlocuri({ body, data, docExistent = null }) {
   if (has(d, 'rows')) {
     rows = Array.isArray(d.rows)
       ? d.rows.map((r) => (r && typeof r === 'object' && !Array.isArray(r)
-        ? { ...r, bloc_idx: typeof r.bloc_idx === 'number' ? r.bloc_idx : 0 }
+        ? { ...r, bloc_idx: normalizeBlocIdx(r.bloc_idx) }
         : r))
       : d.rows;
   }
@@ -184,4 +194,4 @@ function profiluriBlocuri(ord) {
 }
 
 export { blocuriDinOrd, randuriBloc, randuriPeBlocuri, oglindaBloc1, pregatesteScriereBlocuri,
-         profiluriBlocuri };
+         profiluriBlocuri, normalizeBlocIdx };

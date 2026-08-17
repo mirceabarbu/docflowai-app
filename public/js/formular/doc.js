@@ -1513,7 +1513,10 @@ async function showP2Modal(ft){
   if(ft==='ordnt'){
     const missingNr=!_vf('o-nr');
     const missingDf=!(document.getElementById('o-df-sel')?.value||'').trim();
-    const missingSuma=![...document.querySelectorAll('#o-tbody input[data-f="suma_ordonantata_plata"]')].some(i=>pMR(i.value)>0);
+    // #128l — pre-check pe TOATE blocurile: dacă măcar un bloc are col.4, lăsăm `_validateOrd`
+    // (per bloc, #128i) să dea mesajul precis. Alertul generic rămâne DOAR când niciun bloc
+    // n-are col.4 — înainte, un bloc 0 gol bloca fals utilizatorul deși blocul 2 era completat.
+    const missingSuma=!_ordAllRowInputs('suma_ordonantata_plata').some(i=>pMR(i.value)>0);
     if(missingNr||missingDf||missingSuma){
       alert('Completați Nr. ORD, selectați DF-ul și completați col.4 (Suma ordonantată)');
       return;
@@ -1670,18 +1673,35 @@ function validateSecB(ft){
     // Validare rânduri ORD — col. 5 (Recepții neplătite) trebuie ≥ 0
     // Formula: c5 = c2(recepții) - c3(plăți anterioare) - c4(suma ordonanțată)
     // c5 < 0 ⇒ ordonanțare > disponibil ⇒ blocat
-    const tbody=document.getElementById('o-tbody');
-    if(!tbody)return true;
-    const rows=[...tbody.querySelectorAll('tr')];
+    // #128l — validarea acoperă TOATE blocurile, nu doar blocul 0 (`#o-tbody`). Era exact
+    // poarta care ar fi trebuit să prindă pierderea rândurilor blocului 2. Fallback fără
+    // containere [data-bloc] (pagini/teste vechi): blocul 0, comportamentul istoric.
+    // Cu UN SINGUR bloc mesajele rămân byte-identice cu cele de azi; prefixul
+    // „Furnizor N — " apare DOAR când există mai multe blocuri (același tipar ca #128i).
+    const blocs=_ordBlocScopes();
+    const multi=blocs.length>1;
+    const pref=(i,s)=>multi?`Furnizor ${i+1} — ${s}`:s;
+    const tb0=blocs.length?null:document.getElementById('o-tbody');
+    const scopes=blocs.length
+      ? blocs.map(bl=>[...bl.querySelectorAll('tbody tr')])
+      : (tb0?[[...tb0.querySelectorAll('tr')]]:null);
+    if(!scopes)return true;
     const negative=[];
-    rows.forEach((tr,idx)=>{
-      const c2=pMR(tr.querySelector('[data-f="receptii"]')?.value);
-      const c3=pMR(tr.querySelector('[data-f="plati_anterioare"]')?.value);
-      const c4=pMR(tr.querySelector('[data-f="suma_ordonantata_plata"]')?.value);
-      const c5=c2-c3-c4;
-      if(c5<-0.001){ // toleranță floating point
-        negative.push({idx:idx+1,c5,cell:tr.querySelector('[data-f="receptii_neplatite"]')});
-      }
+    const faraCod=[];
+    scopes.forEach((rows,bi)=>{
+      rows.forEach((tr,idx)=>{
+        const c2=pMR(tr.querySelector('[data-f="receptii"]')?.value);
+        const c3=pMR(tr.querySelector('[data-f="plati_anterioare"]')?.value);
+        const c4=pMR(tr.querySelector('[data-f="suma_ordonantata_plata"]')?.value);
+        const c5=c2-c3-c4;
+        if(c5<-0.001){ // toleranță floating point
+          negative.push({lbl:pref(bi,`rândul ${idx+1}`),c5,cell:tr.querySelector('[data-f="receptii_neplatite"]')});
+        }
+      });
+      // Fiecare bloc trebuie să aibă cel puțin un rând de angajament: fără el, `/complete`
+      // ar trimite un `rows` care nu acoperă blocul ⇒ 409 `rows_bloc_lipsa` pe server.
+      const areCod=rows.some(tr=>((tr.querySelector('[data-f="cod_angajament"]')?.value)||'').trim()!=='');
+      if(!areCod)faraCod.push({bi,el:blocs.length?(blocs[bi].querySelector('tbody')||blocs[bi]):null});
     });
     if(negative.length){
       // Marcaj vizual roșu pe celulele afectate
@@ -1697,9 +1717,15 @@ function validateSecB(ft){
           tr.querySelectorAll('input').forEach(i=>i.addEventListener('input',clear,{once:true}));
         }
       });
-      const lst=negative.map(n=>`rândul ${n.idx} (${fMR(n.c5)})`).join(', ');
+      const lst=negative.map(n=>`${n.lbl} (${fMR(n.c5)})`).join(', ');
       setS('⛔ Recepții neplătite negative: '+lst+'. Suma ordonanțată (col.4) depășește disponibilul (col.2 − col.3). Reduceți col.4 sau verificați col.2/col.3.','err');
       negative[0].cell?.scrollIntoView({behavior:'smooth',block:'center'});
+      return false;
+    }
+    if(faraCod.length){
+      const lst=faraCod.map(f=>pref(f.bi,'Adăugați cel puțin un rând angajament.')).join(' ');
+      setS('⛔ '+lst,'err');
+      faraCod[0].el?.scrollIntoView({behavior:'smooth',block:'center'});
       return false;
     }
     return true;
@@ -1723,7 +1749,10 @@ function validateSecB(ft){
 async function completeAsP2(ft){
   if(!validateSecB(ft))return;
   if(!ST.docId[ft])return;
-  const body=ft==='ordnt'?{rows:getOR()}:collectDfP2Db();
+  // #128l — `/complete` ÎNLOCUIEȘTE `rows` în întregime pe server ⇒ trimitem rândurile TUTUROR
+  // blocurilor. Cu `getOR()` (blocul 0) rândurile furnizorilor 2+ se pierdeau definitiv.
+  // `getOrdRowsAll()` are exact aceeași formă de rând (`_ordRowOf`), plus `bloc_idx`.
+  const body=ft==='ordnt'?{rows:getOrdRowsAll()}:collectDfP2Db();
   // v3.9.499: upload ambele sloturi când P2 finalizează (root cause R-A fix —
   // înainte, captura 2 era pierdută pentru că completeAsP2 trimitea doar slot 1)
   await uploadCaptura(ft, 1);
@@ -1747,6 +1776,9 @@ async function completeAsP2(ft){
         // FIX B (v3.9.557) → buget multi-anual (v3.9.558): plafon hard pe bugetul anului de
         // exercițiu (banda rows_plati ancorată pe an_referinta). Mesajul server include anul.
         setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului de exercițiu.'),'err');
+      }else if(j.error==='rows_bloc_lipsa'){
+        // #128l — garda fail-closed de pe server: payload-ul nu acoperea toate blocurile.
+        setS('⛔ '+(j.message||'Lipsesc rândurile unor furnizori. Reîncărcați pagina și reluați.'),'err');
       }else{
         setS(j.error||'Eroare','err');
       }
