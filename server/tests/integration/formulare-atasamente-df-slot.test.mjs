@@ -175,7 +175,8 @@ describe('GET list cu slot', () => {
       String(c[0]).includes('slot=$3')
     );
     expect(selectCall, 'SELECT cu slot=$3 nu a fost apelat').toBeDefined();
-    expect(selectCall[1]).toEqual(['df', DF_ID, 2]);
+    // #128m: al 4-lea parametru = blocul de furnizor; fără `?bloc` ⇒ 0 (blocul 0).
+    expect(selectCall[1]).toEqual(['df', DF_ID, 2, 0]);
   });
 
   it('fără ?slot → SELECT WHERE slot=1', async () => {
@@ -194,7 +195,7 @@ describe('GET list cu slot', () => {
     const selectCall = dbModule.pool.query.mock.calls.find(c =>
       String(c[0]).includes('SELECT id, filename, mime_type')
     );
-    expect(selectCall[1]).toEqual(['df', DF_ID, 1]);
+    expect(selectCall[1]).toEqual(['df', DF_ID, 1, 0]);  // #128m: bloc 0 implicit
   });
 
   it('slot 1 list returnează doar slot 1 (izolare slot)', async () => {

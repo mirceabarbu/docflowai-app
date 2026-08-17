@@ -91,15 +91,39 @@ function dlv(ev,zid){document.getElementById(zid).classList.remove('drag-ov');}
 function ddp(ev,iid,zid,phid){ev.preventDefault();document.getElementById(zid).classList.remove('drag-ov');const f=ev.dataTransfer.files?.[0];if(!f||!f.type.startsWith('image/'))return;const r=new FileReader();r.onload=e=>showImg(iid,phid,e.target.result);r.readAsDataURL(f);}
 
 /* Attachments */
+// #128m — „cheia" unei zone de atașamente. Pentru blocul 0 (ORD) și pentru DF rămâne exact
+// id-ul de element de azi ('o-alist', 'n-adata'…) ⇒ ZERO schimbare de comportament. Pentru
+// blocurile 2+ de furnizor, care n-au id-uri (regula #128h), cheia e un token
+// `bloc:<idx>:<rol>` rezolvat prin `data-role` în interiorul containerului `.ord-bloc`.
+// `ctx` (elementul care a declanșat acțiunea) are PRIORITATE față de index: la ștergerea
+// unui furnizor blocurile se renumerotează, deci un index capturat în onclick poate fi vechi.
+function attKeyBloc(idx,rol){return 'bloc:'+idx+':'+rol;}
+function isAttBlocKey(key){return typeof key==='string'&&key.indexOf('bloc:')===0;}
+function attEl(key,ctx){
+  if(!key)return null;
+  if(!isAttBlocKey(key))return document.getElementById(key);
+  const parts=String(key).split(':');
+  const host=(ctx&&ctx.closest&&ctx.closest('.ord-bloc'))||document.querySelector(`.ord-bloc[data-bloc="${parts[1]}"]`);
+  return host?host.querySelector(`[data-role="att-${parts[2]}"]`):null;
+}
+// Blocul căruia îi aparține o cheie de atașamente (0 pentru DF și pentru blocul 0 ORD).
+function attBlocOf(key,ctx){
+  const host=ctx&&ctx.closest&&ctx.closest('.ord-bloc');
+  if(host)return Number(host.getAttribute('data-bloc'))||0;
+  if(isAttBlocKey(key))return Number(String(key).split(':')[1])||0;
+  return 0;
+}
 function addAtt(ev,lid,did){
   const files=ev.target.files;if(!files.length)return;
-  const list=document.getElementById(lid);
-  let cur=JSON.parse(document.getElementById(did).value||'[]');
+  const list=attEl(lid,ev.target);
+  const dataEl=attEl(did,ev.target);
+  if(!list||!dataEl)return;
+  let cur=JSON.parse(dataEl.value||'[]');
   for(const f of files){
     const rd=new FileReader();
     rd.onload=e=>{
       const idx=cur.length;cur.push({name:f.name,type:f.type,data:e.target.result});
-      document.getElementById(did).value=JSON.stringify(cur);
+      dataEl.value=JSON.stringify(cur);
       // v3.9.654 (faza 2b): chip nesalvat randat prin renderFileItem (unificat DF/ORD)
       const holder=document.createElement('div');
       holder.innerHTML=renderFileItem({filename:f.name,canPreview:false,downloadHref:null,canDelete:true,deleteOnclick:`remAtt(${idx},'${lid}','${did}',this)`});
@@ -107,15 +131,17 @@ function addAtt(ev,lid,did){
       // v3.9.554 (B3): setarea programatică a input-ului ascuns nu emite 'input'/'change',
       // deci autosave-ul nu pornea — fișier atașat + navigare fără alt edit = pierdut.
       // Derivăm ft din did ('o-*' → ordnt, 'n-*' → notafd), consecvent cu remAttServer.
-      window._scheduleAutoSaveDb?.(did.startsWith('o-')?'ordnt':'notafd');
+      // #128m: cheile de bloc ('bloc:N:data') sunt, prin construcție, doar ORD.
+      window._scheduleAutoSaveDb?.((did.startsWith('o-')||isAttBlocKey(did))?'ordnt':'notafd');
     };
     rd.readAsDataURL(f);
   }
   ev.target.value='';
 }
 function remAtt(idx,lid,did,btn){
-  const cur=JSON.parse(document.getElementById(did).value||'[]');
-  cur.splice(idx,1);document.getElementById(did).value=JSON.stringify(cur);
+  const dataEl=attEl(did,btn);if(!dataEl)return;
+  const cur=JSON.parse(dataEl.value||'[]');
+  cur.splice(idx,1);dataEl.value=JSON.stringify(cur);
   btn.closest('.df-file-item')?.remove();
 }
 
@@ -540,6 +566,17 @@ function _sablonBloc(idx){
         <input class="di" maxlength="90" data-fld="documente_justificative"/>
       </div>
     </div>
+    <!-- #128m — zonă de atașamente per furnizor, identică funcțional cu a blocului 0, dar
+         marcată EXCLUSIV prin data-role (⛔ niciun id — regula #128h). Butonul și input-ul
+         de fișier NU au handler inline: se leagă prin delegare pe #ord-blocuri (list.js),
+         ca blocurile restaurate din draft sau recreate la redeschidere să fie acoperite
+         automat, fără cablare la creare. -->
+    <div class="att-zone"><div class="att-list" data-role="att-list"></div></div>
+    <div class="att-br">
+      <button type="button" class="att-btn" data-role="att-btn"><svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-paperclip"/></svg> Atașează fișiere</button>
+      <input type="file" class="att-inp" data-role="att-input" multiple/>
+    </div>
+    <input type="hidden" data-role="att-data" value="[]"/>
     <div class="doc-hr"></div>
     <div class="df-row df-row-3">
       <div>
@@ -985,6 +1022,10 @@ function mkFlow(ft){
   window.ddp                = ddp;
   window.addAtt             = addAtt;
   window.remAtt             = remAtt;
+  window.attEl              = attEl;          // #128m
+  window.attKeyBloc         = attKeyBloc;     // #128m
+  window.isAttBlocKey       = isAttBlocKey;   // #128m
+  window.attBlocOf          = attBlocOf;      // #128m
 
   window.df = window.df || {};
   window.df._formularCoreLoaded = true;

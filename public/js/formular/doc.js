@@ -463,6 +463,10 @@ function lockCaptureAndAttachments(ft,lock){
   const ainpId=ft==='ordnt'?'o-ainp':'n-fdai';
   const ainp=document.getElementById(ainpId);
   if(ainp)ainp.disabled=lock;
+  // #128m: input-urile de fișier ale blocurilor 2+ n-au id — se prind pe clasă, ca butoanele.
+  // ⚠️ Doar pe ORD: pe DF selectorul pe clasă ar prinde și input-ul slotului 2, care azi NU e
+  // dezactivat aici (butonul lui e, prin `.att-btn`) — comportamentul DF rămâne neschimbat.
+  if(ft==='ordnt')document.querySelectorAll('#ord-blocuri .ord-bloc .att-inp').forEach(e=>e.disabled=lock);
   document.querySelectorAll(`#form-${ft} .att-btn`).forEach(e=>e.disabled=lock);
 }
 function setModeP2Df(){
@@ -851,6 +855,9 @@ async function openDoc(ft,id){
     // v3.9.501: încarcă lista de atașamente server-side pentru ambele sloturi
     await fetchAttachments(ft, 1);
     if(ft==='notafd') await fetchAttachments(ft, 2);
+    // #128m — al TREILEA traseu: la redeschidere, fiecare bloc 2+ își cere lista cu `?bloc=N`.
+    // Blocurile există deja: renderOrdBlocuri() rulează SINCRON la începutul populateOrd().
+    if(ft==='ordnt') await fetchAttachmentsBlocuri(ft);
 
     // Ascunde motiv bar implicit; se afișează doar pentru 'returnat'
     const _mb=document.getElementById('motiv-bar-'+ft);
@@ -1146,6 +1153,8 @@ async function saveDoc(ft){
     if(ST.docId[ft]){
       _attFailed=_attFailed.concat(await uploadAttachments(ft, 1)||[]);
       if(ft==='notafd') _attFailed=_attFailed.concat(await uploadAttachments(ft, 2)||[]);
+      // #128m — atașamentele blocurilor 2+ de furnizor (ORD).
+      _attFailed=_attFailed.concat(await uploadAttachmentsBlocuri(ft)||[]);
     }
 
     ST.docCapabilities=ST.docCapabilities||{};
@@ -1186,22 +1195,40 @@ async function uploadCaptura(ft, slot){
 
 // ── Atașamente (Compartiment specialitate + secțiunea B) ──────────────────────
 // v3.9.501: extins cu slot pentru DF (n-fdad slot=1, n-adata slot=2)
-function _attIds(ft, slot) {
+// #128m: al treilea parametru = blocul de furnizor (ORD). Default 0 ⇒ apelanții existenți
+// (inclusiv TOT DF-ul) primesc EXACT id-urile de azi. Blocurile 2+ n-au id-uri, deci primesc
+// chei `bloc:N:<rol>` rezolvate prin data-role (vezi attEl în core.js).
+function _attIds(ft, slot, bloc = 0) {
   const s = slot === 2 ? 2 : 1;
-  if (ft === 'ordnt') return s === 1 ? { did:'o-adata', lid:'o-alist' } : null;
+  const b = Number.isInteger(bloc) && bloc > 0 ? bloc : 0;
+  if (ft === 'ordnt') {
+    if (s !== 1) return null;
+    return b === 0 ? { did:'o-adata', lid:'o-alist' }
+                   : { did: attKeyBloc(b, 'data'), lid: attKeyBloc(b, 'list') };
+  }
   if (ft === 'notafd') return s === 1 ? { did:'n-fdad',  lid:'n-fdal' }
                                        : { did:'n-adata', lid:'n-alist' };
   return null;
 }
 
+// Numărul de blocuri de furnizor prezente în DOM (minim 1 — blocul 0 e markup static).
+function _ordBlocCount() {
+  const n = document.querySelectorAll('#ord-blocuri .ord-bloc').length;
+  return n > 0 ? n : 1;
+}
+
 // v3.9.554 (B2): returnează lista eșecurilor [{name, reason}] — apelanții (saveDoc,
 // _autoSaveDb) o folosesc ca să NU raporteze „Salvat cu succes" peste upload-uri picate.
-async function uploadAttachments(ft, slot = 1){
-  const ids = _attIds(ft, slot); if (!ids) return [];
+async function uploadAttachments(ft, slot = 1, bloc = 0){
+  const _bloc = Number.isInteger(bloc) && bloc > 0 ? bloc : 0;
+  const ids = _attIds(ft, slot, _bloc); if (!ids) return [];
   if (!ST.docId[ft]) return [];
   const { did, lid } = ids;
   const _slot = slot === 2 ? 2 : 1;
-  let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return []; }
+  // #128m: `&bloc=N` se trimite DOAR pentru blocurile 2+. Un ORD cu un singur furnizor și
+  // orice DF produc exact aceleași cereri ca înainte (serverul rezolvă absența ca bloc 0).
+  const _blocQs = _bloc > 0 ? `&bloc=${_bloc}` : '';
+  let cur; try { cur = JSON.parse(attEl(did)?.value || '[]'); } catch (_) { return []; }
   if (!Array.isArray(cur)) return [];
   let changed = false;
   const failed = [];
@@ -1215,7 +1242,7 @@ async function uploadAttachments(ft, slot = 1){
       const bin = atob(b64); const arr = new Uint8Array(bin.length);
       for (let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
       const blob = new Blob([arr], { type: mime });
-      const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`, {
+      const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}${_blocQs}`, {
         method: 'POST', credentials: 'include',
         headers: {
           'Content-Type': mime,
@@ -1243,24 +1270,36 @@ async function uploadAttachments(ft, slot = 1){
     }
   }
   if (changed) {
-    document.getElementById(did).value = JSON.stringify(cur);
-    renderAttachments(ft, _slot);
+    const _dataEl = attEl(did); if (_dataEl) _dataEl.value = JSON.stringify(cur);
+    renderAttachments(ft, _slot, _bloc);
   }
   return failed;
 }
 
-async function fetchAttachments(ft, slot = 1){
-  const ids = _attIds(ft, slot); if (!ids) return;
+// #128m — urcă atașamentele pending ale blocurilor 2+ (blocul 0 rămâne pe apelul clasic
+// uploadAttachments(ft,1)). Pentru DF întoarce [] imediat.
+async function uploadAttachmentsBlocuri(ft){
+  if (ft !== 'ordnt') return [];
+  let out = [];
+  const n = _ordBlocCount();
+  for (let b = 1; b < n; b++) out = out.concat(await uploadAttachments(ft, 1, b) || []);
+  return out;
+}
+
+async function fetchAttachments(ft, slot = 1, bloc = 0){
+  const _bloc = Number.isInteger(bloc) && bloc > 0 ? bloc : 0;
+  const ids = _attIds(ft, slot, _bloc); if (!ids) return;
   if (!ST.docId[ft]) return;
   const { did } = ids;
   const _slot = slot === 2 ? 2 : 1;
+  const _blocQs = _bloc > 0 ? `&bloc=${_bloc}` : '';
   try {
-    const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`, { credentials: 'include' });
+    const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}${_blocQs}`, { credentials: 'include' });
     if (!r.ok) {
       // v3.9.554 (B2): la 403/500 lista nu mai dispare tăcut — indicator discret de eroare
       const jErr = await r.json().catch(() => null);
       console.warn('[v3.9.554] fetchAttachments HTTP', r.status, jErr?.error);
-      const listEl = document.getElementById(ids.lid);
+      const listEl = attEl(ids.lid);
       if (listEl) listEl.innerHTML = `<div class="df-file-item df-file-item--err" title="${df.esc(jErr?.error || ('HTTP ' + r.status))}">⚠ atașamentele nu au putut fi încărcate</div>`;
       return;
     }
@@ -1269,17 +1308,26 @@ async function fetchAttachments(ft, slot = 1){
     const list = j.atasamente.map(a => ({
       id: a.id, filename: a.filename, mime_type: a.mime_type, size_bytes: a.size_bytes
     }));
-    document.getElementById(did).value = JSON.stringify(list);
-    renderAttachments(ft, _slot);
+    const _dataEl = attEl(did); if (_dataEl) _dataEl.value = JSON.stringify(list);
+    renderAttachments(ft, _slot, _bloc);
   } catch (e) { console.warn('[v3.9.501] fetchAttachments error', e); }
 }
 
-function renderAttachments(ft, slot = 1){
-  const ids = _attIds(ft, slot); if (!ids) return;
+// #128m — al treilea traseu (redeschidere): listele blocurilor 2+ se cer PER BLOC.
+// Blocul 0 rămâne pe apelul clasic fetchAttachments(ft,1) din loadDoc.
+async function fetchAttachmentsBlocuri(ft){
+  if (ft !== 'ordnt') return;
+  const n = _ordBlocCount();
+  for (let b = 1; b < n; b++) await fetchAttachments(ft, 1, b);
+}
+
+function renderAttachments(ft, slot = 1, bloc = 0){
+  const _bloc = Number.isInteger(bloc) && bloc > 0 ? bloc : 0;
+  const ids = _attIds(ft, slot, _bloc); if (!ids) return;
   const { did, lid } = ids;
-  const list = document.getElementById(lid); if (!list) return;
+  const list = attEl(lid); if (!list) return;
   list.innerHTML = '';
-  let cur; try { cur = JSON.parse(document.getElementById(did)?.value || '[]'); } catch (_) { return; }
+  let cur; try { cur = JSON.parse(attEl(did)?.value || '[]'); } catch (_) { return; }
   if (!Array.isArray(cur)) return;
   const docId = ST.docId[ft];
   // v3.9.654 (faza 2b): chip-ul de atașamente randat prin renderFileItem (unificat DF/ORD),
@@ -1291,7 +1339,7 @@ function renderAttachments(ft, slot = 1){
       const url = `/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
       return renderFileItem({
         filename: name, sizeBytes: item.size_bytes, mimeType: item.mime_type,
-        canPreview: true, previewOnclick: `previewAttFromChip('${ft}',${slot},${idx});return false;`,
+        canPreview: true, previewOnclick: `previewAttFromChip('${ft}',${slot},${idx},${_bloc});return false;`,
         downloadHref: url, downloadName: name,
         canDelete: true, deleteOnclick: `remAttServer(${idx},'${lid}','${did}','${item.id}',this)`,
         isError: !!item._err, errorTitle: errTitle,
@@ -1307,9 +1355,9 @@ function renderAttachments(ft, slot = 1){
 }
 
 // v3.9.570: rezolvă item-ul din JSON-ul curent (evită escaping de nume fișier în onclick) și deleagă la modalul de preview global
-function previewAttFromChip(ft, slot, idx){
-  const ids = _attIds(ft, slot); if (!ids) return;
-  let cur; try { cur = JSON.parse(document.getElementById(ids.did)?.value || '[]'); } catch (_) { return; }
+function previewAttFromChip(ft, slot, idx, bloc = 0){
+  const ids = _attIds(ft, slot, Number(bloc) || 0); if (!ids) return;
+  let cur; try { cur = JSON.parse(attEl(ids.did)?.value || '[]'); } catch (_) { return; }
   const item = Array.isArray(cur) ? cur[idx] : null;
   const docId = ST.docId[ft];
   if (!item || !item.id || !docId) return;
@@ -1319,7 +1367,9 @@ function previewAttFromChip(ft, slot, idx){
 }
 
 async function remAttServer(idx,lid,did,attId,btn){
-  const ft=lid.startsWith('o-')?'ordnt':'notafd';
+  // #128m: cheile de bloc ('bloc:N:list') sunt, prin construcție, doar ORD.
+  const ft=(lid.startsWith('o-')||isAttBlocKey(lid))?'ordnt':'notafd';
+  const _bloc=attBlocOf(lid,btn);
   if(!ST.docId[ft]){
     if(typeof window.remAtt==='function')return window.remAtt(idx,lid,did,btn);
     return;
@@ -1334,10 +1384,11 @@ async function remAttServer(idx,lid,did,attId,btn){
       alert(j?.error==='document_locked'?'Document complet — atașamentul nu poate fi șters.':'Eroare la ștergere.');
       return;
     }
-    let cur;try{cur=JSON.parse(document.getElementById(did).value||'[]');}catch(_){cur=[];}
+    const dataEl=attEl(did,btn);
+    let cur;try{cur=JSON.parse(dataEl?.value||'[]');}catch(_){cur=[];}
     cur.splice(idx,1);
-    document.getElementById(did).value=JSON.stringify(cur);
-    renderAttachments(ft);
+    if(dataEl)dataEl.value=JSON.stringify(cur);
+    renderAttachments(ft,1,_bloc);
   }catch(e){alert('Eroare rețea: '+e.message);}
 }
 
@@ -1760,6 +1811,7 @@ async function completeAsP2(ft){
   // v3.9.501: upload atașamente pending (ambele sloturi pentru DF, slot 1 pentru ORD)
   await uploadAttachments(ft, 1);
   if(ft==='notafd') await uploadAttachments(ft, 2);
+  await uploadAttachmentsBlocuri(ft);  // #128m
   try{
     setS('Se finalizează...','info');
     const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/complete`,{
@@ -1999,7 +2051,10 @@ function resetF(ft){
   window.saveDoc                    = saveDoc;
   window.uploadCaptura              = uploadCaptura;
   window.uploadAttachments          = uploadAttachments;
+  window.uploadAttachmentsBlocuri   = uploadAttachmentsBlocuri;  // #128m
   window.fetchAttachments           = fetchAttachments;
+  window.fetchAttachmentsBlocuri    = fetchAttachmentsBlocuri;   // #128m
+  window._attIds                    = _attIds;                   // #128m
   window.renderAttachments          = renderAttachments;
   window.remAttServer               = remAttServer;
   window.previewAttFromChip         = previewAttFromChip;

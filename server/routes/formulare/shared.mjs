@@ -133,6 +133,14 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
 // v3.9.500: ATAȘAMENTE (DF și ORD) — pattern simetric cu formulare_capturi
 // ─────────────────────────────────────────────────────────────────────────────
 
+// #128m — blocul de furnizor țintă (`?bloc=N`). Absent / invalid ⇒ 0, adică exact
+// comportamentul de dinainte: clienții vechi și DF-ul nu trimit parametrul, iar rândurile
+// legacy au `bloc_idx` NULL, citit tot ca 0 (`COALESCE(bloc_idx, 0)`).
+function _blocIdx(req) {
+  const n = parseInt(req.query.bloc, 10);
+  return Number.isInteger(n) && n >= 0 ? n : 0;
+}
+
 // POST /api/formulare-atasamente/:type/:id — upload atașament (max 10MB)
 router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
   if (requireDb(res)) return;
@@ -157,6 +165,8 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     // v3.9.501: slot pentru a permite multiple seturi per formular (DF n-fdad vs n-adata)
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+    // #128m: blocul de furnizor (ORD multi-bloc); ortogonal pe slot.
+    const blocIdx = _blocIdx(req);
 
     const chunks = [];
     req.on('data', c => chunks.push(c));
@@ -183,28 +193,32 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     // ⛔ Fără index unic: producția are deja duplicate, indexul ar eșua la creare (tiparul 095).
     // Un fișier CORECTAT cu același nume are aproape sigur altă dimensiune, deci trece; dacă
     // vreodată nu trece, calea rămasă e ștergerea atașamentului vechi și reîncărcarea.
+    // #128m: cheia de dedup e EXTINSĂ cu `bloc_idx`. Fără dimensiunea de bloc, ACELAȘI fișier
+    // nu ar putea fi atașat la doi furnizori — dedup-ul l-ar întoarce pe cel al blocului 0, iar
+    // blocul 2 ar rămâne fără atașament. Dedup-ul rămâne la fel de strict ÎN INTERIORUL unui bloc.
     const { rows: dupAtt } = await pool.query(`
-      SELECT id, filename, mime_type, size_bytes, slot, created_at
+      SELECT id, filename, mime_type, size_bytes, slot, bloc_idx, created_at
         FROM formulare_atasamente
        WHERE form_type = $1 AND form_id = $2 AND slot = $3
          AND filename = $4 AND size_bytes = $5
+         AND COALESCE(bloc_idx, 0) = $6
          AND deleted_at IS NULL
        ORDER BY created_at ASC
        LIMIT 1
-    `, [type, id, slot, filename, data.length]);
+    `, [type, id, slot, filename, data.length, blocIdx]);
     if (dupAtt.length) {
-      logger.warn({ type, id, slot, filename, existingId: dupAtt[0].id, actor: actor.email },
+      logger.warn({ type, id, slot, bloc: blocIdx, filename, existingId: dupAtt[0].id, actor: actor.email },
         'formulare-atasament: upload duplicat — s-a returnat atașamentul existent');
       return res.json({ ok: true, atasament: dupAtt[0], deduplicated: true });
     }
 
     const { rows: inserted } = await pool.query(`
-      INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, filename, mime_type, size_bytes, slot, created_at
-    `, [type, id, actor.userId, filename, mime_type, data.length, data, slot]);
+      INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot, bloc_idx)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, filename, mime_type, size_bytes, slot, bloc_idx, created_at
+    `, [type, id, actor.userId, filename, mime_type, data.length, data, slot, blocIdx]);
 
-    logger.info({ type, id, slot, attId: inserted[0].id, size: data.length, actor: actor.email }, 'formulare-atasament upload');
+    logger.info({ type, id, slot, bloc: blocIdx, attId: inserted[0].id, size: data.length, actor: actor.email }, 'formulare-atasament upload');
     res.json({ ok: true, atasament: inserted[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-atasament upload error');
@@ -235,13 +249,16 @@ router.get('/api/formulare-atasamente/:type/:id', async (req, res) => {
     // v3.9.501: filtrare per slot (default 1 backward compat)
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+    // #128m: filtrare per bloc de furnizor. Cerere FĂRĂ `?bloc` ⇒ blocul 0 — exact lista
+    // pe care o vede clientul de azi (rândurile legacy au bloc_idx NULL ⇒ tot blocul 0).
+    const blocIdx = _blocIdx(req);
 
     const { rows } = await pool.query(
-      `SELECT id, filename, mime_type, size_bytes, uploaded_by, slot, created_at
+      `SELECT id, filename, mime_type, size_bytes, uploaded_by, slot, COALESCE(bloc_idx, 0) AS bloc_idx, created_at
        FROM formulare_atasamente
-       WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND deleted_at IS NULL
+       WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND COALESCE(bloc_idx, 0)=$4 AND deleted_at IS NULL
        ORDER BY created_at ASC`,
-      [type, id, slot]
+      [type, id, slot, blocIdx]
     );
     res.json({ ok: true, atasamente: rows });
   } catch (e) {

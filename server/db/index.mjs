@@ -2470,6 +2470,25 @@ export const MIGRATIONS = [
       ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS blocuri JSONB;
     `
   }
+  ,{
+    // #128m — atașamente (și, la #128n, capturi) per BLOC de furnizor pe ORD.
+    // `bloc_idx` e ORTOGONAL pe `slot`: `slot` distinge seturile de atașamente ale unui formular
+    // (DF: n-fdad vs n-adata), `bloc_idx` distinge FURNIZORUL. Un ORD poate avea acum N blocuri.
+    // ⚠️ FĂRĂ DEFAULT și FĂRĂ backfill, deliberat — același tipar ca `blocuri` la #128b:
+    // NULL se citește ca „blocul 0" (`COALESCE(bloc_idx, 0)`), deci rândurile existente rămân
+    // exact cum sunt și migrația e reversibilă instantaneu, fără dependență de pg_dump.
+    // Coloana pe `formulare_capturi` se adaugă ACUM ca să nu fie nevoie de un al doilea deploy
+    // cu schemă la #128n; până atunci rămâne nescrisă.
+    id: '106_formulare_binare_bloc_idx',
+    sql: `
+      ALTER TABLE formulare_atasamente ADD COLUMN IF NOT EXISTS bloc_idx SMALLINT;
+      ALTER TABLE formulare_capturi    ADD COLUMN IF NOT EXISTS bloc_idx SMALLINT;
+
+      DROP INDEX IF EXISTS idx_formulare_atasamente_form;
+      CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_form
+        ON formulare_atasamente(form_type, form_id, slot, bloc_idx) WHERE deleted_at IS NULL;
+    `
+  }
 ];
 
 async function runMigrations(client) {

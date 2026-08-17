@@ -295,7 +295,7 @@ describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
  * Lista albă: pentru fiecare fișier, ancorele pe id `o-…` PERMISE și de câte ori.
  * Verdicte:
  *   GLOBAL PRIN DESIGN — câmp unic pe DOCUMENT, nu pe furnizor;
- *   #128l             — atașamente / capturi, per bloc în lotul următor (cu migrație);
+ *   #128n             — capturi per bloc, lotul următor (coloana `bloc_idx` există deja);
  *   BLOCUL 0          — id-ul istoric al blocului 0, folosit ca ancoră/fallback, cu o cale
  *                       per-bloc alături (`[data-bloc]`) care îl acoperă.
  * Orice ancoră NOUĂ face testul să cadă ⇒ decizie conștientă. Orice ancoră REZOLVATĂ îl face
@@ -308,17 +308,20 @@ const ANCORE_PERMISE = {
     'o-tbody': [7, 'BLOCUL 0 — fallback pentru pagini/teste fără [data-bloc]. #128l a rezolvat ' +
       'ultimele două excepții reale (pre-checkul din showP2Modal și validateSecB); ce a rămas ' +
       'e fallback sau resetare de DOM (newDoc/resetF golesc blocul 0 după resetOrdBlocuri)'],
-    'o-captura2-wrap': [1, '#128m — capturi per bloc'],
-    'o-czone': [1, '#128m — capturi per bloc'],
-    'o-czone2': [1, '#128m — capturi per bloc'],
-    'o-alist': [2, '#128m — atașamente per bloc'],
-    'o-adata': [2, '#128m — atașamente per bloc'],
+    'o-captura2-wrap': [1, '#128n — capturi per bloc (coloana bloc_idx există din #128m, nescrisă)'],
+    'o-czone': [1, '#128n — capturi per bloc (coloana bloc_idx există din #128m, nescrisă)'],
+    'o-czone2': [1, '#128n — capturi per bloc (coloana bloc_idx există din #128m, nescrisă)'],
+    'o-alist': [2, 'BLOCUL 0 — REZOLVAT la #128m: zonele per bloc se rezolvă prin attEl()/data-role; ' +
+      'ce a rămas e golirea DOM-ului blocului 0 în newDoc/resetF'],
+    'o-adata': [2, 'BLOCUL 0 — REZOLVAT la #128m: hidden-ul per bloc se rezolvă prin attEl()/data-role; ' +
+      'ce a rămas e resetarea valorii blocului 0 în newDoc/resetF'],
   },
   'core.js': {
     'o-data': [1, 'GLOBAL PRIN DESIGN — data ordonanțării, unică pe document'],
     'o-tbody': [2, 'BLOCUL 0 — _ordTbody(default) și getOR(); lista multi-bloc e getOrdRowsAll()'],
     'o-df-id': [1, 'GLOBAL PRIN DESIGN — un singur DF per ORD'],
-    'o-adata': [1, '#128m — atașamente per bloc'],
+    'o-adata': [1, 'BLOCUL 0 — colO() trimite lista de atașamente a blocului 0 în payload-ul ' +
+      'de document (PDF/XML); persistența per furnizor e în formulare_atasamente.bloc_idx (#128m)'],
   },
   'list.js': {
     'o-df-sel': [2, 'GLOBAL PRIN DESIGN — un singur DF per ORD'],

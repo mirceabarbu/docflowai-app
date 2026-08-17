@@ -98,6 +98,8 @@ async function _autoSaveDb(ft){
     if(ST.docId[ft]){
       _attFailed=_attFailed.concat(await uploadAttachments(ft, 1)||[]);
       if(ft==='notafd') _attFailed=_attFailed.concat(await uploadAttachments(ft, 2)||[]);
+      // #128m — atașamentele blocurilor 2+ de furnizor (ORD).
+      _attFailed=_attFailed.concat(await window.uploadAttachmentsBlocuri?.(ft)||[]);
     }
     if(_attFailed.length){
       _draftShowBadge(ft,'⚠ '+_attFailed.length+' atașament(e) neîncărcate');
@@ -356,6 +358,28 @@ window._lookupByCif=_lookupByCif;
   host.addEventListener('focusout',e=>{
     const t=e.target;
     if(t&&t.matches&&t.matches('[data-fld="cif_beneficiar"]'))_lookupByCif(t);
+  });
+  // #128m — atașamente per furnizor: butonul „Atașează fișiere" și input-ul de fișier ale
+  // blocurilor 2+ n-au handler inline (n-au nici id). Delegarea acoperă automat blocurile
+  // adăugate manual, restaurate din draft sau recreate de renderOrdBlocuri.
+  // ⛔ Blocul 0 e SĂRIT deliberat: are handler inline în formular.html — fără gardă s-ar
+  // declanșa de două ori (fiecare fișier ar fi adăugat dublu în listă).
+  host.addEventListener('click',e=>{
+    const btn=e.target&&e.target.closest&&e.target.closest('[data-role="att-btn"]');
+    if(!btn)return;
+    const bloc=btn.closest('.ord-bloc');
+    if(!bloc||(bloc.getAttribute('data-bloc')||'0')==='0')return;
+    const inp=bloc.querySelector('[data-role="att-input"]');
+    if(inp&&!inp.disabled)inp.click();
+  });
+  host.addEventListener('change',e=>{
+    const t=e.target;
+    if(!t||!t.matches||!t.matches('[data-role="att-input"]'))return;
+    const bloc=t.closest('.ord-bloc');
+    if(!bloc)return;
+    const bi=Number(bloc.getAttribute('data-bloc'))||0;
+    if(bi===0)return;  // blocul 0 are onchange inline
+    window.addAtt?.(e,window.attKeyBloc(bi,'list'),window.attKeyBloc(bi,'data'));
   });
   host.addEventListener('click',e=>{
     const opt=e.target&&e.target.closest&&e.target.closest('.ac-opt');

@@ -52,9 +52,10 @@ describe('I-3: atașamente — funcții declarate și exportate', () => {
   it('uploadAttachments / fetchAttachments / renderAttachments / remAttServer declarate', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
     // v3.9.501: signature extinsă cu slot (ft, slot=1)
-    expect(src).toMatch(/async function uploadAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
-    expect(src).toMatch(/async function fetchAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
-    expect(src).toMatch(/function renderAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
+    // #128m (v3.9.773): și cu blocul de furnizor (ft, slot=1, bloc=0)
+    expect(src).toMatch(/async function uploadAttachments\(ft(?:,\s*slot\s*=\s*1)?(?:,\s*bloc\s*=\s*0)?\)/);
+    expect(src).toMatch(/async function fetchAttachments\(ft(?:,\s*slot\s*=\s*1)?(?:,\s*bloc\s*=\s*0)?\)/);
+    expect(src).toMatch(/function renderAttachments\(ft(?:,\s*slot\s*=\s*1)?(?:,\s*bloc\s*=\s*0)?\)/);
     expect(src).toMatch(/async function remAttServer/);
   });
 
