@@ -400,10 +400,16 @@ window._loadBugetDisponibil = _loadBugetDisponibil;
 // blocajul hard rămâne la submit/complete (server). `null` = ORD fără df_id → fără plafon.
 let _ordBugetCtx = null;
 
+// #128o — bannerele de buget ale TUTUROR blocurilor de furnizor. Blocul 0 are markup static
+// în formular.html, blocurile 2+ vin din `_sablonBloc`; ambele poartă `data-role="buget-warn"`.
+// ⚠️ Scopat pe `#form-ordnt`, ca să nu prindă niciodată bannerul DF-ului.
+function _ordBugetWarnEls(){
+  return [...document.querySelectorAll('#form-ordnt [data-role="buget-warn"]')];
+}
+
 function _resetOrdBuget(){
   _ordBugetCtx = null;
-  const warn=document.getElementById('ord-buget-warn');
-  if(warn){warn.style.display='none';warn.innerHTML='';}
+  _ordBugetWarnEls().forEach(w=>{w.style.display='none';w.innerHTML='';});
   _ordAllRows().forEach(tr=>tr.classList.remove('ord-buget-over'));
 }
 
@@ -421,11 +427,13 @@ async function _loadOrdBuget(dfId){
 }
 
 function _checkOrdBuget(){
-  const warn=document.getElementById('ord-buget-warn');
+  // #128o — bannerul se scrie în TOATE blocurile, nu doar în cel static al blocului 0.
+  const warns=_ordBugetWarnEls();
+  const _hideAll=()=>warns.forEach(w=>{w.style.display='none';w.innerHTML='';});
   // #128j — rândurile TUTUROR blocurilor. Bugetul rămâne UNUL SINGUR pe document (ORD-ul are
   // un singur DF) ⇒ suma comparată e totalul pe toate blocurile, iar marcajul se aplică peste tot.
   _ordAllRows().forEach(tr=>tr.classList.remove('ord-buget-over'));
-  if(!_ordBugetCtx){if(warn){warn.style.display='none';warn.innerHTML='';}return;}
+  if(!_ordBugetCtx){_hideAll();return;}
   const buget=Number(_ordBugetCtx.buget_an_curent)||0;
   const arhivat=Number(_ordBugetCtx.cicluri_arhivate)||0;
   const an=_ordBugetCtx.an_exercitiu;
@@ -437,13 +445,19 @@ function _checkOrdBuget(){
   const over=cumul>buget+0.001;
   if(over){
     _ordAllRows().forEach(tr=>tr.classList.add('ord-buget-over'));
-    if(warn){
-      const dep=cumul-buget;
-      warn.innerHTML='⛔ Suma ordonanțată '+(arhivat>0?`cumulată în anul ${esc(an)} (${esc(fMR(cumul))} lei, din care ${esc(fMR(arhivat))} lei deja ordonanțați în cicluri anterioare)`:`(${esc(fMR(cumul))} lei)`)+
-        ` depășește creditele bugetare ale anului ${esc(an)} (${esc(fMR(buget))} lei) cu ${esc(fMR(dep))} lei. Finalizarea va fi blocată.`;
-      warn.style.display='';
-    }
-  }else if(warn){warn.style.display='none';warn.innerHTML='';}
+    const dep=cumul-buget;
+    // #128o — la mai mulți furnizori, o propoziție în plus care spune că suma e CUMULATĂ pe
+    // document. Fără ea, cine citește bannerul în blocul 2 vede o sumă mai mare decât totalul
+    // blocului 2 și crede că e greșeală de calcul. La un singur bloc `_multi` e '' ⇒ textul
+    // rămâne BYTE-IDENTIC cu cel de dinainte de acest lot.
+    const _multi=(typeof blocEls==='function'&&blocEls().length>1)
+      ? ' Suma include toate blocurile de furnizor ale acestei ordonanțări, nu doar cel de mai sus.'
+      : '';
+    const _msg='⛔ Suma ordonanțată '+(arhivat>0?`cumulată în anul ${esc(an)} (${esc(fMR(cumul))} lei, din care ${esc(fMR(arhivat))} lei deja ordonanțați în cicluri anterioare)`:`(${esc(fMR(cumul))} lei)`)+
+      ` depășește creditele bugetare ale anului ${esc(an)} (${esc(fMR(buget))} lei) cu ${esc(fMR(dep))} lei.`+_multi+
+      ' Finalizarea va fi blocată.';
+    warns.forEach(w=>{w.innerHTML=_msg;w.style.display='';});
+  }else{_hideAll();}
 }
 
 // Expus pentru core.js (recalc live la fiecare mutație de rând în upTot) + list.js (la DF-select).

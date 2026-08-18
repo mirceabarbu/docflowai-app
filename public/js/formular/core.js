@@ -669,6 +669,10 @@ function _sablonBloc(idx){
       </tfoot>
     </table>
     </div>
+    <!-- #128o — bannerul de depășire de buget, per bloc. Textul e IDENTIC în toate blocurile:
+         bugetul e unul singur pe document (un ORD are un singur DF), deci depășirea e a
+         documentului. Fără el, utilizatorul din blocul 2 vede doar rânduri roșii fără motiv. -->
+    <div class="secb-buget-warn" data-role="buget-warn" style="display:none"></div>
     <!-- #128n — capturi per furnizor. Marcate EXCLUSIV prin data-role (⛔ niciun id — regula
          #128h). Handlerele NU sunt inline: se leagă prin delegare pe #ord-blocuri (list.js),
          ca blocurile adăugate manual sau recreate de renderOrdBlocuri să fie acoperite automat.

@@ -34,9 +34,12 @@ const SHELL = `
     <input id="o-cif" value="12345678"/>
     <input id="o-nrUnic" type="hidden" data-fld="nr_unic_inreg" value="NR-001"/>
     <input type="hidden" id="o-df-id" value=""/>
-    <div id="ord-buget-warn" style="display:none"></div>
+    <div id="ord-buget-warn" data-role="buget-warn" style="display:none"></div>
     <div id="ord-blocuri"></div>
-  </div></div>`;
+  </div></div>
+  <div id="form-notafd">
+    <div id="secb-buget-warn" data-role="buget-warn" style="display:none"></div>
+  </div>`;
 
 const BLOC0 = `
   <div class="ord-bloc" data-bloc="0">
@@ -336,6 +339,110 @@ describe('#128j — avertizarea de buget pe toate blocurile', () => {
 
     window._resetOrdBuget();
     expect(document.querySelectorAll('.ord-buget-over').length).toBe(0);
+  });
+});
+
+describe('#128o — bannerul de buget în TOATE blocurile', () => {
+  const setSuma = (bloc, val) => {
+    const inp = bloc.querySelector('tbody tr:last-child [data-f="suma_ordonantata_plata"]');
+    inp.value = val;
+  };
+  const SINGLE_MSG = '⛔ Suma ordonanțată (110,00 lei) depășește creditele bugetare ale anului 2026 (100,00 lei) cu 10,00 lei. Finalizarea va fi blocată.';
+  const MULTI_MSG = '⛔ Suma ordonanțată (110,00 lei) depășește creditele bugetare ale anului 2026 (100,00 lei) cu 10,00 lei. Suma include toate blocurile de furnizor ale acestei ordonanțări, nu doar cel de mai sus. Finalizarea va fi blocată.';
+
+  it('12. ⭐ bugul raportat: două blocuri, depășire ⇒ AMBELE bannere vizibile, același innerHTML', async () => {
+    routes = [[/buget-context/, () => jsonRes({ ok: true, context: { buget_an_curent: 100, cicluri_arhivate: 0, an_exercitiu: 2026 } })]];
+    const b0 = blocuri()[0];
+    const b1 = addBloc(1);
+    window.addOR(b0); window.addOR(b1);
+    await window._loadOrdBuget('DF-1');
+    setSuma(b0, '60,00'); setSuma(b1, '50,00');
+    window._checkOrdBuget();
+
+    // banner-ul blocului 0 e cel STATIC (#ord-buget-warn, în afara .ord-bloc, ca în formular.html)
+    const w0 = document.getElementById('ord-buget-warn');
+    const w1 = role(b1, 'buget-warn');
+    expect(w0.style.display).not.toBe('none');
+    expect(w1.style.display).not.toBe('none');
+    expect(w0.innerHTML).toBe(w1.innerHTML);
+    expect(w0.innerHTML).toBe(MULTI_MSG);
+  });
+
+  it('13. revenire sub plafon ⇒ ambele bannere ascunse și golite', async () => {
+    routes = [[/buget-context/, () => jsonRes({ ok: true, context: { buget_an_curent: 100, cicluri_arhivate: 0, an_exercitiu: 2026 } })]];
+    const b0 = blocuri()[0];
+    const b1 = addBloc(1);
+    window.addOR(b0); window.addOR(b1);
+    await window._loadOrdBuget('DF-1');
+    setSuma(b0, '60,00'); setSuma(b1, '50,00');
+    window._checkOrdBuget();
+    setSuma(b1, '10,00');                                                    // 60+10 = 70 ≤ 100
+    window._checkOrdBuget();
+
+    const w0 = document.getElementById('ord-buget-warn');
+    const w1 = role(b1, 'buget-warn');
+    expect(w0.style.display).toBe('none');
+    expect(w1.style.display).toBe('none');
+    expect(w0.innerHTML).toBe('');
+    expect(w1.innerHTML).toBe('');
+  });
+
+  it('14. ⭐ paritate la un singur bloc: innerHTML EXACT identic cu textul de azi (fără propoziția nouă)', async () => {
+    routes = [[/buget-context/, () => jsonRes({ ok: true, context: { buget_an_curent: 100, cicluri_arhivate: 0, an_exercitiu: 2026 } })]];
+    const b0 = blocuri()[0];
+    window.addOR(b0);
+    await window._loadOrdBuget('DF-1');
+    setSuma(b0, '110,00');
+    window._checkOrdBuget();
+
+    expect(document.getElementById('ord-buget-warn').innerHTML).toBe(SINGLE_MSG);
+  });
+
+  it('15. cu două blocuri, mesajul conține propoziția suplimentară despre cumul', async () => {
+    routes = [[/buget-context/, () => jsonRes({ ok: true, context: { buget_an_curent: 100, cicluri_arhivate: 0, an_exercitiu: 2026 } })]];
+    const b0 = blocuri()[0];
+    const b1 = addBloc(1);
+    window.addOR(b0); window.addOR(b1);
+    await window._loadOrdBuget('DF-1');
+    setSuma(b0, '60,00'); setSuma(b1, '50,00');
+    window._checkOrdBuget();
+
+    expect(document.getElementById('ord-buget-warn').innerHTML).toContain('Suma include toate blocurile de furnizor');
+  });
+
+  it('16. _resetOrdBuget() golește bannerele tuturor blocurilor', async () => {
+    routes = [[/buget-context/, () => jsonRes({ ok: true, context: { buget_an_curent: 100, cicluri_arhivate: 0, an_exercitiu: 2026 } })]];
+    const b0 = blocuri()[0];
+    const b1 = addBloc(1);
+    window.addOR(b0); window.addOR(b1);
+    await window._loadOrdBuget('DF-1');
+    setSuma(b0, '60,00'); setSuma(b1, '50,00');
+    window._checkOrdBuget();
+
+    window._resetOrdBuget();
+    expect(document.getElementById('ord-buget-warn').style.display).toBe('none');
+    expect(role(b1, 'buget-warn').style.display).toBe('none');
+    expect(document.getElementById('ord-buget-warn').innerHTML).toBe('');
+    expect(role(b1, 'buget-warn').innerHTML).toBe('');
+  });
+
+  it('17. structural: un bloc din _sablonBloc are exact UN [data-role="buget-warn"] și ZERO id-uri', () => {
+    const b1 = addBloc(1);
+    expect(b1.querySelectorAll('[data-role="buget-warn"]').length).toBe(1);
+    expect(role(b1, 'buget-warn').id).toBe('');
+  });
+
+  it('18. ⭐ izolare DF: [data-role="buget-warn"] din #form-notafd nu e atins de _checkOrdBuget', async () => {
+    routes = [[/buget-context/, () => jsonRes({ ok: true, context: { buget_an_curent: 100, cicluri_arhivate: 0, an_exercitiu: 2026 } })]];
+    const b0 = blocuri()[0];
+    window.addOR(b0);
+    await window._loadOrdBuget('DF-1');
+    setSuma(b0, '110,00');
+    window._checkOrdBuget();
+
+    const dfWarn = document.getElementById('secb-buget-warn');
+    expect(dfWarn.style.display).toBe('none');
+    expect(dfWarn.innerHTML).toBe('');
   });
 });
 
