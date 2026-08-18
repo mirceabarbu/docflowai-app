@@ -2509,6 +2509,19 @@ export const MIGRATIONS = [
       CREATE UNIQUE INDEX IF NOT EXISTS uniq_formulare_capturi_form_slot_bloc
         ON formulare_capturi (form_type, form_id, slot, (COALESCE(bloc_idx, 0)));
     `
+  },
+  {
+    // #131a — Responsabilul CAB poate fi un COMPARTIMENT, nu doar o persoană. Exclusiv cu
+    // `assigned_to`: exact una dintre cele două e non-NULL. Nullable, fără DEFAULT, fără
+    // backfill — documentele existente rămân pe `assigned_to`, comportament neschimbat.
+    // ⛔ Fără CHECK de exclusivitate în DB: rândurile istorice au ambele NULL (draft
+    // netrimis), iar un CHECK ar trebui să tolereze și cazul ăla — poarta stă în
+    // `submitFormular`, unde e și mesajul de eroare util.
+    id: '108_formulare_p2_compartiment',
+    sql: `
+      ALTER TABLE formulare_df  ADD COLUMN IF NOT EXISTS p2_compartiment TEXT;
+      ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS p2_compartiment TEXT;
+    `
   }
 ];
 

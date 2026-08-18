@@ -90,6 +90,11 @@ export async function canEditFormular(pool, actor, doc, actorComp, opts = {}) {
       return { allowed: true, role: 'comp' };  // P1-comp (back-compat)
     if (doc.assigned_to && await _userIsInComp(pool, doc.assigned_to, actorComp))
       return { allowed: true, role: 'p2_comp' };
+    // #131a — Responsabil CAB = COMPARTIMENT. Când documentul e atribuit unui compartiment
+    // (`assigned_to` NULL), orice membru al lui e P2. Convenția de comparație e identică cu
+    // `_userIsInComp`: TRIM pe ambele părți, șirul gol nu se potrivește cu nimic.
+    if (doc.p2_compartiment && String(doc.p2_compartiment).trim() === actorComp)
+      return { allowed: true, role: 'p2_comp' };
   }
   // FEAT ALOP-CAB: membrul compartimentului CAB al org-ului editează tot (verificat DUPĂ rolurile
   // existente, înainte de refuz). Documentul e deja încărcat org-scoped în handler; cabComp vine din

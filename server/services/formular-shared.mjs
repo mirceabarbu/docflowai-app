@@ -351,8 +351,15 @@ async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
 export async function submitFormular({ type, id, actor, body }) {
   const cfg = FORMULAR_TYPES[type];
   try {
-    const { assigned_to } = body || {};
-    if (!assigned_to) return { status: 400, body: { error: 'assigned_to obligatoriu' } };
+    // #131a — Responsabilul CAB e FIE o persoană (`assigned_to`), FIE un compartiment
+    // (`assigned_comp`). Exclusiv: niciodată amândouă. Mesajul pentru „niciunul" rămâne
+    // NESCHIMBAT, ca un frontend vechi din cache să se comporte identic.
+    const { assigned_to, assigned_comp } = body || {};
+    if (!assigned_to && !assigned_comp)
+      return { status: 400, body: { error: 'assigned_to obligatoriu' } };
+    if (assigned_to && assigned_comp)
+      return { status: 400, body: { error: 'assigned_ambiguu',
+        message: 'Alegeți fie o persoană, fie un compartiment.' } };
 
     const { rows: existing } = await pool.query(
       `SELECT * FROM ${cfg.table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
@@ -360,8 +367,9 @@ export async function submitFormular({ type, id, actor, body }) {
     );
     if (!existing.length) return { status: 404, body: { error: 'not_found' } };
     const doc = existing[0];
+    let actorComp = '';
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
+      actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
       if (!authz.allowed) return { status: 403, body: { error: authz.reason } };
     }
@@ -388,6 +396,52 @@ export async function submitFormular({ type, id, actor, body }) {
       if (overBudget) return overBudget;
     }
 
+    // ── #131a — calea COMPARTIMENT ───────────────────────────────────────────
+    if (assigned_comp) {
+      // Compartimentul trebuie să existe în organizație cu cel puțin un utilizator ACTIV.
+      // `TRIM` pe ambele părți + refuz pe șir gol: aceeași convenție ca `_userIsInComp`
+      // (authz-formular.mjs:64), altfel un compartiment scris cu spații ar crea un document
+      // pe care nimeni nu-l poate edita.
+      const compTrim = String(assigned_comp || '').trim();
+      if (!compTrim) return { status: 400, body: { error: 'compartiment_invalid' } };
+      const { rows: membri } = await pool.query(
+        `SELECT id, email FROM users
+          WHERE org_id=$1 AND TRIM(compartiment)=$2 AND TRIM(compartiment)<>''
+            AND deleted_at IS NULL`,
+        [actor.orgId, compTrim]
+      );
+      if (!membri.length) return { status: 400, body: { error: 'compartiment_fara_membri',
+        message: 'Compartimentul selectat nu are utilizatori activi.' } };
+
+      // Exclusivitate: `assigned_to` se GOLEȘTE. O retrimitere compartiment→persoană
+      // face oglinda (vezi calea de mai jos, care golește `p2_compartiment`).
+      const { rows: updated } = await pool.query(`
+        UPDATE ${cfg.table}
+        SET status='pending_p2', assigned_to=NULL, p2_compartiment=$1,
+            submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
+        WHERE id=$2 AND org_id=$3
+        RETURNING *
+      `, [compTrim, id, actor.orgId, actor.userId]);
+
+      // Notificare per membru, SECVENȚIAL (un compartiment mare ar deschide zeci de
+      // conexiuni deodată din pool). `sendNotif` înghite erorile — o notificare picată
+      // nu rupe trimiterea. Expeditorul nu se notifică pe sine.
+      for (const m of membri) {
+        if (String(m.id) === String(actor.userId)) continue;
+        await sendNotif(m.id, cfg.notif.submit.type, cfg.notif.submit.title,
+          cfg.notif.submit.message(actor, doc), { form_type: type, form_id: id });
+      }
+
+      logger.info({ id, p2_compartiment: compTrim, membri: membri.length, actor: actor.email },
+        `formulare-${type} trimis la compartimentul P2`);
+      await recordFormularAudit({ orgId: actor.orgId, formType: type, formId: id,
+        actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
+        fromStatus: doc.status, toStatus: 'pending_p2',
+        meta: { assigned_comp: compTrim, membri: membri.length } });
+      updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
+      return { status: 200, body: { ok: true, document: updated[0], assigned_comp: compTrim } };
+    }
+
     // Verifică că P2 e din același org
     const { rows: p2rows } = await pool.query(
       'SELECT id, email, nume FROM users WHERE id=$1 AND org_id=$2', [assigned_to, actor.orgId]
@@ -395,9 +449,11 @@ export async function submitFormular({ type, id, actor, body }) {
     if (!p2rows.length) return { status: 400, body: { error: 'utilizator_invalid' } };
     const p2 = p2rows[0];
 
+    // #131a — `p2_compartiment=NULL`: fără asta, o retrimitere către o PERSOANĂ după una
+    // către compartiment ar lăsa ambele setate și ar rupe exclusivitatea.
     const { rows: updated } = await pool.query(`
       UPDATE ${cfg.table}
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
+      SET status='pending_p2', assigned_to=$1, p2_compartiment=NULL, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
     `, [assigned_to, id, actor.orgId, actor.userId]);
@@ -409,7 +465,7 @@ export async function submitFormular({ type, id, actor, body }) {
     await recordFormularAudit({ orgId: actor.orgId, formType: type, formId: id,
       actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
       fromStatus: doc.status, toStatus: 'pending_p2', meta: { assigned_to } });
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
     return { status: 200, body: { ok: true, document: updated[0], assigned_to: p2 } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} submit error`);
@@ -427,8 +483,9 @@ export async function completeFormular({ type, id, actor, body }) {
     );
     if (!existing.length) return { status: 404, body: { error: 'not_found' } };
     const doc = existing[0];
+    let actorComp = '';   // #131a — necesar la computeDocCapabilities de la finalul funcției
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
+      actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
       // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
       // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
@@ -544,7 +601,7 @@ export async function completeFormular({ type, id, actor, body }) {
         actorId: actor.userId, actorEmail: actor.email, eventType: 'legat_alop',
         meta: { alop_id: linkedAlopId } });
     }
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
     return { status: 200, body: { ok: true, document: updated[0] } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} complete error`);
@@ -564,8 +621,9 @@ export async function returnFormular({ type, id, actor, body }) {
     );
     if (!rows.length) return { status: 404, body: { error: 'not_found' } };
     const doc = rows[0];
+    let actorComp = '';   // #131a — necesar la computeDocCapabilities de la finalul funcției
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
+      actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
       // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
       const isP2Side = authz.allowed
@@ -585,7 +643,7 @@ export async function returnFormular({ type, id, actor, body }) {
       actorId: actor.userId, actorEmail: actor.email, eventType: 'returnat',
       fromStatus: doc.status, toStatus: 'returnat', meta: { motiv: motiv.trim() } });
     const out = upd[0];
-    out.capabilities = computeDocCapabilities(out, actor, cfg.capsFt);
+    out.capabilities = computeDocCapabilities(out, actor, cfg.capsFt, actorComp);
     return { status: 200, body: { ok: true, document: out } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} returneaza error`);

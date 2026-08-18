@@ -164,12 +164,14 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
+    // #131a — actorComp e scos din bloc: îl consumă și computeDocCapabilities (Responsabil
+    // CAB pe COMPARTIMENT ⇒ rolul P2 se derivă din compartiment când assigned_to e NULL).
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
     {
-      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
-    doc.capabilities = computeDocCapabilities(doc, actor, 'ordnt');
+    doc.capabilities = computeDocCapabilities(doc, actor, 'ordnt', actorComp);
     // Buget an de exercițiu pentru atenționarea inline (P1+P2) — paritate cu garda hard
     // (acel. helper). Frontend-ul sumează rândurile din UI + cicluri_arhivate și compară cu
     // buget_an_curent. NULL când ORD-ul nu are df_id (nimic de plafonat).
@@ -211,12 +213,14 @@ router.get('/api/formulare-ord/:id/xml', async (req, res) => {
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
+    // #131a — actorComp e scos din bloc: îl consumă și computeDocCapabilities (Responsabil
+    // CAB pe COMPARTIMENT ⇒ rolul P2 se derivă din compartiment când assigned_to e NULL).
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
     {
-      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
-    const caps = computeDocCapabilities(doc, actor, 'ordnt');
+    const caps = computeDocCapabilities(doc, actor, 'ordnt', actorComp);
     if (!caps.can_export_xml) {
       return res.status(409).json({ error: 'not_exportable',
         message: 'Ordonanțarea nu este validată (Secțiunea A+B complete) — exportul XML nu este disponibil.' });
@@ -482,7 +486,7 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
         actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
         fromStatus: 'completed', toStatus: 'draft', meta: { version_nou: doc.version + 1 } });
     }
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt', actorComp);
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord update error');

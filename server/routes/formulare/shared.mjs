@@ -493,6 +493,18 @@ router.get('/api/formulare/list', async (req, res) => {
                     AND TRIM(uc.compartiment) = $${c1}
                     AND TRIM(uc.compartiment) <> ''
                 )
+                -- #131a — document atribuit COMPARTIMENTULUI meu.
+                OR TRIM(COALESCE(fd.p2_compartiment,'')) = $${c1}
+                -- #131a — oglinda lipsă a lui \`p2_comp\`: document atribuit unei PERSOANE din
+                -- compartimentul meu. \`canEditFormular\` îmi dă deja dreptul de editare
+                -- (authz-formular.mjs:90-92), dar documentul nu apărea în listă ⇒ puteam edita
+                -- ceva ce nu puteam găsi. Inconsecvență de dinaintea acestui lot.
+                OR EXISTS (
+                  SELECT 1 FROM users up
+                  WHERE up.id = fd.assigned_to
+                    AND TRIM(up.compartiment) = $${c1}
+                    AND TRIM(up.compartiment) <> ''
+                )
               )`);
             }
           }
@@ -530,7 +542,12 @@ router.get('/api/formulare/list', async (req, res) => {
       }
       if (p2) {
         const likeP2 = `%${p2}%`;
-        conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
+        const iA = params.push(likeP2);
+        const iB = params.push(likeP2);
+        // #131a — cu atribuire pe COMPARTIMENT, u2 e NULL (assigned_to NULL) ⇒ fără această
+        // ramură documentul n-ar fi găsit niciodată de filtru. Refolosim indexul deja împins.
+        conds.push(`(u2.email ILIKE $${iA} OR u2.nume ILIKE $${iB}
+                     OR TRIM(COALESCE(fd.p2_compartiment,'')) ILIKE $${iA})`);
       }
       if (nr) {
         // #121: căutarea după Nr. la DF acoperă și denumirea ALOP-ului legat —
@@ -591,7 +608,9 @@ router.get('/api/formulare/list', async (req, res) => {
           ) AS badge_status,
           COALESCE(u1.nume, u1.email) AS initiator,
           u1.compartiment AS initiator_comp,
-          COALESCE(u2.nume, u2.email) AS p2,
+          -- #131a — Responsabil CAB = persoana (u2) SAU compartimentul atribuit.
+          COALESCE(u2.nume, u2.email, NULLIF(TRIM(fd.p2_compartiment),'')) AS p2,
+          NULLIF(TRIM(fd.p2_compartiment),'') AS p2_compartiment,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (
             ${isOrgManager ? 'TRUE' : `fd.created_by = $${params.push(actor.userId)}`}
@@ -643,6 +662,18 @@ router.get('/api/formulare/list', async (req, res) => {
                     AND TRIM(uc.compartiment) = $${c1}
                     AND TRIM(uc.compartiment) <> ''
                 )
+                -- #131a — document atribuit COMPARTIMENTULUI meu.
+                OR TRIM(COALESCE(fo.p2_compartiment,'')) = $${c1}
+                -- #131a — oglinda lipsă a lui \`p2_comp\`: document atribuit unei PERSOANE din
+                -- compartimentul meu. \`canEditFormular\` îmi dă deja dreptul de editare
+                -- (authz-formular.mjs:90-92), dar documentul nu apărea în listă ⇒ puteam edita
+                -- ceva ce nu puteam găsi. Inconsecvență de dinaintea acestui lot.
+                OR EXISTS (
+                  SELECT 1 FROM users up
+                  WHERE up.id = fo.assigned_to
+                    AND TRIM(up.compartiment) = $${c1}
+                    AND TRIM(up.compartiment) <> ''
+                )
               )`);
             }
           }
@@ -676,7 +707,12 @@ router.get('/api/formulare/list', async (req, res) => {
       }
       if (p2) {
         const likeP2 = `%${p2}%`;
-        conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
+        const iA = params.push(likeP2);
+        const iB = params.push(likeP2);
+        // #131a — cu atribuire pe COMPARTIMENT, u2 e NULL (assigned_to NULL) ⇒ fără această
+        // ramură documentul n-ar fi găsit niciodată de filtru. Refolosim indexul deja împins.
+        conds.push(`(u2.email ILIKE $${iA} OR u2.nume ILIKE $${iB}
+                     OR TRIM(COALESCE(fo.p2_compartiment,'')) ILIKE $${iA})`);
       }
       if (nr) {
         // #121: căutarea după Nr. la ORD acoperă și denumirea furnizorului (fo.beneficiar).
@@ -728,7 +764,9 @@ router.get('/api/formulare/list', async (req, res) => {
           ) AS plata_suma,
           COALESCE(u1.nume, u1.email) AS initiator,
           u1.compartiment AS initiator_comp,
-          COALESCE(u2.nume, u2.email) AS p2,
+          -- #131a — Responsabil CAB = persoana (u2) SAU compartimentul atribuit.
+          COALESCE(u2.nume, u2.email, NULLIF(TRIM(fo.p2_compartiment),'')) AS p2,
+          NULLIF(TRIM(fo.p2_compartiment),'') AS p2_compartiment,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (
             ${isOrgManager ? 'TRUE' : `fo.created_by = $${params.push(actor.userId)}`}
