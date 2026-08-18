@@ -14,7 +14,7 @@ import request from 'supertest';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { hasTestDb, migrate, truncateAll, pool,
-         seedOrgUser, seedDf, seedOrd, seedFlow, makeAuthCookie } from '../helpers/db-real.mjs';
+         seedOrgUser, seedUser, seedDf, seedOrd, seedFlow, makeAuthCookie } from '../helpers/db-real.mjs';
 
 vi.mock('../../middleware/logger.mjs', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
@@ -206,5 +206,74 @@ d('#128m — atașamente per bloc de furnizor (bloc_idx)', () => {
     const { rows: cap } = await pool.query(
       `SELECT COUNT(*)::int AS n FROM formulare_capturi WHERE bloc_idx IS NOT NULL`);
     expect(cap[0].n).toBe(0);
+  });
+
+  // ── #128p — ?bloc=all pe ruta de LISTARE ────────────────────────────────────
+  it('9 ⭐ ?bloc=all întoarce TOATE blocurile; fără parametru rămâne doar blocul 0', async () => {
+    await upload('ord', ordId, '?bloc=0', { filename: 'b0.pdf' });
+    await upload('ord', ordId, '?bloc=1', { filename: 'b1.pdf' });
+
+    const all = await list('ord', ordId, '?slot=1&bloc=all');
+    expect(all.status).toBe(200);
+    expect(all.body.atasamente.map(a => a.filename).sort()).toEqual(['b0.pdf', 'b1.pdf']);
+
+    const def = await list('ord', ordId, '?slot=1');
+    expect(def.status).toBe(200);
+    expect(def.body.atasamente.map(a => a.filename)).toEqual(['b0.pdf']);
+  });
+
+  it('10 ?bloc=all respectă slot — atașamentele slotului 2 nu apar la ?slot=1&bloc=all', async () => {
+    await upload('df', dfId, '?slot=1&bloc=0', { filename: 's1b0.pdf' });
+    await upload('df', dfId, '?slot=2&bloc=0', { filename: 's2b0.pdf' });
+
+    const r = await list('df', dfId, '?slot=1&bloc=all');
+    expect(r.body.atasamente.map(a => a.filename)).toEqual(['s1b0.pdf']);
+  });
+
+  it('11 ?bloc=all NU întoarce rânduri șterse (deleted_at)', async () => {
+    const up = await upload('ord', ordId, '?bloc=0', { filename: 'sters.pdf' });
+    await pool.query(`UPDATE formulare_atasamente SET deleted_at=now() WHERE id=$1`, [up.body.atasament.id]);
+    await upload('ord', ordId, '?bloc=1', { filename: 'ramas.pdf' });
+
+    const r = await list('ord', ordId, '?bloc=all');
+    expect(r.body.atasamente.map(a => a.filename)).toEqual(['ramas.pdf']);
+  });
+
+  it('12 ⭐ authz: actor fără drept de citire primește 403 și cu ?bloc=all', async () => {
+    const strainId = await seedUser({ orgId, email: 'strain@x.ro', compartiment: 'Altul' });
+    const dfRestricted = await seedDf({ orgId, createdBy: 1, assignedTo: 1, status: 'draft', nrUnic: 'DF-128P-RESTRICT' });
+    const r = await request(app)
+      .get(`/api/formulare-atasamente/df/${dfRestricted}?bloc=all`)
+      .set('Cookie', authz({ userId: strainId, role: 'user', orgId, email: 'strain@x.ro' }));
+    expect(r.status).toBe(403);
+  });
+
+  it('13 rânduri legacy cu bloc_idx NULL apar în ?bloc=all cu bloc_idx=0', async () => {
+    await pool.query(
+      `INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot)
+       VALUES ('ord', $1, 1, 'legacy.pdf', 'application/pdf', 6, $2, 1)`,
+      [ordId, Buffer.from('LEGACY')]
+    );
+    const r = await list('ord', ordId, '?bloc=all');
+    expect(r.body.atasamente.map(a => ({ filename: a.filename, bloc_idx: a.bloc_idx })))
+      .toEqual([{ filename: 'legacy.pdf', bloc_idx: 0 }]);
+  });
+
+  it('14 ?bloc=abc / ?bloc=-1 sunt tratate ca blocul 0, NU ca "all"', async () => {
+    await upload('ord', ordId, '?bloc=0', { filename: 'b0.pdf' });
+    await upload('ord', ordId, '?bloc=1', { filename: 'b1.pdf' });
+
+    const abc = await list('ord', ordId, '?bloc=abc');
+    expect(abc.body.atasamente.map(a => a.filename)).toEqual(['b0.pdf']);
+
+    const neg = await list('ord', ordId, '?bloc=-1');
+    expect(neg.body.atasamente.map(a => a.filename)).toEqual(['b0.pdf']);
+  });
+
+  it('15 ordinea în interiorul unui bloc rămâne created_at ASC (cale normală, fără ?bloc=all)', async () => {
+    await upload('ord', ordId, '?bloc=0', { filename: 'primul.pdf' });
+    await upload('ord', ordId, '?bloc=0', { filename: 'al-doilea.pdf', body: 'ALT-CONTENT' });
+    const r = await list('ord', ordId, '?bloc=0');
+    expect(r.body.atasamente.map(a => a.filename)).toEqual(['primul.pdf', 'al-doilea.pdf']);
   });
 });

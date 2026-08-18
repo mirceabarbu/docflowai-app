@@ -589,6 +589,27 @@ function applyDfRoleState(status,role){
   const _antetEditabil=(_revNr===0&&(!status||status==='draft'));
   if(antetBody){
     antetBody.querySelectorAll('input,textarea').forEach(e=>{e.disabled=!_antetEditabil;});
+    // #128p — excepție: câmpul „Revizuirea" rămâne editabil pe revizii cât documentul e încă
+    // la P1 (draft/returnat). E un câmp de FORMULAR MF (`revizuirea`), care merge în PDF/XML —
+    // ⛔ NU întregul intern `revizie_nr`, care ține lanțul de revizii și rămâne al serverului.
+    // Restul antetului (mai ales `nr_unic_inreg`) rămâne blocat: acolo stă invariantul #126.
+    const _rev=document.getElementById('n-rev');
+    if(_rev)_rev.disabled=!(_antetEditabil||(_revNr>0&&(!status||status==='draft'||status==='returnat')));
+    // #128p — avertisment discret (NU blocant) când textul din formular diferă de întregul
+    // intern al lanțului de revizii. Legare o singură dată (guard pe dataset).
+    if(_rev && !_rev.dataset.revWarnBound){
+      _rev.dataset.revWarnBound='1';
+      const _warnEl=document.createElement('div');
+      _warnEl.className='df-lock-bar df-lock-warn';
+      _warnEl.style.display='none';
+      _rev.insertAdjacentElement('afterend',_warnEl);
+      _rev.addEventListener('input',()=>{
+        const _curRevNr=ST.docRevizieNr?.notafd||0;
+        const _diverge=String(_rev.value||'').trim()!==String(_curRevNr);
+        _warnEl.style.display=_diverge?'flex':'none';
+        _warnEl.textContent='⚠ Numărul afișat în document diferă de revizia din aplicație (R'+_curRevNr+'). Lanțul de revizii rămâne neschimbat.';
+      });
+    }
   }
   if(antetLock){antetLock.style.display=_antetEditabil?'none':'flex';}
   secaBody.classList.remove('locked');

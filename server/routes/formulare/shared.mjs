@@ -259,14 +259,22 @@ router.get('/api/formulare-atasamente/:type/:id', async (req, res) => {
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
     // #128m: filtrare per bloc de furnizor. Cerere FĂRĂ `?bloc` ⇒ blocul 0 — exact lista
     // pe care o vede clientul de azi (rândurile legacy au bloc_idx NULL ⇒ tot blocul 0).
+    // #128p: `?bloc=all` ⇒ TOATE blocurile, într-o singură cerere. Necesar la crearea
+    // fluxului, unde preview-ul trebuie să arate exact ce copiază
+    // `copyFormularAttachmentsToFlow`, care e bloc-agnostică. Fără el, preview-ul spunea
+    // „1 fișier(e)" iar în pachetul de semnare apăreau toate — divergență de afișare.
+    // Pattern null-tolerant (ca la #105g): $4 NULL ⇒ predicatul nu filtrează, fără reindexare.
+    const totBlocurile = req.query.bloc === 'all';
     const blocIdx = _blocIdx(req);
 
     const { rows } = await pool.query(
       `SELECT id, filename, mime_type, size_bytes, uploaded_by, slot, COALESCE(bloc_idx, 0) AS bloc_idx, created_at
        FROM formulare_atasamente
-       WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND COALESCE(bloc_idx, 0)=$4 AND deleted_at IS NULL
-       ORDER BY created_at ASC`,
-      [type, id, slot, blocIdx]
+       WHERE form_type=$1 AND form_id=$2 AND slot=$3
+         AND ($4::int IS NULL OR COALESCE(bloc_idx, 0) = $4)
+         AND deleted_at IS NULL
+       ORDER BY COALESCE(bloc_idx, 0) ASC, created_at ASC`,
+      [type, id, slot, totBlocurile ? null : blocIdx]
     );
     res.json({ ok: true, atasamente: rows });
   } catch (e) {
