@@ -2488,6 +2488,27 @@ export const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_form
         ON formulare_atasamente(form_type, form_id, slot, bloc_idx) WHERE deleted_at IS NULL;
     `
+  },
+  {
+    // #128n — indexul unic din migrația 079 (`uniq_formulare_capturi_form_slot`) impunea o
+    // singură captură per (document, slot) pe TOT documentul. Cu ORD multi-furnizor asta
+    // înseamnă că blocul 2 nu poate insera deloc: DELETE-ul (cheiat acum și pe bloc) nu-i
+    // atinge rândul, iar INSERT-ul cade pe 23505. Cheia se RELAXEAZĂ, nu se strânge:
+    // (t,id,slot) unic  ⇒  (t,id,slot,COALESCE(bloc_idx,0)) unic.
+    //
+    // ⛔ NU e cazul migrației 095: acolo producția avea deja duplicate și CREATE UNIQUE INDEX
+    // eșua TĂCUT. Aici coliziunea e IMPOSIBILĂ prin construcție — indexul vechi garantează deja
+    // unicitatea pe (t,id,slot), iar toate rândurile existente au bloc_idx NULL ⇒ COALESCE = 0.
+    //
+    // Singurul consumator al vechii chei e `ON CONFLICT (form_type, form_id, slot)` din backfill-ul
+    // migrației 079. Pe o bază NOUĂ, 079 rulează înaintea acestei migrații ⇒ inferența își găsește
+    // indexul. Pe bazele existente, 079 e deja aplicată și nu se re-rulează.
+    id: '107_formulare_capturi_uniq_bloc',
+    sql: `
+      DROP INDEX IF EXISTS uniq_formulare_capturi_form_slot;
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_formulare_capturi_form_slot_bloc
+        ON formulare_capturi (form_type, form_id, slot, (COALESCE(bloc_idx, 0)));
+    `
   }
 ];
 

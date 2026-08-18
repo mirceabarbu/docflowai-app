@@ -113,6 +113,34 @@ function attBlocOf(key,ctx){
   if(isAttBlocKey(key))return Number(String(key).split(':')[1])||0;
   return 0;
 }
+/* Capturi per bloc (#128n) — oglinda helperilor de atașamente de mai sus.
+   Blocul 0 și DF-ul NU trec pe aici: ei rămân pe `imgs{}` + id-uri, byte-identic. */
+function capZona(blocEl, slot){
+  if(!blocEl)return null;
+  const s=slot===2?2:1;
+  return blocEl.querySelector(`[data-role="cap-zone"][data-cap-slot="${s}"]`);
+}
+// Data-URL-ul capturii unui bloc, citit din DOM. Întoarce null dacă nu e o captură reală.
+function capSrcBloc(blocEl, slot){
+  const img=capZona(blocEl,slot)?.querySelector('[data-role="cap-img"]');
+  const src=img&&img.getAttribute('src');
+  return (typeof src==='string'&&src.indexOf('data:image/')===0)?src:null;
+}
+function capSetBloc(blocEl, slot, dataUrl){
+  const z=capZona(blocEl,slot);if(!z)return;
+  const img=z.querySelector('[data-role="cap-img"]');
+  const ph=z.querySelector('[data-role="cap-ph"]');
+  if(!img)return;
+  if(dataUrl){img.setAttribute('src',dataUrl);img.style.display='block';if(ph)ph.style.display='none';}
+  else{img.removeAttribute('src');img.style.display='none';if(ph)ph.style.display='';}
+}
+// Captura blocului `i`, indiferent dacă e blocul 0 (hartă `imgs`) sau 2+ (DOM).
+// SURSĂ UNICĂ: colO() și uploadCapturaBlocuri() citesc AMÂNDOUĂ de aici, ca să nu apară
+// un al doilea adevăr între payload-ul de PDF și ce se urcă pe server.
+function capturaBloc(i, slot){
+  if(i===0)return imgs[slot===2?'o-cimg2':'o-cimg']||null;
+  return capSrcBloc(blocEl(i), slot);
+}
 function addAtt(ev,lid,did){
   const files=ev.target.files;if(!files.length)return;
   const list=attEl(lid,ev.target);
@@ -532,9 +560,16 @@ function getOrdRowsAll(){
  *     nimerească aleator;
  *   - șablonul emite EXCLUSIV `data-fld` / `data-f` / `data-tot`, ZERO atribute `id` ⇒ tot
  *     codul nemigrat continuă să vadă exact blocul 0, adică exact comportamentul de azi;
- *   - șablonul NU conține secțiunea de CAPTURĂ: `captureImageBase64` / `_2` sunt câmpuri
- *     UNICE PE DOCUMENT în modelul nostru (`blocuri` are exact 8 chei). Divergență
- *     deliberată față de formularul MF, unde SubformCaptura e în blocul repetat.
+ *   - #128n: șablonul conține ACUM secțiunea de captură, marcată prin `data-role="cap-*"`
+ *     (⛔ niciun id). Datele NU trec prin harta globală `imgs{}` — ea rămâne la exact
+ *     cele 3 chei istorice (`o-cimg`, `o-cimg2`, `n-cimg`). Pentru blocurile 2+ sursa de
+ *     adevăr e `src`-ul elementului `<img data-role="cap-img">`, adică DOM-ul blocului.
+ *     Motivul e concret: la ștergerea unui furnizor blocurile se RENUMEROTEAZĂ, iar o hartă
+ *     cheiată pe index ar reatribui tăcut captura altui furnizor. Datele care călătoresc cu
+ *     nodul DOM nu pot face asta — exact motivul pentru care atașamentele pending stau în
+ *     `<input data-role="att-data">`, nu într-o hartă.
+ *   - `blocuri` JSONB rămâne la exact 8 chei (atributele XSD): capturile sunt BYTEA în
+ *     `formulare_capturi`, cheiate pe (form_type, form_id, slot, bloc_idx).
  */
 function _sablonBloc(idx){
   const wrap=document.createElement('div');
@@ -634,6 +669,24 @@ function _sablonBloc(idx){
       </tfoot>
     </table>
     </div>
+    <!-- #128n — capturi per furnizor. Marcate EXCLUSIV prin data-role (⛔ niciun id — regula
+         #128h). Handlerele NU sunt inline: se leagă prin delegare pe #ord-blocuri (list.js),
+         ca blocurile adăugate manual sau recreate de renderOrdBlocuri să fie acoperite automat.
+         Atributul src al lui <img data-role="cap-img"> ESTE sursa de adevăr a capturii. -->
+    <div class="cap-lbl">Captură imagine din sistemul de control al angajamentelor bugetare (anexă la ordonanțarea de plată)</div>
+    <div class="cap-zone" data-role="cap-zone" data-cap-slot="1">
+      <input type="file" accept="image/*" data-role="cap-input"/>
+      <div class="cap-ph" data-role="cap-ph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
+      <img class="cap-img" data-role="cap-img"/>
+    </div>
+    <div class="cap-br"><button type="button" class="att-btn" data-role="cap-clr" data-cap-slot="1"><svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-x"/></svg>Șterge imaginea</button></div>
+    <div class="cap-lbl" style="margin-top:10px">Captură "Informații complete contract" din sistemul de control al angajamentelor bugetare</div>
+    <div class="cap-zone" data-role="cap-zone" data-cap-slot="2">
+      <input type="file" accept="image/*" data-role="cap-input"/>
+      <div class="cap-ph" data-role="cap-ph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
+      <img class="cap-img" data-role="cap-img"/>
+    </div>
+    <div class="cap-br"><button type="button" class="att-btn" data-role="cap-clr" data-cap-slot="2"><svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-x"/></svg>Șterge imaginea</button></div>
   </div>
 </div>`;
   const del=wrap.querySelector('[data-del-bloc]');
@@ -767,8 +820,12 @@ function colO(){
   });
   return{
     Cif:g('o-cif'),DenInstPb:g('o-den'),NrOrdonantPl:g('o-nr'),DataOrdontPl:g('o-data'),
-    captureImageBase64:imgs['o-cimg']||null,
-    captureImageBase64_2:imgs['o-cimg2']||null,
+    // #128n — cele două chei istorice rămân în payload (blocul 0), dar sunt derivate din
+    // ACEEAȘI funcție ca restul blocurilor ⇒ o singură sursă, două proiecții. Serverul
+    // preferă `capturiBlocuri` când există și cade pe ele când lipsește (client din cache).
+    captureImageBase64:capturaBloc(0,1),
+    captureImageBase64_2:capturaBloc(0,2),
+    capturiBlocuri:blocEls().map((_,i)=>({c1:capturaBloc(i,1),c2:capturaBloc(i,2)})),
     attachments:JSON.parse(document.getElementById('o-adata').value||'[]'),
     docFd,
   };
@@ -1026,6 +1083,10 @@ function mkFlow(ft){
   window.attKeyBloc         = attKeyBloc;     // #128m
   window.isAttBlocKey       = isAttBlocKey;   // #128m
   window.attBlocOf          = attBlocOf;      // #128m
+  window.capZona            = capZona;         // #128n
+  window.capSrcBloc         = capSrcBloc;      // #128n
+  window.capSetBloc         = capSetBloc;      // #128n
+  window.capturaBloc        = capturaBloc;     // #128n
 
   window.df = window.df || {};
   window.df._formularCoreLoaded = true;

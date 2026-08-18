@@ -295,7 +295,8 @@ describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
  * Lista albă: pentru fiecare fișier, ancorele pe id `o-…` PERMISE și de câte ori.
  * Verdicte:
  *   GLOBAL PRIN DESIGN — câmp unic pe DOCUMENT, nu pe furnizor;
- *   #128n             — capturi per bloc, lotul următor (coloana `bloc_idx` există deja);
+ *   BLOCUL 0 — REZOLVAT la #128n — capturile per bloc se rezolvă prin capZona()/data-role;
+ *                       ce a rămas pe id e strict blocul 0;
  *   BLOCUL 0          — id-ul istoric al blocului 0, folosit ca ancoră/fallback, cu o cale
  *                       per-bloc alături (`[data-bloc]`) care îl acoperă.
  * Orice ancoră NOUĂ face testul să cadă ⇒ decizie conștientă. Orice ancoră REZOLVATĂ îl face
@@ -308,9 +309,12 @@ const ANCORE_PERMISE = {
     'o-tbody': [7, 'BLOCUL 0 — fallback pentru pagini/teste fără [data-bloc]. #128l a rezolvat ' +
       'ultimele două excepții reale (pre-checkul din showP2Modal și validateSecB); ce a rămas ' +
       'e fallback sau resetare de DOM (newDoc/resetF golesc blocul 0 după resetOrdBlocuri)'],
-    'o-captura2-wrap': [1, '#128n — capturi per bloc (coloana bloc_idx există din #128m, nescrisă)'],
-    'o-czone': [1, '#128n — capturi per bloc (coloana bloc_idx există din #128m, nescrisă)'],
-    'o-czone2': [1, '#128n — capturi per bloc (coloana bloc_idx există din #128m, nescrisă)'],
+    'o-captura2-wrap': [1, 'BLOCUL 0 — REZOLVAT la #128n: wrap-ul slotului 2 e specific blocului 0; ' +
+      'blocurile 2+ au ambele zone în șablon, rezolvate prin capZona()/data-cap-slot'],
+    'o-czone': [1, 'BLOCUL 0 — REZOLVAT la #128n: zonele per bloc se rezolvă prin capZona()/data-role; ' +
+      'ce a rămas e deblocarea pointer-events a blocului 0 în setModeP2Ord'],
+    'o-czone2': [1, 'BLOCUL 0 — REZOLVAT la #128n: idem slotul 2 al blocului 0; blocurile 2+ sunt ' +
+      'deblocate prin selectorul pe [data-role="cap-zone"] de alături'],
     'o-alist': [2, 'BLOCUL 0 — REZOLVAT la #128m: zonele per bloc se rezolvă prin attEl()/data-role; ' +
       'ce a rămas e golirea DOM-ului blocului 0 în newDoc/resetF'],
     'o-adata': [2, 'BLOCUL 0 — REZOLVAT la #128m: hidden-ul per bloc se rezolvă prin attEl()/data-role; ' +

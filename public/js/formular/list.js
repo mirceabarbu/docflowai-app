@@ -91,6 +91,7 @@ async function _autoSaveDb(ft){
     if(ST.docId[ft]){
       if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
       if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
+      if(ft==='ordnt') await window.uploadCapturaBlocuri?.(ft);
     }
     // v3.9.501: auto-save uploadează atașamente pending pentru ambele sloturi
     // v3.9.554 (B2): eșecurile de upload nu mai sunt mascate de badge-ul 💾
@@ -380,6 +381,67 @@ window._lookupByCif=_lookupByCif;
     const bi=Number(bloc.getAttribute('data-bloc'))||0;
     if(bi===0)return;  // blocul 0 are onchange inline
     window.addAtt?.(e,window.attKeyBloc(bi,'list'),window.attKeyBloc(bi,'data'));
+  });
+  // #128n — capturi per furnizor: zonele blocurilor 2+ n-au handler inline (n-au nici id).
+  // ⛔ Blocul 0 e SĂRIT: are onchange/ondrop inline în formular.html.
+  // ⚠️ Fără handler de `click`: `.cap-zone input[type=file]` e `position:absolute;inset:0;
+  // opacity:0` (CSS existent) ⇒ clicul ajunge direct pe input. Un `inp.click()` în plus ar
+  // deschide dialogul de două ori.
+  const _capBloc=(el)=>{
+    const b=el&&el.closest&&el.closest('.ord-bloc');
+    if(!b)return null;
+    return (b.getAttribute('data-bloc')||'0')==='0'?null:b;
+  };
+  host.addEventListener('change',e=>{
+    const inp=e.target;
+    if(!inp||!inp.matches||!inp.matches('[data-role="cap-input"]'))return;
+    if(!_capBloc(inp))return;
+    const zone=inp.closest('[data-role="cap-zone"]');
+    const f=inp.files&&inp.files[0];if(!f||!zone)return;
+    const rd=new FileReader();
+    rd.onload=ev=>{
+      const img=zone.querySelector('[data-role="cap-img"]');
+      const ph=zone.querySelector('[data-role="cap-ph"]');
+      if(img){img.setAttribute('src',ev.target.result);img.style.display='block';}
+      if(ph)ph.style.display='none';
+      window._scheduleAutoSaveDb?.('ordnt');
+    };
+    rd.readAsDataURL(f);
+    inp.value='';
+  });
+  host.addEventListener('click',e=>{
+    const btn=e.target&&e.target.closest&&e.target.closest('[data-role="cap-clr"]');
+    if(!btn||!_capBloc(btn))return;
+    const bloc=btn.closest('.ord-bloc');
+    const slot=btn.getAttribute('data-cap-slot')==='2'?2:1;
+    window.capSetBloc?.(bloc,slot,null);
+    window._scheduleAutoSaveDb?.('ordnt');
+  });
+  host.addEventListener('dragover',e=>{
+    const z=e.target&&e.target.closest&&e.target.closest('[data-role="cap-zone"]');
+    if(!z||!_capBloc(z))return;
+    e.preventDefault();z.classList.add('drag-ov');
+  });
+  host.addEventListener('dragleave',e=>{
+    const z=e.target&&e.target.closest&&e.target.closest('[data-role="cap-zone"]');
+    if(!z||!_capBloc(z))return;
+    z.classList.remove('drag-ov');
+  });
+  host.addEventListener('drop',e=>{
+    const z=e.target&&e.target.closest&&e.target.closest('[data-role="cap-zone"]');
+    if(!z||!_capBloc(z))return;
+    e.preventDefault();z.classList.remove('drag-ov');
+    const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(!f||!f.type.startsWith('image/'))return;
+    const rd=new FileReader();
+    rd.onload=ev=>{
+      const img=z.querySelector('[data-role="cap-img"]');
+      const ph=z.querySelector('[data-role="cap-ph"]');
+      if(img){img.setAttribute('src',ev.target.result);img.style.display='block';}
+      if(ph)ph.style.display='none';
+      window._scheduleAutoSaveDb?.('ordnt');
+    };
+    rd.readAsDataURL(f);
   });
   host.addEventListener('click',e=>{
     const opt=e.target&&e.target.closest&&e.target.closest('.ac-opt');

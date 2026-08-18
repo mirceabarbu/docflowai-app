@@ -243,6 +243,8 @@ async function populateOrd(doc){
     console.warn('[v3.9.500] populateOrd: captura slot=2 fetch error', e);
     // NU ascunde wrap-ul pe eroare — vrem ca P2 să poată retry upload
   }
+  // #128n — al treilea traseu: capturile blocurilor 2+ de furnizor (per bloc, ambele sloturi).
+  await fetchCapturiBlocuri(doc.id||ST.docId.ordnt);
   upTot();
   // Ciclu 2+: prefill plati_anterioare — #128k: TOATE blocurile, garda de aici (suprascriere
   // necondiționată) NESCHIMBATĂ.
@@ -467,6 +469,15 @@ function lockCaptureAndAttachments(ft,lock){
   // ⚠️ Doar pe ORD: pe DF selectorul pe clasă ar prinde și input-ul slotului 2, care azi NU e
   // dezactivat aici (butonul lui e, prin `.att-btn`) — comportamentul DF rămâne neschimbat.
   if(ft==='ordnt')document.querySelectorAll('#ord-blocuri .ord-bloc .att-inp').forEach(e=>e.disabled=lock);
+  // #128n — zonele de captură ale blocurilor 2+ (blocul 0 e acoperit de `czId` mai sus).
+  // `.ord-bloc` E purtătorul lui `data-bloc` (atât în formular.html, cât și în _sablonBloc),
+  // deci selectorul e pe ACELAȘI element, nu pe un descendent.
+  // ⚠️ Input-urile de fișier și butoanele „Șterge imaginea" ale blocurilor 2+ sunt DEJA
+  // dezactivate de selectoarele `#form-ordnt .cap-zone input[type=file]` / `.cap-br button`
+  // de mai sus (#ord-blocuri e în #form-ordnt); aici rămâne doar pointer-events pe zonă.
+  if(ft==='ordnt'){
+    document.querySelectorAll('#ord-blocuri .ord-bloc[data-bloc]:not([data-bloc="0"]) [data-role="cap-zone"]').forEach(e=>e.style.pointerEvents=pe);
+  }
   document.querySelectorAll(`#form-${ft} .att-btn`).forEach(e=>e.disabled=lock);
 }
 function setModeP2Df(){
@@ -491,6 +502,8 @@ function setModeP2Ord(){
   // v3.9.500 (Issue I-2): pointer-events pe AMBELE zone de captură pentru P2
   const czone=document.getElementById('o-czone');if(czone)czone.style.pointerEvents='';
   const czone2=document.getElementById('o-czone2');if(czone2)czone2.style.pointerEvents='';
+  // #128n — și zonele de captură ale blocurilor 2+
+  document.querySelectorAll('#ord-blocuri .ord-bloc[data-bloc]:not([data-bloc="0"]) [data-role="cap-zone"]').forEach(z=>z.style.pointerEvents='');
 }
 
 // ── DF/ORD dark redesign — visual role state ──────────────────────────────────
@@ -1146,6 +1159,7 @@ async function saveDoc(ft){
     if(ST.docId[ft]){
       if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
       if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
+      if(ft==='ordnt') await uploadCapturaBlocuri(ft);
     }
     // v3.9.501: upload atașamente pending pentru ambele sloturi (ORD slot 1, DF slot 1+2)
     // v3.9.554 (B2): colectează eșecurile — nu mai raportăm „Salvat cu succes" peste ele
@@ -1191,6 +1205,50 @@ async function uploadCaptura(ft, slot){
       body:blob,
     });
   }catch(_){}
+}
+
+// #128n — capturile blocurilor 2+ de furnizor. Blocul 0 rămâne pe uploadCaptura(ft,slot).
+// Oglindește uploadAttachmentsBlocuri. Pentru DF întoarce imediat.
+async function uploadCapturaBlocuri(ft){
+  if(ft!=='ordnt'||!ST.docId[ft])return;
+  const n=_ordBlocCount();
+  for(let b=1;b<n;b++){
+    const el=blocEl(b);if(!el)continue;
+    for(const slot of [1,2]){
+      const dataUrl=capSrcBloc(el,slot);if(!dataUrl)continue;
+      try{
+        const[header,b64]=dataUrl.split(',');
+        const mime=header.match(/:(.*?);/)?.[1]||'image/png';
+        const bin=atob(b64);const arr=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+        const blob=new Blob([arr],{type:mime});
+        await fetch(`/api/formulare-capturi/ord/${ST.docId[ft]}?slot=${slot}&bloc=${b}`,{
+          method:'POST',credentials:'include',
+          headers:{'Content-Type':mime,'X-CSRF-Token':df.getCsrf(),'X-Filename':`captura_ord_${slot}_bloc${b}.png`},
+          body:blob,
+        });
+      }catch(_){}
+    }
+  }
+}
+
+// #128n — capturile blocurilor 2+ la redeschidere. Blocurile există deja: renderOrdBlocuri()
+// rulează SINCRON la începutul lui populateOrd, înaintea primului await.
+async function fetchCapturiBlocuri(docId){
+  const n=_ordBlocCount();
+  for(let b=1;b<n;b++){
+    const el=blocEl(b);if(!el)continue;
+    for(const slot of [1,2]){
+      capSetBloc(el,slot,null);
+      try{
+        const r=await fetch(`/api/formulare-capturi/ord/${docId}?slot=${slot}&bloc=${b}`,{credentials:'include'});
+        if(!r.ok||!r.headers.get('content-type')?.startsWith('image'))continue;
+        const blob=await r.blob();
+        const dataUrl=await new Promise(res=>{const rd=new FileReader();rd.onload=e=>res(e.target.result);rd.onerror=()=>res(null);rd.readAsDataURL(blob);});
+        if(dataUrl)capSetBloc(blocEl(b),slot,dataUrl);
+      }catch(_){}
+    }
+  }
 }
 
 // ── Atașamente (Compartiment specialitate + secțiunea B) ──────────────────────
@@ -1808,6 +1866,7 @@ async function completeAsP2(ft){
   // înainte, captura 2 era pierdută pentru că completeAsP2 trimitea doar slot 1)
   await uploadCaptura(ft, 1);
   if(ft==='ordnt') await uploadCaptura(ft, 2);
+  if(ft==='ordnt') await uploadCapturaBlocuri(ft);
   // v3.9.501: upload atașamente pending (ambele sloturi pentru DF, slot 1 pentru ORD)
   await uploadAttachments(ft, 1);
   if(ft==='notafd') await uploadAttachments(ft, 2);
@@ -2054,6 +2113,8 @@ function resetF(ft){
   window.uploadAttachmentsBlocuri   = uploadAttachmentsBlocuri;  // #128m
   window.fetchAttachments           = fetchAttachments;
   window.fetchAttachmentsBlocuri    = fetchAttachmentsBlocuri;   // #128m
+  window.uploadCapturaBlocuri       = uploadCapturaBlocuri;      // #128n
+  window.fetchCapturiBlocuri        = fetchCapturiBlocuri;       // #128n
   window._attIds                    = _attIds;                   // #128m
   window.renderAttachments          = renderAttachments;
   window.remAttServer               = remAttServer;

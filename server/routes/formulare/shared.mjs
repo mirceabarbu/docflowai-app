@@ -72,18 +72,24 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
     // v3.9.499: ștergem doar captura din același slot (default 1 backward compat)
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+    // #128n: blocul de furnizor (ORD multi-bloc), ortogonal pe slot — exact ca la atașamente.
+    // ⚠️ Fără `bloc_idx` în cheia DELETE-ului, captura furnizorului 2 o ȘTERGE pe a
+    // furnizorului 1, tăcut, iar utilizatorul vede confirmare de succes. Ăsta e bug-ul
+    // pe care îl repară lotul; regula „o captură per slot" devine „per (slot, bloc)".
+    // Rândurile legacy au `bloc_idx` NULL ⇒ `COALESCE(bloc_idx, 0)` le citește ca blocul 0.
+    const blocIdx = _blocIdx(req);
     await pool.query(
-      'DELETE FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3',
-      [type, id, slot]
+      'DELETE FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND COALESCE(bloc_idx, 0)=$4',
+      [type, id, slot, blocIdx]
     );
 
     const { rows: inserted } = await pool.query(`
-      INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, filename, mimetype, size_bytes, slot, created_at
-    `, [type, id, actor.userId, filename, mimetype, data.length, data, slot]);
+      INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot, bloc_idx)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, filename, mimetype, size_bytes, slot, bloc_idx, created_at
+    `, [type, id, actor.userId, filename, mimetype, data.length, data, slot, blocIdx]);
 
-    logger.info({ type, id, slot, size: data.length, actor: actor.email }, 'formulare-captura upload');
+    logger.info({ type, id, slot, bloc: blocIdx, size: data.length, actor: actor.email }, 'formulare-captura upload');
     res.json({ ok: true, captura: inserted[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-captura upload error');
@@ -114,9 +120,11 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
     // v3.9.499: filtrare pe slot (default 1 backward compat pentru DF + clienti vechi)
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+    // #128n: cerere FĂRĂ `?bloc` ⇒ blocul 0 = exact captura pe care o vede clientul de azi.
+    const blocIdx = _blocIdx(req);
     const { rows } = await pool.query(
-      'SELECT filename, mimetype, data FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 ORDER BY created_at DESC LIMIT 1',
-      [type, id, slot]
+      'SELECT filename, mimetype, data FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND COALESCE(bloc_idx, 0)=$4 ORDER BY created_at DESC LIMIT 1',
+      [type, id, slot, blocIdx]
     );
     if (!rows.length) return res.status(404).json({ error: 'no_captura', slot });
     const { filename, mimetype, data } = rows[0];

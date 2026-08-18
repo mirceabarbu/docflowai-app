@@ -150,7 +150,7 @@ describe('#128h — adăugare bloc', () => {
     expect(out.docFd[1].nr_unic_inreg).toBe('NR-001');
   });
 
-  it('⭐ blocul nou nu emite niciun id și nu conține secțiune de captură', async () => {
+  it('⭐ blocul nou nu emite niciun id; capturile lui sunt marcate DOAR prin data-role (#128n)', async () => {
     // șablonul PUR (înainte de orice rând) nu emite niciun id
     const gol = globalThis.window._sablonBloc(1);
     expect(gol.querySelectorAll('[id]').length).toBe(0);
@@ -163,7 +163,13 @@ describe('#128h — adăugare bloc', () => {
     expect(ids.every((id) => /^or-\d+$/.test(id))).toBe(true);
     expect(new Set(ids).size).toBe(ids.length);
     expect(el.id).toBe('');
-    expect(el.querySelectorAll('.cap-zone,.cap-img,.cap-ph').length).toBe(0);
+    // #128n — șablonul conține ACUM secțiunea de captură (două sloturi per furnizor). Regula
+    // care contează rămâne cea de la #128h și e verificată mai sus: ZERO atribute `id`.
+    // Zonele se rezolvă exclusiv prin data-role + data-cap-slot.
+    expect(el.querySelectorAll('[data-role="cap-zone"]').length).toBe(2);
+    expect([...el.querySelectorAll('[data-role="cap-zone"]')]
+      .map((z) => z.getAttribute('data-cap-slot'))).toEqual(['1', '2']);
+    expect(el.querySelectorAll('.cap-zone[id],.cap-img[id],.cap-ph[id]').length).toBe(0);
     // …iar id-urile blocului 0 rămân UNICE în document
     ['o-benef', 'o-cifb', 'o-tbody', 'o-t-rec'].forEach((id) => {
       expect(document.querySelectorAll(`#${id}`).length).toBe(1);
