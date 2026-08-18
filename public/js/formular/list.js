@@ -533,6 +533,9 @@ function newDocFromList(){
 }
 function switchListTab(type){
   _lstState.type=type;_lstState.page=1;
+  // #130 — o singură decizie controlează antetul ȘI celulele coloanelor de bani (vezi CSS
+  // `.lst-table-wrap:not(.lst-tip-ord) .lst-col-ord`) — nu pot desincroniza.
+  document.querySelector('.lst-table-wrap')?.classList.toggle('lst-tip-ord',type==='ord');
   // Curăță contextul ALOP la navigare manuală din/spre alt tab decât DF/ORD
   if(type!=='df'&&type!=='ord'){window._alopContext=null;sessionStorage.removeItem('_alopContext');}
   document.getElementById('ltab-df').classList.toggle('active',type==='df');
@@ -662,6 +665,8 @@ function _setLstCount(total){
   box.hidden = false;
 }
 async function loadList(){
+  // #130 — încărcarea inițială nu trece prin switchListTab, deci comutarea clasei se repetă aici.
+  document.querySelector('.lst-table-wrap')?.classList.toggle('lst-tip-ord',_lstState.type==='ord');
   const tb=document.getElementById('lst-tbody');
   const em=document.getElementById('lst-empty');
   const ld=document.getElementById('lst-loading');
@@ -717,6 +722,23 @@ function _fmtDate(iso){
   try{return new Date(iso).toLocaleString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}
   catch{return iso;}
 }
+// #130 — formatare monetară pentru coloanele de bani din listă.
+function _lstBani(v){
+  const n=parseFloat(v);
+  if(!isFinite(n))return '—';
+  return (typeof fMR==='function'?fMR(n):n.toFixed(2))+' lei';
+}
+// #130 — „cât s-a plătit". NULL = nu s-a plătit / nu e legat de ALOP ⇒ liniuță, NU „0,00".
+// Verde = plătit integral, chihlimbar = plătit parțial. Toleranță 0.01 pentru rotunjiri.
+function _lstPlata(plata,valoare){
+  if(plata==null)return '<span style="color:var(--df-text-3)">—</span>';
+  const p=parseFloat(plata),v=parseFloat(valoare);
+  if(!isFinite(p))return '<span style="color:var(--df-text-3)">—</span>';
+  const txt=_lstBani(p);
+  if(isFinite(v)&&v>0&&p+0.01>=v)return `<span style="color:#22c55e">${txt}</span>`;
+  if(p>0)return `<span style="color:#f59e0b" title="Plată parțială">${txt}</span>`;
+  return txt;
+}
 function _renderLstTable(rows,type){
   const tb=document.getElementById('lst-tbody');
   if(!tb)return;
@@ -749,6 +771,8 @@ function _renderLstTable(rows,type){
       <td>${esc(row.initiator||'—')}</td>
       <td>${esc(row.initiator_comp||'—')}</td>
       <td>${esc(row.p2||'—')}</td>
+      <td class="lst-col-ord" style="text-align:right;white-space:nowrap">${_lstBani(row.ord_valoare)}</td>
+      <td class="lst-col-ord" style="text-align:right;white-space:nowrap">${_lstPlata(row.plata_suma,row.ord_valoare)}</td>
       <td>${_stBadge(row.badge_status)}</td>
       <td>
         <div>${_fmtDate(row.created_at)}</div>
@@ -857,6 +881,8 @@ function _populateCompartimente(){
   window._scheduleAutoSaveDb    = _scheduleAutoSaveDb;
   window._populateCompartimente = _populateCompartimente;
   window._updateBackBtn         = _updateBackBtn;
+  window._lstBani                = _lstBani;
+  window._lstPlata               = _lstPlata;
 
   window.df = window.df || {};
   window.df._formularListLoaded = true;

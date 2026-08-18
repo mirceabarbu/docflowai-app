@@ -709,6 +709,23 @@ router.get('/api/formulare/list', async (req, res) => {
           ) AS badge_status,
           CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
+          -- #130 — valoarea ordonanțării = suma col.4 peste TOATE rândurile. După #128,
+          -- rows conține rândurile tuturor blocurilor de furnizor (fiecare cu bloc_idx),
+          -- deci suma e pe întreaga ordonanțare, nu pe primul furnizor. Expresie IDENTICĂ
+          -- cu ord_valoare din routes/alop.mjs:386-387 — sursă unică de formulă.
+          (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
+             FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
+          -- #130 — cât s-a plătit din ACEASTĂ ordonanțare. Legătura ORD-plată trăiește pe
+          -- DOUĂ niveluri: ciclul CURENT stă pe alop_instances.ord_id, iar ciclurile ÎNCHISE
+          -- sunt arhivate în alop_ord_cicluri (rând inserat de noua-lichidare). Un ORD e
+          -- într-unul SAU în celălalt, niciodată în amândouă — dar preferăm rândul arhivat,
+          -- fiindcă e valoarea înghețată la închiderea ciclului.
+          COALESCE(
+            (SELECT c.plata_suma_efectiva FROM alop_ord_cicluri c
+              WHERE c.ord_id = fo.id AND c.org_id = fo.org_id LIMIT 1),
+            (SELECT a.plata_suma_efectiva FROM alop_instances a
+              WHERE a.ord_id = fo.id AND a.org_id = fo.org_id AND a.cancelled_at IS NULL LIMIT 1)
+          ) AS plata_suma,
           COALESCE(u1.nume, u1.email) AS initiator,
           u1.compartiment AS initiator_comp,
           COALESCE(u2.nume, u2.email) AS p2,

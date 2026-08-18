@@ -268,9 +268,12 @@
     .tbl-btn.danger:hover{background:rgba(255,80,80,.1)}
     @media(max-width:720px){
       .lst-table th:nth-child(2),.lst-table td:nth-child(2),
-      .lst-table th:nth-child(5),.lst-table td:nth-child(5){display:none}
+      .lst-table th:nth-child(7),.lst-table td:nth-child(7){display:none}
       .lst-sub{max-width:140px}
     }
+    /* #130 — coloanele de bani există în markup pentru ambele tipuri, dar se afișează doar la ORD.
+       O SINGURĂ regulă acoperă și <th> și <td> ⇒ antetul nu poate ajunge desincronizat de rânduri. */
+    .lst-table-wrap:not(.lst-tip-ord) .lst-col-ord{display:none}
     /* ── Beneficiari + DF autocomplete ── */
     .ac-wrap{position:relative}
     .ac-drop{position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #888;border-top:none;z-index:60;max-height:150px;overflow-y:auto;box-shadow:0 4px 10px rgba(0,0,0,.22);display:none}
