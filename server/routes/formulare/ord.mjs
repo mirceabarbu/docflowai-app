@@ -23,6 +23,7 @@ import {
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
 import { normalizeAngajamentRows } from '../../services/angajament-normalize.mjs';
+import { liveFlowSql } from '../../services/flow-provenance.mjs';
 import { blocuriDinOrd, pregatesteScriereBlocuri } from '../../services/ord-blocuri.mjs';
 import { serializeOrdnt } from '../../services/alop-xml/ordnt-serializer.mjs';
 import { ordRowToXsd } from '../../services/alop-xml/ord-to-xsd.mjs';
@@ -361,6 +362,26 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     const extraSets = [];
     const extraVals = [];
     if ((isP1 || isAdmin) && doc.status === 'completed') {
+      // #129 — ASIMETRIE DF/ORD, poarta care lipsea: DF-ul persistă `transmis_flux` la legarea
+      // de flux, deci un DF în semnare cade pe ramura `document_locked` de mai jos. ORD-ul NU
+      // persistă asta — rămâne `completed` chiar cu un flux VIU. Fără verificarea de aici,
+      // butonul „Redeschide" ar putea reseta la draft un ORD aflat în semnare.
+      // Predicatul vine din flow-provenance.mjs (sursă unică, #122): `liveFlowSql` prinde ȘI
+      // fluxul încă în semnare, ȘI cel deja finalizat (un flux `completed` E „viu" acolo),
+      // excluzând `cancelled` / `refused` / șters — acelea NU trebuie să blocheze redeschiderea.
+      // ⚠️ Poziția contează: garda stă DUPĂ `canEditFormular` (403 înaintea lui 409).
+      if (doc.flow_id) {
+        const { rows: fl } = await pool.query(
+          `SELECT 1 FROM flows f WHERE f.id = $1 AND (${liveFlowSql('f')}) LIMIT 1`,
+          [doc.flow_id]
+        );
+        if (fl.length) {
+          return res.status(409).json({
+            error: 'document_pe_flux',
+            message: 'Documentul are un flux de semnare activ sau finalizat. Anulați fluxul înainte de a-l redeschide.'
+          });
+        }
+      }
       extraSets.push('status=$__', 'version=$__', 'completed_at=NULL', 'submitted_at=NULL');
       extraVals.push('draft', doc.version + 1);
     } else if (isP1 && !['draft', 'returnat'].includes(doc.status)) {
@@ -425,10 +446,19 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     const allSets = [...sets];
     const allVals = [...vals];
     let pi = allVals.length + 1;
+    // #129 — fragmentele LITERALE (`completed_at=NULL`, `submitted_at=NULL`) NU au placeholder:
+    // pentru ele NU se consumă o valoare, altfel s-ar împinge un `undefined` ca parametru
+    // nereferențiat și Postgres arunca „could not determine data type of parameter" (500 pe
+    // ORICE reopen ORD). Identic cu fixul deja aplicat pe DF (df.mjs, v3.9.750). Indexarea
+    // rămâne POZIȚIONALĂ (`extraVals[i]`) — alinierea e asigurată de padding-ul din #128c.
     for (let i = 0; i < extraSets.length; i++) {
-      allSets.push(extraSets[i].replace('$__', `$${pi}`));
-      allVals.push(extraVals[i]);
-      pi++;
+      if (extraSets[i].includes('$__')) {
+        allSets.push(extraSets[i].replace('$__', `$${pi}`));
+        allVals.push(extraVals[i]);
+        pi++;
+      } else {
+        allSets.push(extraSets[i]);
+      }
     }
     // df_id poate fi actualizat explicit (include null pentru a șterge legătura)
     if ('df_id' in (req.body || {})) {

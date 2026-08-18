@@ -737,6 +737,9 @@ function renderActions(ft){
   // Secțiunea A+B complete). type endpoint = df|ord (ft = notafd|ordnt).
   const xmlType=ft==='ordnt'?'ord':'df';
   const xmlBtn=caps.can_export_xml?B('sm','📑 Export XML',`exportFormularXml('${xmlType}','${docId}')`):'';
+  // #129 — „Redeschide document" (gated server-side de caps.can_reopen; ruta PUT re-verifică).
+  // Codul e comun DF/ORD, deci nu există ramificare pe `ft`.
+  const _reopen=caps.can_reopen?B('','🔓 Redeschide document',`resetDocToP1('${ft}')`):'';
   // Banner "an următor" — vizibil doar pentru notafd revizie an următor (prezentare, neschimbat)
   const bannerAnUrm=document.getElementById('banner-an-urmator-notafd');
   if(bannerAnUrm) bannerAnUrm.style.display=(ft==='notafd'&&ST.docRevizieAnUrmator?.[ft])?'':'none';
@@ -788,7 +791,7 @@ function renderActions(ft){
     return;
   }
   if(caps.is_completed_p2){
-    div.innerHTML=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`+xmlBtn;
+    div.innerHTML=`<span style="color:var(--df-text-3);font-size:.82rem">✅ Secțiunea ta este completată.</span>`+_reopen+xmlBtn;
     return;
   }
   if(caps.is_on_flow){
@@ -801,6 +804,7 @@ function renderActions(ft){
     const hasPdf=!!(ST[ft]?.pdf);
     div.innerHTML=(hasPdf?B('primary','🔏 Lansează flux semnare',`mkFlow('${ft}')`)
       :`<button id="bgen-${ft}" class="df-action-btn primary" onclick="genPdf('${ft}')">⚙ Generează PDF</button>`)
+      +_reopen
       +xmlBtn;
     return;
   }
@@ -1946,9 +1950,11 @@ async function completeAsP2(ft){
 // ── P1 modifică după completare → resetează la draft + version++ ──────────────
 async function resetDocToP1(ft){
   if(ST.docAprobat?.[ft]){setS('Document aprobat — nu poate fi modificat.','err');return;}
-  if(!confirm('Documentul va fi resetat la draft și P2 va trebui să completeze din nou. Continuați?'))return;
-  // Trimitem un câmp dummy de update pentru a triggera reset în backend
-  const body=ft==='ordnt'?{cif:g('o-cif')||' '}:{cif:g('n-cif')||' '};
+  if(!confirm('Documentul revine în lucru (draft), versiunea se incrementează, iar Responsabilul CAB va trebui să finalizeze din nou Secțiunea B. Datele completate se păstrează. Continuați?'))return;
+  // #129 — corp GOL. Ruta PUT face resetul din `extraSets`, nu din corp: garda „no_fields" de pe
+  // DF (df.mjs) cere `!extraSets.length`, iar extraSets conține deja resetul; ORD n-are deloc o
+  // astfel de gardă. Vechiul câmp dummy `{cif: g(...)||' '}` scria un SPAȚIU peste `cif` gol.
+  const body={};
   try{
     const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}`,{
       method:'PUT',credentials:'include',
@@ -1956,7 +1962,15 @@ async function resetDocToP1(ft){
       body:JSON.stringify(body),
     });
     const j=await r.json();
-    if(!r.ok||!j.ok){setS(j.error||'Eroare','err');return;}
+    if(!r.ok||!j.ok){
+      if(j.error==='document_pe_flux'){
+        // #129 — refuzul nou de pe server (ORD cu flux viu/semnat): arată textul explicativ.
+        setS('⛔ '+(j.message||'Documentul are un flux de semnare activ. Anulați fluxul înainte de a-l redeschide.'),'err');
+      }else{
+        setS(j.error||'Eroare','err');
+      }
+      return;
+    }
     ST.docStatus[ft]='draft';
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=j.document?.capabilities||null;

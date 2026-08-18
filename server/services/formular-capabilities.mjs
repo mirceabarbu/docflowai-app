@@ -22,6 +22,7 @@ function emptyCaps() {
   return {
     can_send_p2: false,
     can_reset: false,
+    can_reopen: false,
     can_save: false,
     can_complete_p2: false,
     can_return: false,
@@ -82,6 +83,14 @@ export function computeDocCapabilities(doc, actor, ft) {
   // return-urile pe ramuri (toate întorc același obiect `caps`), deci e role-independent.
   // Hint de AFIȘARE — endpoint-ul /xml re-verifică gate-ul independent.
   caps.can_export_xml = aprobat || status === 'completed' || status === 'transmis_flux';
+
+  // #129 — „Redeschide document": P1 sau admin, pe un document finalizat de P2 care NU e pe
+  // un flux activ și nu e aprobat. Oglindește EXACT poarta de pe server
+  // (`(isP1 || isAdmin) && status === 'completed'`, plus garda de flux adăugată la #129):
+  // dacă cele două diverg, butonul apare și dă 409, sau nu apare deși acțiunea e permisă.
+  // Hint de AFIȘARE — ruta PUT re-verifică independent.
+  caps.can_reopen = status === 'completed' && !aprobat && !onActiveFlow
+    && (role === 'p1' || actor?.role === 'admin' || actor?.role === 'org_admin');
 
   // Ordinea de scurtcircuit identică cu renderActions (primul match câștigă):
   if (isNotafd && status === 'neaprobat') {
