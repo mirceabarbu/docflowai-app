@@ -86,14 +86,21 @@ export async function canEditFormular(pool, actor, doc, actorComp, opts = {}) {
   if (opts.assignedCounts !== false && doc.assigned_to === actor.userId)
     return { allowed: true, role: 'assigned' };
   if (actorComp) {
-    if (await _userIsInComp(pool, doc.created_by, actorComp))
-      return { allowed: true, role: 'comp' };  // P1-comp (back-compat)
-    if (doc.assigned_to && await _userIsInComp(pool, doc.assigned_to, actorComp))
-      return { allowed: true, role: 'p2_comp' };
     // #131a — Responsabil CAB = COMPARTIMENT. Când documentul e atribuit unui compartiment
     // (`assigned_to` NULL), orice membru al lui e P2. Convenția de comparație e identică cu
     // `_userIsInComp`: TRIM pe ambele părți, șirul gol nu se potrivește cu nimic.
+    //
+    // #131c — ORDINEA E PARTE DIN CONTRACT, nu stil. Atribuirea EXPLICITĂ a documentului
+    // către un compartiment (#131a) e o revendicare mai specifică decât „creatorul se
+    // întâmplă să-mi fie coleg", deci se evaluează PRIMA. Plasată după ramura `'comp'`
+    // (cum era la #131a), ea nu se atingea niciodată când inițiatorul și compartimentul CAB
+    // sunt același compartiment — exact configurația din primării — iar `returnFormular` /
+    // `completeFormular`, care cer rolul `p2_comp`, răspundeau 403 pe butoane vizibile.
     if (doc.p2_compartiment && String(doc.p2_compartiment).trim() === actorComp)
+      return { allowed: true, role: 'p2_comp' };
+    if (await _userIsInComp(pool, doc.created_by, actorComp))
+      return { allowed: true, role: 'comp' };  // P1-comp (back-compat)
+    if (doc.assigned_to && await _userIsInComp(pool, doc.assigned_to, actorComp))
       return { allowed: true, role: 'p2_comp' };
   }
   // FEAT ALOP-CAB: membrul compartimentului CAB al org-ului editează tot (verificat DUPĂ rolurile
