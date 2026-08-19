@@ -28,7 +28,12 @@ describe('I-2: wrap captura 2 vizibil mereu + setModeP2Ord pe o-czone2', () => {
   it('populateOrd setează _wrap2.style.display="" necondiționat', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
     expect(src).toMatch(/v3\.9\.500 \(Issue I-2\)/);
-    const m = src.match(/populateOrd[\s\S]{0,2000}/);
+    // #128g: fereastra era 2000 — arbitrară, iar orice linie adăugată în capul lui populateOrd
+    // o depășea (aici: re-ștampilarea ctrl_idx pe rândurile ORD). 3000 păstrează intenția
+    // („display='' apare în populateOrd, nu oriunde în fișier") fără fragilitate la lungime.
+    // #128k: ancorare pe DECLARAȚIA funcției, nu pe prima MENȚIUNE a numelui — un comentariu
+    // care pomenește `populateOrd` mai sus în fișier muta fereastra pe text irelevant.
+    const m = src.match(/async function populateOrd\([\s\S]{0,3000}/);
     expect(m).toBeTruthy();
     expect(m[0]).toMatch(/_wrap2\.style\.display=''/);
   });
@@ -47,9 +52,10 @@ describe('I-3: atașamente — funcții declarate și exportate', () => {
   it('uploadAttachments / fetchAttachments / renderAttachments / remAttServer declarate', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
     // v3.9.501: signature extinsă cu slot (ft, slot=1)
-    expect(src).toMatch(/async function uploadAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
-    expect(src).toMatch(/async function fetchAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
-    expect(src).toMatch(/function renderAttachments\(ft(?:,\s*slot\s*=\s*1)?\)/);
+    // #128m (v3.9.773): și cu blocul de furnizor (ft, slot=1, bloc=0)
+    expect(src).toMatch(/async function uploadAttachments\(ft(?:,\s*slot\s*=\s*1)?(?:,\s*bloc\s*=\s*0)?\)/);
+    expect(src).toMatch(/async function fetchAttachments\(ft(?:,\s*slot\s*=\s*1)?(?:,\s*bloc\s*=\s*0)?\)/);
+    expect(src).toMatch(/function renderAttachments\(ft(?:,\s*slot\s*=\s*1)?(?:,\s*bloc\s*=\s*0)?\)/);
     expect(src).toMatch(/async function remAttServer/);
   });
 

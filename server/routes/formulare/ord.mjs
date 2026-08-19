@@ -23,6 +23,8 @@ import {
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
 import { normalizeAngajamentRows } from '../../services/angajament-normalize.mjs';
+import { liveFlowSql } from '../../services/flow-provenance.mjs';
+import { blocuriDinOrd, pregatesteScriereBlocuri } from '../../services/ord-blocuri.mjs';
 import { serializeOrdnt } from '../../services/alop-xml/ordnt-serializer.mjs';
 import { ordRowToXsd } from '../../services/alop-xml/ord-to-xsd.mjs';
 import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
@@ -162,12 +164,14 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
+    // #131a — actorComp e scos din bloc: îl consumă și computeDocCapabilities (Responsabil
+    // CAB pe COMPARTIMENT ⇒ rolul P2 se derivă din compartiment când assigned_to e NULL).
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
     {
-      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
-    doc.capabilities = computeDocCapabilities(doc, actor, 'ordnt');
+    doc.capabilities = computeDocCapabilities(doc, actor, 'ordnt', actorComp);
     // Buget an de exercițiu pentru atenționarea inline (P1+P2) — paritate cu garda hard
     // (acel. helper). Frontend-ul sumează rândurile din UI + cicluri_arhivate și compară cu
     // buget_an_curent. NULL când ORD-ul nu are df_id (nimic de plafonat).
@@ -179,6 +183,10 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         doc.cicluri_arhivate = ctx.cicluriArhivate;
       }
     } catch (_) { /* non-fatal: atenționarea inline e best-effort, garda hard rămâne pe server */ }
+    // #128c — un document vechi (`blocuri` NULL în DB) întoarce totuși un array cu blocul
+    // derivat din coloanele plate, ca #128e să scrie frontendul contra unei singure forme.
+    // ⛔ DOAR detaliul: listele ar căra payload fără consumator.
+    doc.blocuri = blocuriDinOrd(doc);
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord get error');
@@ -205,12 +213,14 @@ router.get('/api/formulare-ord/:id/xml', async (req, res) => {
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
+    // #131a — actorComp e scos din bloc: îl consumă și computeDocCapabilities (Responsabil
+    // CAB pe COMPARTIMENT ⇒ rolul P2 se derivă din compartiment când assigned_to e NULL).
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
     {
-      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
-    const caps = computeDocCapabilities(doc, actor, 'ordnt');
+    const caps = computeDocCapabilities(doc, actor, 'ordnt', actorComp);
     if (!caps.can_export_xml) {
       return res.status(409).json({ error: 'not_exportable',
         message: 'Ordonanțarea nu este validată (Secțiunea A+B complete) — exportul XML nu este disponibil.' });
@@ -293,6 +303,14 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
         return res.json({ ok: true, document: dup[0], deduplicated: true });
       }
     }
+    // #128c — sursa de adevăr devine `blocuri`; cele 8 coloane plate se scriu EXCLUSIV ca
+    // OGLINDĂ a blocului 1 (un singur loc de scriere: `oglindaBloc1`). Un payload FĂRĂ
+    // `blocuri` — adică tot ce trimite clientul azi — dă un singur bloc derivat din câmpurile
+    // plate, deci coloanele scrise rămân identice cu cele de dinainte de #128c.
+    const { blocuri, oglinda, rows: rowsCuBloc } = pregatesteScriereBlocuri({ body, data });
+    if (rowsCuBloc !== undefined) data.rows = rowsCuBloc;   // bloc_idx, DUPĂ derivarea de identitate
+    Object.assign(data, oglinda);                           // intră pe traseul ORD_P1_FIELDS de mai jos
+
     const cols = ['org_id', 'created_by'];
     const vals = [actor.orgId, actor.userId];
 
@@ -305,6 +323,10 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
       cols.push(f);
       vals.push(typeof data[f] === 'object' ? JSON.stringify(data[f]) : data[f]);
     }
+    // Tratat SEPARAT (ca `source_alop_id`), NU adăugat în ORD_P1_FIELDS: dacă ar intra în lista
+    // generică, un client ar putea trimite `blocuri` direct, ocolind normalizarea.
+    cols.push('blocuri');
+    vals.push(JSON.stringify(blocuri));
 
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
     const { rows } = await pool.query(
@@ -344,6 +366,26 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
     const extraSets = [];
     const extraVals = [];
     if ((isP1 || isAdmin) && doc.status === 'completed') {
+      // #129 — ASIMETRIE DF/ORD, poarta care lipsea: DF-ul persistă `transmis_flux` la legarea
+      // de flux, deci un DF în semnare cade pe ramura `document_locked` de mai jos. ORD-ul NU
+      // persistă asta — rămâne `completed` chiar cu un flux VIU. Fără verificarea de aici,
+      // butonul „Redeschide" ar putea reseta la draft un ORD aflat în semnare.
+      // Predicatul vine din flow-provenance.mjs (sursă unică, #122): `liveFlowSql` prinde ȘI
+      // fluxul încă în semnare, ȘI cel deja finalizat (un flux `completed` E „viu" acolo),
+      // excluzând `cancelled` / `refused` / șters — acelea NU trebuie să blocheze redeschiderea.
+      // ⚠️ Poziția contează: garda stă DUPĂ `canEditFormular` (403 înaintea lui 409).
+      if (doc.flow_id) {
+        const { rows: fl } = await pool.query(
+          `SELECT 1 FROM flows f WHERE f.id = $1 AND (${liveFlowSql('f')}) LIMIT 1`,
+          [doc.flow_id]
+        );
+        if (fl.length) {
+          return res.status(409).json({
+            error: 'document_pe_flux',
+            message: 'Documentul are un flux de semnare activ sau finalizat. Anulați fluxul înainte de a-l redeschide.'
+          });
+        }
+      }
       extraSets.push('status=$__', 'version=$__', 'completed_at=NULL', 'submitted_at=NULL');
       extraVals.push('draft', doc.version + 1);
     } else if (isP1 && !['draft', 'returnat'].includes(doc.status)) {
@@ -382,15 +424,45 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
         });
       }
     }
+    // #128c — oglinda blocului 1 + coloana `blocuri` (vezi POST). `docExistent: doc` e
+    // OBLIGATORIU: PUT-urile sunt frecvent parțiale (doar `beneficiar`, doar `rows`), iar fără
+    // fuziune oglinda ar scrie peste câmpuri pe care utilizatorul nu le-a atins.
+    {
+      const prep = pregatesteScriereBlocuri({ body: req.body || {}, data, docExistent: doc });
+      if (prep.rows !== undefined) data.rows = prep.rows;   // bloc_idx, DUPĂ derivarea de identitate
+      // ⚠️ Bucla de mai jos consumă `extraSets[i]` ↔ `extraVals[i]`, dar ramura de reopen
+      // adaugă 2 seturi FĂRĂ valoare (`completed_at=NULL`, `submitted_at=NULL`). Aliniem
+      // înainte de a adăuga perechi noi, altfel valorile s-ar decala cu 2 poziții.
+      while (extraVals.length < extraSets.length) extraVals.push(undefined);
+      for (const [k, v] of Object.entries(prep.oglinda)) {
+        // Cele 8 sunt toate în ORD_P1_FIELDS; pe calea P2-only (`ORD_P2_FIELDS = ['rows']`)
+        // NU sunt, iar `buildUpdate` le-ar înghiți tăcut → le scriem explicit prin extraSets
+        // (valorile vin din `doc`, deci scrierea e un no-op — P2 nu schimbă beneficiarul).
+        // ⛔ NU lărgi `allowedFields`: ar deschide și scrierea directă de la client.
+        if (allowedFields.includes(k)) data[k] = v;
+        else { extraSets.push(`${k}=$__`); extraVals.push(v); }
+      }
+      extraSets.push('blocuri=$__');
+      extraVals.push(JSON.stringify(prep.blocuri));
+    }
     const { sets, vals } = buildUpdate(data, allowedFields, 1);
 
     const allSets = [...sets];
     const allVals = [...vals];
     let pi = allVals.length + 1;
+    // #129 — fragmentele LITERALE (`completed_at=NULL`, `submitted_at=NULL`) NU au placeholder:
+    // pentru ele NU se consumă o valoare, altfel s-ar împinge un `undefined` ca parametru
+    // nereferențiat și Postgres arunca „could not determine data type of parameter" (500 pe
+    // ORICE reopen ORD). Identic cu fixul deja aplicat pe DF (df.mjs, v3.9.750). Indexarea
+    // rămâne POZIȚIONALĂ (`extraVals[i]`) — alinierea e asigurată de padding-ul din #128c.
     for (let i = 0; i < extraSets.length; i++) {
-      allSets.push(extraSets[i].replace('$__', `$${pi}`));
-      allVals.push(extraVals[i]);
-      pi++;
+      if (extraSets[i].includes('$__')) {
+        allSets.push(extraSets[i].replace('$__', `$${pi}`));
+        allVals.push(extraVals[i]);
+        pi++;
+      } else {
+        allSets.push(extraSets[i]);
+      }
     }
     // df_id poate fi actualizat explicit (include null pentru a șterge legătura)
     if ('df_id' in (req.body || {})) {
@@ -414,7 +486,7 @@ router.put('/api/formulare-ord/:id', _csrf, async (req, res) => {
         actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
         fromStatus: 'completed', toStatus: 'draft', meta: { version_nou: doc.version + 1 } });
     }
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt');
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'ordnt', actorComp);
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord update error');

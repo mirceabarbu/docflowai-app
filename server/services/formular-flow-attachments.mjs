@@ -53,6 +53,12 @@ export async function copyFormularAttachmentsToFlow(pool, { flowId, formType, fo
   //      previzualizarea din flux cheiază pe `id` (attachments.mjs:108-112), deci două rânduri
   //      cu același `filename` se afișează corect, separat.
   //      Se păstrează cel mai VECHI rând sursă per (filename, size_bytes).
+  //      ⚠️ #128m — NU se filtrează pe `bloc_idx`: fluxul de semnare e UNUL SINGUR, deci
+  //      pachetul primește atașamentele TUTUROR blocurilor de furnizor. Corolarul,
+  //      INTENȚIONAT (nu e bug): dacă ACELAȘI fișier (nume + dimensiune) e atașat la doi
+  //      furnizori, în pachet intră o SINGURĂ dată — pachetul e un document, nu o arhivă
+  //      per furnizor. ⛔ Nu adăuga `fa.bloc_idx` în cheia DISTINCT ON „ca să fie simetric":
+  //      ar reintroduce exact duplicatele reparate la #124i.
   const { rows } = await pool.query(
     `INSERT INTO flow_attachments (flow_id, filename, mime_type, size_bytes, data)
      SELECT DISTINCT ON (fa.filename, fa.size_bytes)

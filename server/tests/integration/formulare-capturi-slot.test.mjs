@@ -96,7 +96,8 @@ describe('POST /api/formulare-capturi/:type/:id cu slot', () => {
       String(c[0]).includes('slot=$3')
     );
     expect(deleteCall, 'DELETE cu slot scope nu a fost apelat').toBeDefined();
-    expect(deleteCall[1]).toEqual(['ord', ORD_ID, 2]);
+    // #128n — cheia DELETE-ului include acum blocul de furnizor (absent din query ⇒ 0).
+    expect(deleteCall[1]).toEqual(['ord', ORD_ID, 2, 0]);
 
     const insertCall = dbModule.pool.query.mock.calls.find(c =>
       String(c[0]).includes('INSERT INTO formulare_capturi') &&
@@ -161,7 +162,7 @@ describe('GET /api/formulare-capturi/:type/:id cu slot', () => {
       String(c[0]).includes('slot=$3')
     );
     expect(selectCall, 'SELECT cu slot lipsește').toBeDefined();
-    expect(selectCall[1]).toEqual(['ord', ORD_ID, 2]);
+    expect(selectCall[1]).toEqual(['ord', ORD_ID, 2, 0]);  // #128n: + bloc_idx
   });
 
   it('GET fără query → default slot=1 (backward compat DF)', async () => {
@@ -177,7 +178,7 @@ describe('GET /api/formulare-capturi/:type/:id cu slot', () => {
     const selectCall = dbModule.pool.query.mock.calls.find(c =>
       String(c[0]).includes('SELECT filename, mimetype, data FROM formulare_capturi')
     );
-    expect(selectCall[1]).toEqual(['df', ORD_ID, 1]);
+    expect(selectCall[1]).toEqual(['df', ORD_ID, 1, 0]);  // #128n: + bloc_idx
   });
 
   it('GET ?slot=2 fără date → 404 cu body.slot=2', async () => {

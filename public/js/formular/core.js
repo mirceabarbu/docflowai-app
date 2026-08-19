@@ -91,15 +91,67 @@ function dlv(ev,zid){document.getElementById(zid).classList.remove('drag-ov');}
 function ddp(ev,iid,zid,phid){ev.preventDefault();document.getElementById(zid).classList.remove('drag-ov');const f=ev.dataTransfer.files?.[0];if(!f||!f.type.startsWith('image/'))return;const r=new FileReader();r.onload=e=>showImg(iid,phid,e.target.result);r.readAsDataURL(f);}
 
 /* Attachments */
+// #128m — „cheia" unei zone de atașamente. Pentru blocul 0 (ORD) și pentru DF rămâne exact
+// id-ul de element de azi ('o-alist', 'n-adata'…) ⇒ ZERO schimbare de comportament. Pentru
+// blocurile 2+ de furnizor, care n-au id-uri (regula #128h), cheia e un token
+// `bloc:<idx>:<rol>` rezolvat prin `data-role` în interiorul containerului `.ord-bloc`.
+// `ctx` (elementul care a declanșat acțiunea) are PRIORITATE față de index: la ștergerea
+// unui furnizor blocurile se renumerotează, deci un index capturat în onclick poate fi vechi.
+function attKeyBloc(idx,rol){return 'bloc:'+idx+':'+rol;}
+function isAttBlocKey(key){return typeof key==='string'&&key.indexOf('bloc:')===0;}
+function attEl(key,ctx){
+  if(!key)return null;
+  if(!isAttBlocKey(key))return document.getElementById(key);
+  const parts=String(key).split(':');
+  const host=(ctx&&ctx.closest&&ctx.closest('.ord-bloc'))||document.querySelector(`.ord-bloc[data-bloc="${parts[1]}"]`);
+  return host?host.querySelector(`[data-role="att-${parts[2]}"]`):null;
+}
+// Blocul căruia îi aparține o cheie de atașamente (0 pentru DF și pentru blocul 0 ORD).
+function attBlocOf(key,ctx){
+  const host=ctx&&ctx.closest&&ctx.closest('.ord-bloc');
+  if(host)return Number(host.getAttribute('data-bloc'))||0;
+  if(isAttBlocKey(key))return Number(String(key).split(':')[1])||0;
+  return 0;
+}
+/* Capturi per bloc (#128n) — oglinda helperilor de atașamente de mai sus.
+   Blocul 0 și DF-ul NU trec pe aici: ei rămân pe `imgs{}` + id-uri, byte-identic. */
+function capZona(blocEl, slot){
+  if(!blocEl)return null;
+  const s=slot===2?2:1;
+  return blocEl.querySelector(`[data-role="cap-zone"][data-cap-slot="${s}"]`);
+}
+// Data-URL-ul capturii unui bloc, citit din DOM. Întoarce null dacă nu e o captură reală.
+function capSrcBloc(blocEl, slot){
+  const img=capZona(blocEl,slot)?.querySelector('[data-role="cap-img"]');
+  const src=img&&img.getAttribute('src');
+  return (typeof src==='string'&&src.indexOf('data:image/')===0)?src:null;
+}
+function capSetBloc(blocEl, slot, dataUrl){
+  const z=capZona(blocEl,slot);if(!z)return;
+  const img=z.querySelector('[data-role="cap-img"]');
+  const ph=z.querySelector('[data-role="cap-ph"]');
+  if(!img)return;
+  if(dataUrl){img.setAttribute('src',dataUrl);img.style.display='block';if(ph)ph.style.display='none';}
+  else{img.removeAttribute('src');img.style.display='none';if(ph)ph.style.display='';}
+}
+// Captura blocului `i`, indiferent dacă e blocul 0 (hartă `imgs`) sau 2+ (DOM).
+// SURSĂ UNICĂ: colO() și uploadCapturaBlocuri() citesc AMÂNDOUĂ de aici, ca să nu apară
+// un al doilea adevăr între payload-ul de PDF și ce se urcă pe server.
+function capturaBloc(i, slot){
+  if(i===0)return imgs[slot===2?'o-cimg2':'o-cimg']||null;
+  return capSrcBloc(blocEl(i), slot);
+}
 function addAtt(ev,lid,did){
   const files=ev.target.files;if(!files.length)return;
-  const list=document.getElementById(lid);
-  let cur=JSON.parse(document.getElementById(did).value||'[]');
+  const list=attEl(lid,ev.target);
+  const dataEl=attEl(did,ev.target);
+  if(!list||!dataEl)return;
+  let cur=JSON.parse(dataEl.value||'[]');
   for(const f of files){
     const rd=new FileReader();
     rd.onload=e=>{
       const idx=cur.length;cur.push({name:f.name,type:f.type,data:e.target.result});
-      document.getElementById(did).value=JSON.stringify(cur);
+      dataEl.value=JSON.stringify(cur);
       // v3.9.654 (faza 2b): chip nesalvat randat prin renderFileItem (unificat DF/ORD)
       const holder=document.createElement('div');
       holder.innerHTML=renderFileItem({filename:f.name,canPreview:false,downloadHref:null,canDelete:true,deleteOnclick:`remAtt(${idx},'${lid}','${did}',this)`});
@@ -107,15 +159,17 @@ function addAtt(ev,lid,did){
       // v3.9.554 (B3): setarea programatică a input-ului ascuns nu emite 'input'/'change',
       // deci autosave-ul nu pornea — fișier atașat + navigare fără alt edit = pierdut.
       // Derivăm ft din did ('o-*' → ordnt, 'n-*' → notafd), consecvent cu remAttServer.
-      window._scheduleAutoSaveDb?.(did.startsWith('o-')?'ordnt':'notafd');
+      // #128m: cheile de bloc ('bloc:N:data') sunt, prin construcție, doar ORD.
+      window._scheduleAutoSaveDb?.((did.startsWith('o-')||isAttBlocKey(did))?'ordnt':'notafd');
     };
     rd.readAsDataURL(f);
   }
   ev.target.value='';
 }
 function remAtt(idx,lid,did,btn){
-  const cur=JSON.parse(document.getElementById(did).value||'[]');
-  cur.splice(idx,1);document.getElementById(did).value=JSON.stringify(cur);
+  const dataEl=attEl(did,btn);if(!dataEl)return;
+  const cur=JSON.parse(dataEl.value||'[]');
+  cur.splice(idx,1);dataEl.value=JSON.stringify(cur);
   btn.closest('.df-file-item')?.remove();
 }
 
@@ -125,9 +179,22 @@ let oI=0,nVI=0,nPI=0,nCI=0;
 const pMR=v=>{if(v===null||v===undefined||v==='')return 0;const s=String(v).trim().replace(/\s/g,'').replace(/\./g,'').replace(',','.');const n=parseFloat(s);return isNaN(n)?0:n;};
 const fMR=(v,d=2)=>{const n=typeof v==='string'?pMR(v):Number(v);if(isNaN(n))return'0,00';return n.toLocaleString('ro-RO',{minimumFractionDigits:d,maximumFractionDigits:d});};
 function attachMoneyInput(inp,d=2){if(!inp||inp.dataset.moneyAttached==='1')return;inp.dataset.moneyAttached='1';inp.addEventListener('focus',()=>{if(inp.disabled||inp.readOnly)return;const raw=pMR(inp.value);inp.value=raw===0?'0':String(raw).replace('.',',');});inp.addEventListener('blur',()=>{if(inp.value===''||inp.value===null)return;inp.value=fMR(pMR(inp.value),d);});if(inp.value===''||inp.value==='0'){inp.value='0,00';}else if(inp.value!=='0,00'){inp.value=fMR(pMR(inp.value),d);}};
-function addOR(){const i=window.oI++;const tr=document.createElement('tr');tr.id='or-'+i;
+// #128h — tbody-ul țintă al unui rând ORD. `target` poate fi: nimic (blocul 0 — semnătura veche,
+// apelată din markup prin onclick și din onDfSelect), un index de bloc, un element de bloc sau
+// chiar tbody-ul. Blocul 0 rămâne `#o-tbody` (id-ul e neatins).
+function _ordTbody(target){
+  if(target===undefined||target===null)
+    return document.getElementById('o-tbody')||blocEl(0)?.querySelector('tbody')||null;
+  if(typeof target==='number')return blocEl(target)?.querySelector('tbody')||null;
+  if(target.tagName==='TBODY')return target;
+  const bl=target.closest?.('[data-bloc]')||target;
+  return bl.querySelector?.('tbody')||null;
+}
+function addOR(target){const i=window.oI++;const tr=document.createElement('tr');tr.id='or-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="11" data-f="cod_angajament"/></td><td><input type="text" maxlength="3" data-f="indicator_angajament"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="cod_SSI"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="receptii" oninput="calcORRow(this)"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="plati_anterioare" oninput="calcORRow(this)"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="suma_ordonantata_plata" oninput="calcORRow(this)"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="receptii_neplatite" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default" title="5=(col.2)-(col.3)-(col.4) — calculat automat"/></td><td><button class="bdel" onclick="delR('or-${i}');upTot()">✕</button></td>`;
-  document.getElementById('o-tbody').appendChild(tr);
+  const _tb=_ordTbody(target);
+  if(!_tb)return;
+  _tb.appendChild(tr);
   tr.querySelectorAll('[data-money]').forEach(inp=>attachMoneyInput(inp));
   // Coduri de angajament canonice cu MAJUSCULE la blur — ORD.rows e câmpul potrivit de OPME.
   const oang=tr.querySelector('[data-f="cod_angajament"]');
@@ -147,7 +214,12 @@ function calcORRow(el){
   if(c5)c5.value=fMR(c2-c3-c4);
   upTot();
 }
-function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(tr=>{const o={};tr.querySelectorAll('input[data-f]').forEach(i=>o[i.dataset.f]=i.dataset.money?String(pMR(i.value)||0):i.value);return o;});}
+// #128g: doar rândurile pre-populate din DF poartă ctrl_idx (ștampilat în onDfSelect / la
+// reîncărcarea documentului). Un rând adăugat manual prin addOR() rămâne FĂRĂ — serverul
+// cade pe derivarea pozițională, exact ca înainte. (Extras în `_ordRowOf`, #128h.)
+// getOR() rămâne pe blocul 0 (`#o-tbody`) — e folosită de call-site-uri nemigrate; lista plată
+// multi-bloc se ia din getOrdRowsAll().
+function getOR(){return[...document.querySelectorAll('#o-tbody tr')].map(_ordRowOf);}
 
 function addNV(){const i=window.nVI++;const tr=document.createElement('tr');tr.id='nv-'+i;
   tr.innerHTML=`<td><input type="text" maxlength="150" data-f="element_fd" style="min-width:90px"/></td><td><input type="text" maxlength="10" data-f="program"/></td><td><input type="text" maxlength="15" data-f="codSSI" list="ssi-codes-list"/></td><td><input type="text" maxlength="500" data-f="param_fd" style="min-width:80px"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_rev_prec"/></td><td><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="influente"/></td><td style="background:rgba(255,255,255,0.07)"><input type="text" inputmode="decimal" data-money="true" value="0,00" data-f="valt_actualiz" readonly tabindex="-1" style="background:rgba(255,255,255,0.07);text-align:right;cursor:default"/></td><td><button class="bdel" onclick="delR('nv-${i}');upTot()">✕</button></td>`;
@@ -319,9 +391,23 @@ function calcNCRow(el){
 /* Totals */
 function sf(bid,f){return[...document.querySelectorAll(`#${bid} input[data-f="${f}"]`)].reduce((s,i)=>s+pMR(i.value),0);}
 function st2(id,v){const e=document.getElementById(id);if(e)e.textContent=fMR(v,2);}
+// #128h — totalurile ORD se calculează PER BLOC, în celulele `[data-tot]` ale blocului.
+// Celulele blocului 0 poartă AMBELE (`id="o-t-*"` istoric + `data-tot` nou) ⇒ scrise de
+// ambele căi, cu aceeași valoare.
+const ORD_TOT_FLD={rec:'receptii',plati:'plati_anterioare',suma:'suma_ordonantata_plata',neplat:'receptii_neplatite'};
+function _sfIn(root,f){return[...root.querySelectorAll(`input[data-f="${f}"]`)].reduce((s,i)=>s+pMR(i.value),0);}
+function upTotBlocuri(){
+  blocEls().forEach(el=>{
+    Object.entries(ORD_TOT_FLD).forEach(([k,f])=>{
+      const cell=el.querySelector(`[data-tot="${k}"]`);
+      if(cell)cell.textContent=fMR(_sfIn(el,f),2);
+    });
+  });
+}
 function upTot(){
   st2('o-t-rec',sf('o-tbody','receptii'));st2('o-t-plati',sf('o-tbody','plati_anterioare'));
   st2('o-t-suma',sf('o-tbody','suma_ordonantata_plata'));st2('o-t-neplat',sf('o-tbody','receptii_neplatite'));
+  upTotBlocuri();
   st2('n-t-vprec',sf('n-vtbody','valt_rev_prec'));st2('n-t-vinfl',sf('n-vtbody','influente'));st2('n-t-vact',sf('n-vtbody','valt_actualiz'));
   st2('n-t-pprec',sf('n-ptbody','plati_ani_precedenti'));st2('n-t-pancrt',sf('n-ptbody','plati_estim_ancrt'));
   st2('n-t-pnp1',sf('n-ptbody','plati_estim_an_np1'));st2('n-t-pnp2',sf('n-ptbody','plati_estim_an_np2'));
@@ -419,16 +505,335 @@ function anrefSync(){
 const g=id=>(document.getElementById(id)?.value||'').trim();
 const cb=id=>document.getElementById(id)?.checked?'1':'';
 
-function colO(){return{
-  Cif:g('o-cif'),DenInstPb:g('o-den'),NrOrdonantPl:g('o-nr'),DataOrdontPl:g('o-data'),
-  captureImageBase64:imgs['o-cimg']||null,
-  captureImageBase64_2:imgs['o-cimg2']||null,
-  attachments:JSON.parse(document.getElementById('o-adata').value||'[]'),
-  docFd:{nr_unic_inreg:g('o-nrUnic'),beneficiar:g('o-benef'),
-    documente_justificative:g('o-docsj'),iban_beneficiar:g('o-iban'),
-    cif_beneficiar:g('o-cifb'),banca_beneficiar:g('o-banca'),
-    inf_pv_plata:g('o-inf1'),inf_pv_plata1:g('o-inf2'),rowTfd:getOR()},
-};}
+// #128f — rezolvare pe bloc: colO()/valF() nu mai citesc câmpurile beneficiarului ORD
+// după id global, ci în interiorul containerului [data-bloc="i"].
+// #128h — containerul e acum `.ord-bloc[data-bloc="i"]` (înfășoară BLOC P1 + BLOC P2), iar
+// blocurile 2+ sunt FRAȚI ai lui în `#ord-blocuri`. `#form-ordnt` NU mai poartă `data-bloc`:
+// altfel blocurile noi ar fi DESCENDENȚI ai blocului 0 și rândurile lor s-ar scurge în el.
+const ORD_BLOC_FLDS=['nr_unic_inreg','beneficiar','documente_justificative','iban_beneficiar',
+  'cif_beneficiar','banca_beneficiar','inf_pv_plata','inf_pv_plata1'];
+// #128h — `nr_unic_inreg` (#o-nrUnic) e UNIC PE DOCUMENT (un singur DF per ORD) și trăiește în
+// BLOCUL ANTET, în afara containerelor de bloc ⇒ se citește global, pentru TOATE blocurile.
+// Rezolvarea rămâne „întâi în bloc, apoi global" ca să nu schimbe comportamentul acolo unde
+// câmpul chiar există în bloc (fixture-urile #128f).
+const ORD_FLD_GLOBAL_ID={nr_unic_inreg:'o-nrUnic'};
+const blocEls=()=>[...document.querySelectorAll('[data-bloc]')]
+  .sort((a,b)=>(Number(a.getAttribute('data-bloc'))||0)-(Number(b.getAttribute('data-bloc'))||0));
+const blocEl=(i)=>document.querySelector(`[data-bloc="${i}"]`);
+function blocFldEl(i,fld){
+  const el=blocEl(i)?.querySelector(`[data-fld="${fld}"]`);
+  if(el)return el;
+  const gid=ORD_FLD_GLOBAL_ID[fld];
+  return gid?document.getElementById(gid):null;
+}
+const bg=(i,fld)=>(blocFldEl(i,fld)?.value||'').trim();
+// Extragerea unui rând ORD din DOM — sursă UNICĂ pentru getOR()/rowsOfBloc()/getOrdRowsAll().
+// `ctrl_idx` e pointer (#128g), nu câmp: nu are input, se citește din dataset.
+function _ordRowOf(tr){
+  const o={};
+  tr.querySelectorAll('input[data-f]').forEach(inp=>o[inp.dataset.f]=inp.dataset.money?String(pMR(inp.value)||0):inp.value);
+  const ci=tr.dataset.ctrlIdx;if(ci!==undefined&&ci!=='')o.ctrl_idx=Number(ci);
+  return o;
+}
+function rowsOfBloc(i){
+  const el=blocEl(i);if(!el)return[];
+  return[...el.querySelectorAll('tbody tr')].map(_ordRowOf);
+}
+// #128h — lista PLATĂ de rânduri trimisă la server: blocurile concatenate în ordinea `bloc_idx`,
+// fiecare rând marcat cu blocul lui. Fallback (niciun container [data-bloc] în DOM) = vechiul
+// getOR() cu bloc_idx:0, ca să nu pice pagini/teste fără markup de bloc.
+function getOrdRowsAll(){
+  const els=blocEls();
+  if(!els.length)return getOR().map(r=>({...r,bloc_idx:0}));
+  const out=[];
+  els.forEach(el=>{
+    const bi=Number(el.getAttribute('data-bloc'))||0;
+    [...el.querySelectorAll('tbody tr')].forEach(tr=>out.push({..._ordRowOf(tr),bloc_idx:bi}));
+  });
+  return out;
+}
+
+/* ── #128h — blocuri ORD (mai mulți furnizori pe același ORD) ────────────────
+ * Blocurile 2+ se construiesc din ȘABLONUL de mai jos, NU prin cloneNode din blocul 0:
+ *   - clonarea ar duplica TOATE id-urile (o-benef, o-tbody, o-cimg…) — DOM invalid, iar
+ *     restul codului (doc.js/list.js/lockOrdIdentityCols, care caută după id) ar începe să
+ *     nimerească aleator;
+ *   - șablonul emite EXCLUSIV `data-fld` / `data-f` / `data-tot`, ZERO atribute `id` ⇒ tot
+ *     codul nemigrat continuă să vadă exact blocul 0, adică exact comportamentul de azi;
+ *   - #128n: șablonul conține ACUM secțiunea de captură, marcată prin `data-role="cap-*"`
+ *     (⛔ niciun id). Datele NU trec prin harta globală `imgs{}` — ea rămâne la exact
+ *     cele 3 chei istorice (`o-cimg`, `o-cimg2`, `n-cimg`). Pentru blocurile 2+ sursa de
+ *     adevăr e `src`-ul elementului `<img data-role="cap-img">`, adică DOM-ul blocului.
+ *     Motivul e concret: la ștergerea unui furnizor blocurile se RENUMEROTEAZĂ, iar o hartă
+ *     cheiată pe index ar reatribui tăcut captura altui furnizor. Datele care călătoresc cu
+ *     nodul DOM nu pot face asta — exact motivul pentru care atașamentele pending stau în
+ *     `<input data-role="att-data">`, nu într-o hartă.
+ *   - `blocuri` JSONB rămâne la exact 8 chei (atributele XSD): capturile sunt BYTEA în
+ *     `formulare_capturi`, cheiate pe (form_type, form_id, slot, bloc_idx).
+ */
+function _sablonBloc(idx){
+  const wrap=document.createElement('div');
+  wrap.className='ord-bloc';
+  wrap.setAttribute('data-bloc',String(idx));
+  wrap.innerHTML=`
+<div class="df-block df-block-p1">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-p1">P1</span>
+    <span class="df-block-title" data-bloc-title>Furnizor ${idx+1}</span>
+    <button type="button" class="df-action-btn ord-bloc-del" data-del-bloc title="Șterge acest furnizor">✕ Șterge furnizorul</button>
+  </div>
+  <div class="df-block-body">
+    <div class="df-row df-row-1">
+      <div>
+        <div class="dl req">Beneficiar</div>
+        <!-- #128j — elementele auxiliare poartă DOAR data-role (fără id): comportamentele
+             „vii" (autocomplete, badge ANAF, spinner) le rezolvă prin bloc, nu prin id. -->
+        <div class="ac-wrap">
+          <textarea class="dt" maxlength="150" rows="2" autocomplete="off" data-fld="beneficiar"></textarea>
+          <div class="ac-drop" data-role="benef-drop"></div>
+          <div style="margin-top:6px;min-height:0;" aria-live="polite" data-role="benef-status"></div>
+        </div>
+      </div>
+    </div>
+    <div class="df-row df-row-1">
+      <div>
+        <div class="dl req">Documente justificative <span style="font-weight:400;font-size:10px">(max 90 car.)</span></div>
+        <input class="di" maxlength="90" data-fld="documente_justificative"/>
+      </div>
+    </div>
+    <!-- #128m — zonă de atașamente per furnizor, identică funcțional cu a blocului 0, dar
+         marcată EXCLUSIV prin data-role (⛔ niciun id — regula #128h). Butonul și input-ul
+         de fișier NU au handler inline: se leagă prin delegare pe #ord-blocuri (list.js),
+         ca blocurile restaurate din draft sau recreate la redeschidere să fie acoperite
+         automat, fără cablare la creare. -->
+    <div class="att-zone"><div class="att-list" data-role="att-list"></div></div>
+    <div class="att-br">
+      <button type="button" class="att-btn" data-role="att-btn"><svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-paperclip"/></svg> Atașează fișiere</button>
+      <input type="file" class="att-inp" data-role="att-input" multiple/>
+    </div>
+    <input type="hidden" data-role="att-data" value="[]"/>
+    <div class="doc-hr"></div>
+    <div class="df-row df-row-3">
+      <div>
+        <div class="dl req">CIF beneficiar <span data-role="cifb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
+        <input class="di" maxlength="12" autocomplete="off" data-fld="cif_beneficiar"/>
+      </div>
+      <div>
+        <div class="dl req">IBAN beneficiar</div>
+        <input class="di" maxlength="24" placeholder="RO49AAAA..." data-fld="iban_beneficiar"/>
+      </div>
+      <div>
+        <div class="dl req">Bancă beneficiar</div>
+        <input class="di" maxlength="100" data-fld="banca_beneficiar"/>
+      </div>
+    </div>
+    <div class="df-row df-row-2">
+      <div>
+        <div class="dl">Informații privind plata</div>
+        <input class="di" maxlength="70" data-fld="inf_pv_plata"/>
+      </div>
+      <div>
+        <div class="dl">Informații privind plata (cont.)</div>
+        <input class="di" maxlength="70" data-fld="inf_pv_plata1"/>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="df-block df-block-p2">
+  <div class="df-block-hdr">
+    <span class="df-badge df-badge-p2">P2</span>
+    <span class="df-block-title">Tabel angajamente — furnizorul de mai sus</span>
+  </div>
+  <div class="df-block-body">
+    <div style="overflow-x:auto;margin-bottom:6px">
+    <table class="doc-t">
+      <thead>
+        <tr>
+          <th>Cod<br>angajament</th><th>Indicator<br>angajament</th><th>Program</th><th>Cod SSI</th>
+          <th>Recepții<br>(lei)</th><th>Plăți anterioare<br>(lei)</th>
+          <th>Suma ordonantată<br>la plată (lei)</th>
+          <th>Recepții neplatite (lei)<br><small style="font-weight:400">5=(col.2)-(col.3)-(col.4)</small></th>
+          <th style="width:22px"></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+      <tfoot>
+        <tr class="df-total">
+          <td class="tot">TOTAL</td><td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
+          <td class="num" data-tot="rec">0,00</td>
+          <td class="num" data-tot="plati">0,00</td>
+          <td class="num" data-tot="suma">0,00</td>
+          <td class="num" data-tot="neplat">0,00</td>
+          <td><button type="button" class="badd" data-add-row title="Adaugă rând">+</button></td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
+    <!-- #128o — bannerul de depășire de buget, per bloc. Textul e IDENTIC în toate blocurile:
+         bugetul e unul singur pe document (un ORD are un singur DF), deci depășirea e a
+         documentului. Fără el, utilizatorul din blocul 2 vede doar rânduri roșii fără motiv. -->
+    <div class="secb-buget-warn" data-role="buget-warn" style="display:none"></div>
+    <!-- #128n — capturi per furnizor. Marcate EXCLUSIV prin data-role (⛔ niciun id — regula
+         #128h). Handlerele NU sunt inline: se leagă prin delegare pe #ord-blocuri (list.js),
+         ca blocurile adăugate manual sau recreate de renderOrdBlocuri să fie acoperite automat.
+         Atributul src al lui <img data-role="cap-img"> ESTE sursa de adevăr a capturii. -->
+    <div class="cap-lbl">Captură imagine din sistemul de control al angajamentelor bugetare (anexă la ordonanțarea de plată)</div>
+    <div class="cap-zone" data-role="cap-zone" data-cap-slot="1">
+      <input type="file" accept="image/*" data-role="cap-input"/>
+      <div class="cap-ph" data-role="cap-ph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
+      <img class="cap-img" data-role="cap-img"/>
+    </div>
+    <div class="cap-br"><button type="button" class="att-btn" data-role="cap-clr" data-cap-slot="1"><svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-x"/></svg>Șterge imaginea</button></div>
+    <div class="cap-lbl" style="margin-top:10px">Captură "Informații complete contract" din sistemul de control al angajamentelor bugetare</div>
+    <div class="cap-zone" data-role="cap-zone" data-cap-slot="2">
+      <input type="file" accept="image/*" data-role="cap-input"/>
+      <div class="cap-ph" data-role="cap-ph"><div class="ico">🖼</div><p>Clic sau trageți o captură de ecran</p><p style="font-size:10px;margin-top:1px">PNG · JPG · BMP</p></div>
+      <img class="cap-img" data-role="cap-img"/>
+    </div>
+    <div class="cap-br"><button type="button" class="att-btn" data-role="cap-clr" data-cap-slot="2"><svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-x"/></svg>Șterge imaginea</button></div>
+  </div>
+</div>`;
+  const del=wrap.querySelector('[data-del-bloc]');
+  if(del)del.addEventListener('click',()=>delBlocOrd(wrap));
+  const add=wrap.querySelector('[data-add-row]');
+  if(add)add.addEventListener('click',()=>{addOR(wrap);upTot();});
+  return wrap;
+}
+
+// Rândurile pre-populate din `rows_ctrl`-ul DF-ului legat — EXTRAS din onDfSelect (list.js),
+// ca blocurile noi să folosească exact aceeași logică (inclusiv ștampila `ctrl_idx` din #128g).
+const ORD_IDENT_FLDS=['cod_angajament','indicator_angajament','program','cod_SSI'];
+function prefillOrdRowsFromCtrl(rows,target,opts){
+  const tbody=_ordTbody(target);
+  if(!tbody)return 0;
+  const list=Array.isArray(rows)?rows:[];
+  list.forEach((row,idx)=>{
+    addOR(tbody);
+    const tr=tbody.querySelector('tr:last-child');
+    if(!tr)return;
+    // #128g: pointer către rândul sursă din rows_ctrl (serverul derivă identitatea din
+    // ctrlRows[ctrl_idx], nu din poziția în lista plată — esențial la ORD multi-bloc).
+    tr.dataset.ctrlIdx=String(idx);
+    ORD_IDENT_FLDS.forEach(f=>{
+      const inp=tr.querySelector(`[data-f="${f}"]`);
+      if(!inp)return;
+      if(row[f]!=null)inp.value=row[f];
+      if(opts&&opts.readOnly){
+        inp.readOnly=true;inp.tabIndex=-1;
+        inp.title='Preluat din DF-ul aprobat — nu poate fi modificat';
+      }
+    });
+  });
+  return list.length;
+}
+
+// Cache-ul rows_ctrl al DF-ului legat (setat de onDfSelect); folosit la crearea unui bloc nou.
+let _ordDfCtrlRows=null;
+function setOrdDfCtrlRows(rows){_ordDfCtrlRows=Array.isArray(rows)?rows:null;}
+async function _getOrdDfCtrlRows(){
+  if(Array.isArray(_ordDfCtrlRows))return _ordDfCtrlRows;
+  const dfId=(document.getElementById('o-df-id')?.value||'').trim();
+  if(!dfId)return[];
+  try{
+    const r=await fetch(`/api/formulare-df/${encodeURIComponent(dfId)}`,{credentials:'include'});
+    const j=await r.json();
+    if(!r.ok||!j.document)return[];
+    const rows=Array.isArray(j.document.rows_ctrl)?j.document.rows_ctrl:JSON.parse(j.document.rows_ctrl||'[]');
+    _ordDfCtrlRows=rows;
+    return rows;
+  }catch(_){return[];}
+}
+
+function _ordBlocHost(){return document.getElementById('ord-blocuri');}
+function _ordBlocList(){
+  const host=_ordBlocHost();
+  return[...(host||document).querySelectorAll('.ord-bloc')];
+}
+// Renumerotare CONTIGUĂ (0,1,2,…) în ordinea din DOM, după orice adăugare/ștergere.
+function _renumberOrdBlocuri(){
+  _ordBlocList().forEach((el,i)=>{
+    el.setAttribute('data-bloc',String(i));
+    const t=el.querySelector('[data-bloc-title]');
+    if(t)t.textContent=`Furnizor ${i+1}`;
+    const d=el.querySelector('[data-del-bloc]');
+    if(d)d.style.display=i===0?'none':'';  // blocul 0 NU poate fi șters
+  });
+}
+async function addBlocOrd(){
+  const host=_ordBlocHost();
+  if(!host)return null;
+  // Formular blocat (document completed/aprobat, sau rol fără drept de editare): lockAll()
+  // dezactivează input-urile blocului 0 — nu adăugăm furnizori peste un formular blocat.
+  const probe=blocEl(0)?.querySelector('[data-fld="beneficiar"]');
+  if(probe&&probe.disabled)return null;
+  const el=_sablonBloc(_ordBlocList().length);
+  host.appendChild(el);
+  const rows=await _getOrdDfCtrlRows();
+  if(rows.length)prefillOrdRowsFromCtrl(rows,el,{readOnly:true});
+  else addOR(el);
+  // #128k — blocul adăugat DUPĂ ce prefill-ul a rulat primește și el „plăți anterioare"
+  // (col.3 e a angajamentului, nu a furnizorului), din valoarea MEMOIZATĂ în doc.js —
+  // fără un al doilea fetch pe /api/alop/:id.
+  if(typeof window.applyPlatiAntPrefill==='function')window.applyPlatiAntPrefill(el);
+  _renumberOrdBlocuri();
+  upTot();
+  if(typeof window._draftSchedule==='function')window._draftSchedule('ordnt');
+  return el;
+}
+function delBlocOrd(target){
+  const el=target?.closest?.('.ord-bloc')||target;
+  if(!el||!el.parentNode)return false;
+  if((el.getAttribute('data-bloc')||'0')==='0')return false;  // blocul 0 e neștergibil
+  if(typeof confirm==='function'&&!confirm('Ștergeți acest furnizor, împreună cu rândurile lui?'))return false;
+  el.parentNode.removeChild(el);
+  _renumberOrdBlocuri();
+  upTot();
+  if(typeof window._draftSchedule==='function')window._draftSchedule('ordnt');
+  return true;
+}
+// Recreează blocurile 2+ (fără rânduri) dintr-o listă `blocuri` (server sau draft) și le umple
+// câmpurile. Blocul 0 NU e atins — el se populează în continuare prin id-uri (sv()).
+// Întoarce lista de containere, indexată pe bloc.
+function renderOrdBlocuri(blocuri){
+  const host=_ordBlocHost();
+  resetOrdBlocuri();
+  const list=Array.isArray(blocuri)?blocuri:[];
+  if(host){
+    list.slice(1).forEach((b,k)=>{
+      const el=_sablonBloc(k+1);
+      host.appendChild(el);
+      ORD_BLOC_FLDS.forEach(f=>{
+        const inp=el.querySelector(`[data-fld="${f}"]`);
+        if(inp&&b&&b[f]!=null)inp.value=b[f];
+      });
+    });
+  }
+  _renumberOrdBlocuri();
+  return _ordBlocList();
+}
+// Revenire la un singur bloc (document nou / resetare formular). Blocul 0 rămâne intact.
+function resetOrdBlocuri(){
+  _ordBlocList().slice(1).forEach(el=>el.parentNode&&el.parentNode.removeChild(el));
+  setOrdDfCtrlRows(null);
+  _renumberOrdBlocuri();
+}
+
+function colO(){
+  const docFd=blocEls().map((_,i)=>{
+    const o={};ORD_BLOC_FLDS.forEach(f=>o[f]=bg(i,f));o.rowTfd=rowsOfBloc(i);return o;
+  });
+  return{
+    Cif:g('o-cif'),DenInstPb:g('o-den'),NrOrdonantPl:g('o-nr'),DataOrdontPl:g('o-data'),
+    // #128n — cele două chei istorice rămân în payload (blocul 0), dar sunt derivate din
+    // ACEEAȘI funcție ca restul blocurilor ⇒ o singură sursă, două proiecții. Serverul
+    // preferă `capturiBlocuri` când există și cade pe ele când lipsește (client din cache).
+    captureImageBase64:capturaBloc(0,1),
+    captureImageBase64_2:capturaBloc(0,2),
+    capturiBlocuri:blocEls().map((_,i)=>({c1:capturaBloc(i,1),c2:capturaBloc(i,2)})),
+    attachments:JSON.parse(document.getElementById('o-adata').value||'[]'),
+    docFd,
+  };
+}
 
 function colN(){return{
   Cif:g('n-cif'),DenInstPb:g('n-den'),SubtitluDF:g('n-subtitlu'),
@@ -459,16 +864,26 @@ function colN(){return{
 /* Validation */
 const DR=/^([1-9]|0[1-9]|[12]\d|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}$/;
 const CR=/^[1-9]\d{1,9}$/;
-function markE(id,bad){const e=document.getElementById(id);if(e)e.classList.toggle('err',bad);}
+function markEl(el,bad){if(el)el.classList.toggle('err',bad);}
+function markE(id,bad){markEl(document.getElementById(id),bad);}
 function valF(ft){
   let ok=true;
   const req=(id,c)=>{markE(id,!c);if(!c)ok=false;};
   if(ft==='ordnt'){
     req('o-den',g('o-den').length>0);req('o-cif',CR.test(g('o-cif')));
     req('o-nr',g('o-nr').length>0);req('o-data',DR.test(g('o-data')));
-    req('o-nrUnic',g('o-nrUnic').length>0);req('o-benef',g('o-benef').length>0);
-    req('o-docsj',g('o-docsj').length>0);req('o-iban',g('o-iban').length>0);
-    req('o-cifb',CR.test(g('o-cifb')));req('o-banca',g('o-banca').length>0);
+    // #128f — câmpurile beneficiarului sunt validate PE BLOC: markEl cade pe elementul
+    // rezolvat din containerul blocului i, nu pe un id global (scopare reală la bloc 2+).
+    blocEls().forEach((_,i)=>{
+      const fldEl=(f)=>blocFldEl(i,f);
+      const reqFld=(f,c)=>{markEl(fldEl(f),!c);if(!c)ok=false;};
+      reqFld('nr_unic_inreg',bg(i,'nr_unic_inreg').length>0);
+      reqFld('beneficiar',bg(i,'beneficiar').length>0);
+      reqFld('documente_justificative',bg(i,'documente_justificative').length>0);
+      reqFld('iban_beneficiar',bg(i,'iban_beneficiar').length>0);
+      reqFld('cif_beneficiar',CR.test(bg(i,'cif_beneficiar')));
+      reqFld('banca_beneficiar',bg(i,'banca_beneficiar').length>0);
+    });
     if(!getOR().length){setS('Adăugați cel puțin un rând angajament.','err');ok=false;}
   }else{
     req('n-den',g('n-den').length>0);req('n-cif',CR.test(g('n-cif')));
@@ -630,9 +1045,23 @@ function mkFlow(ft){
   window.delR               = delR;
 
   window.colO               = colO;
+  window.blocEls            = blocEls;
+  window.blocEl             = blocEl;
+  window.bg                 = bg;
+  // #128h — blocuri ORD
+  window.getOrdRowsAll      = getOrdRowsAll;
+  window.addBlocOrd         = addBlocOrd;
+  window.delBlocOrd         = delBlocOrd;
+  window.resetOrdBlocuri    = resetOrdBlocuri;
+  window.renderOrdBlocuri   = renderOrdBlocuri;
+  window.prefillOrdRowsFromCtrl = prefillOrdRowsFromCtrl;
+  window.setOrdDfCtrlRows   = setOrdDfCtrlRows;
+  window._sablonBloc        = _sablonBloc;
+  window.upTotBlocuri       = upTotBlocuri;
   window.colN               = colN;
   window.upTot              = upTot;
   window.markE              = markE;
+  window.markEl             = markEl;
 
   window.p4toggle           = p4toggle;
   window.p5toggle           = p5toggle;
@@ -654,6 +1083,14 @@ function mkFlow(ft){
   window.ddp                = ddp;
   window.addAtt             = addAtt;
   window.remAtt             = remAtt;
+  window.attEl              = attEl;          // #128m
+  window.attKeyBloc         = attKeyBloc;     // #128m
+  window.isAttBlocKey       = isAttBlocKey;   // #128m
+  window.attBlocOf          = attBlocOf;      // #128m
+  window.capZona            = capZona;         // #128n
+  window.capSrcBloc         = capSrcBloc;      // #128n
+  window.capSetBloc         = capSetBloc;      // #128n
+  window.capturaBloc        = capturaBloc;     // #128n
 
   window.df = window.df || {};
   window.df._formularCoreLoaded = true;

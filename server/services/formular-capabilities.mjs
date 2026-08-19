@@ -10,11 +10,19 @@
  * frontend-ul decide split-ul Generează/Lansează pe baza lui can_generate_or_launch + hasPdf local.
  */
 
-/** Rol identic cu doc.js: 'p1' (creator) | 'p2' (assigned) | 'view'. */
-export function deriveDocRole(doc, actor) {
+/**
+ * Rol identic cu doc.js: 'p1' (creator) | 'p2' (assigned) | 'view'.
+ * @param {string} [actorComp] — compartimentul actorului (#131a). Opțional: fără el,
+ *   comportamentul e IDENTIC cu cel de dinainte de #131a (retrocompatibilitate).
+ */
+export function deriveDocRole(doc, actor, actorComp = '') {
   const uid = actor?.userId;
   if (doc?.created_by === uid) return 'p1';
   if (doc?.assigned_to === uid) return 'p2';
+  // #131a — Responsabil CAB pe COMPARTIMENT: membrul compartimentului atribuit e P2.
+  // Verificat DUPĂ p1/p2 nominal, ca un creator care e și în compartiment să rămână p1.
+  const c = String(actorComp || '').trim();
+  if (c && String(doc?.p2_compartiment || '').trim() === c) return 'p2';
   return 'view';
 }
 
@@ -22,6 +30,7 @@ function emptyCaps() {
   return {
     can_send_p2: false,
     can_reset: false,
+    can_reopen: false,
     can_save: false,
     can_complete_p2: false,
     can_return: false,
@@ -48,14 +57,17 @@ function emptyCaps() {
  *                        revizie_nr, has_newer_revision, latest_revizie_nr, ...)
  * @param {object} actor — { userId, role, orgId }
  * @param {'notafd'|'ordnt'} ft — tip formular (DF=notafd, ORD=ordnt)
+ * @param {string} [actorComp] — compartimentul actorului (#131a), pentru documentele
+ *   atribuite unui COMPARTIMENT (`assigned_to` NULL, `p2_compartiment` setat). Opțional:
+ *   fără el, rezultatul e IDENTIC cu cel de dinainte de #131a.
  * @returns {object} capabilities
  */
-export function computeDocCapabilities(doc, actor, ft) {
+export function computeDocCapabilities(doc, actor, ft, actorComp = '') {
   const caps = emptyCaps();
   if (!doc) return caps;
 
   const status   = doc.status;
-  const role     = deriveDocRole(doc, actor);
+  const role     = deriveDocRole(doc, actor, actorComp);
   const docId    = doc.id || null;
   const flowId   = doc.flow_id || null;
   const aprobat  = doc.aprobat === true || status === 'aprobat';
@@ -82,6 +94,14 @@ export function computeDocCapabilities(doc, actor, ft) {
   // return-urile pe ramuri (toate întorc același obiect `caps`), deci e role-independent.
   // Hint de AFIȘARE — endpoint-ul /xml re-verifică gate-ul independent.
   caps.can_export_xml = aprobat || status === 'completed' || status === 'transmis_flux';
+
+  // #129 — „Redeschide document": P1 sau admin, pe un document finalizat de P2 care NU e pe
+  // un flux activ și nu e aprobat. Oglindește EXACT poarta de pe server
+  // (`(isP1 || isAdmin) && status === 'completed'`, plus garda de flux adăugată la #129):
+  // dacă cele două diverg, butonul apare și dă 409, sau nu apare deși acțiunea e permisă.
+  // Hint de AFIȘARE — ruta PUT re-verifică independent.
+  caps.can_reopen = status === 'completed' && !aprobat && !onActiveFlow
+    && (role === 'p1' || actor?.role === 'admin' || actor?.role === 'org_admin');
 
   // Ordinea de scurtcircuit identică cu renderActions (primul match câștigă):
   if (isNotafd && status === 'neaprobat') {

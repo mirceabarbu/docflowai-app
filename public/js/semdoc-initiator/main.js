@@ -2146,7 +2146,9 @@ async function signFromFluxuri(flowId) {
           // Copierea la lansare e slot-agnostică → adunăm ambele sloturi (dedupe pe id).
           const slots = await Promise.all([1, 2].map(async (slot) => {
             try {
-              const r = await _apiFetch(`/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}?slot=${slot}`, { method: 'GET' });
+              // #128p — `bloc=all`: preview-ul trebuie să arate exact ce copiază backend-ul la
+              // lansare, iar copierea e bloc-agnostică. Fără el se vedea doar primul furnizor.
+              const r = await _apiFetch(`/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}?slot=${slot}&bloc=all`, { method: 'GET' });
               if (!r.ok) return [];
               const j = await r.json().catch(() => ({}));
               return Array.isArray(j.atasamente) ? j.atasamente : [];
@@ -2157,18 +2159,29 @@ async function signFromFluxuri(flowId) {
           for (const arr of slots) for (const a of arr) { if (a && a.id && !seen.has(a.id)) { seen.add(a.id); items.push(a); _formAttById[a.id] = a; } }
           if (!items.length) { box.style.display = 'none'; return; } // degradare grațioasă
 
+          const _renderAtt = (a) => window.renderFileItem({
+            filename: a.filename, sizeBytes: a.size_bytes, mimeType: a.mime_type,
+            canPreview: true, previewAttId: a.id,
+            downloadHref: `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(a.id)}`,
+            downloadName: a.filename, canDelete: false,
+          });
+          // #128p — grupare vizuală pe bloc de furnizor DOAR când sunt mai multe blocuri.
+          // Cu un singur bloc, randarea rămâne byte-identică cu cea de dinainte de #128p.
+          const blocuri = [...new Set(items.map(a => a.bloc_idx || 0))].sort((x, y) => x - y);
+          const itemsHtml = blocuri.length <= 1
+            ? items.map(_renderAtt).join('')
+            : blocuri.map(b =>
+                '<div style="font-size:.75rem;color:var(--muted);margin:6px 0 2px">Furnizorul ' + (b + 1) + '</div>' +
+                items.filter(a => (a.bloc_idx || 0) === b).map(_renderAtt).join('')
+              ).join('');
+
           box.innerHTML =
             '<div style="font-weight:700;font-size:.82rem;color:var(--sub);margin-bottom:6px;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
               '<svg class="df-ico df-ico-sm" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.518#ico-paperclip"/></svg>' +
               'Vor fi preluate din formular <span style="font-weight:400;color:var(--muted);">— ' + items.length + ' fișier(e), automat la lansare</span>' +
             '</div>' +
             '<div style="display:flex;flex-direction:column;gap:4px;">' +
-            items.map(a => window.renderFileItem({
-              filename: a.filename, sizeBytes: a.size_bytes, mimeType: a.mime_type,
-              canPreview: true, previewAttId: a.id,
-              downloadHref: `/api/formulare-atasamente/${ft}/${encodeURIComponent(_docId)}/${encodeURIComponent(a.id)}`,
-              downloadName: a.filename, canDelete: false,
-            })).join('') +
+            itemsHtml +
             '</div>';
           box.style.display = 'block';
 

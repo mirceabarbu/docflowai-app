@@ -2452,6 +2452,76 @@ export const MIGRATIONS = [
               OR f.data->>'status' = 'refused' );
       END $g$;
     `
+  },
+  {
+    // #128b — fundația ORD multi-bloc (multi-furnizor / multi-cont), varianta (A) din
+    // docs/audits/ORD-128-RECON-2026-08.md.
+    // `blocuri` = array de anteturi de bloc (beneficiar/cif/iban/banca/documente/inf plată).
+    // Rândurile din `rows` rămân o listă PLATĂ; apartenența la bloc se marchează cu cheia
+    // `bloc_idx` PE RÂND (fără schimbare de schemă — `rows` e deja JSONB).
+    // ⚠️ FĂRĂ BACKFILL, DELIBERAT: rândurile existente rămân cu `blocuri = NULL`, iar NULL se
+    // interpretează la CITIRE ca „un singur bloc, derivat din coloanele plate" (vezi
+    // server/services/ord-blocuri.mjs). Zero date mutate ⇒ migrația e reversibilă instantaneu
+    // și nu depinde de un backup pg_dump.
+    // `formulare_ord` e creată în bootstrap-ul inline (index.mjs ~939), deci NU are nevoie de
+    // garda `IF NOT EXISTS (information_schema.tables)` folosită la migrațiile pe tabele V4-only.
+    id: '105_formulare_ord_blocuri',
+    sql: `
+      ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS blocuri JSONB;
+    `
+  }
+  ,{
+    // #128m — atașamente (și, la #128n, capturi) per BLOC de furnizor pe ORD.
+    // `bloc_idx` e ORTOGONAL pe `slot`: `slot` distinge seturile de atașamente ale unui formular
+    // (DF: n-fdad vs n-adata), `bloc_idx` distinge FURNIZORUL. Un ORD poate avea acum N blocuri.
+    // ⚠️ FĂRĂ DEFAULT și FĂRĂ backfill, deliberat — același tipar ca `blocuri` la #128b:
+    // NULL se citește ca „blocul 0" (`COALESCE(bloc_idx, 0)`), deci rândurile existente rămân
+    // exact cum sunt și migrația e reversibilă instantaneu, fără dependență de pg_dump.
+    // Coloana pe `formulare_capturi` se adaugă ACUM ca să nu fie nevoie de un al doilea deploy
+    // cu schemă la #128n; până atunci rămâne nescrisă.
+    id: '106_formulare_binare_bloc_idx',
+    sql: `
+      ALTER TABLE formulare_atasamente ADD COLUMN IF NOT EXISTS bloc_idx SMALLINT;
+      ALTER TABLE formulare_capturi    ADD COLUMN IF NOT EXISTS bloc_idx SMALLINT;
+
+      DROP INDEX IF EXISTS idx_formulare_atasamente_form;
+      CREATE INDEX IF NOT EXISTS idx_formulare_atasamente_form
+        ON formulare_atasamente(form_type, form_id, slot, bloc_idx) WHERE deleted_at IS NULL;
+    `
+  },
+  {
+    // #128n — indexul unic din migrația 079 (`uniq_formulare_capturi_form_slot`) impunea o
+    // singură captură per (document, slot) pe TOT documentul. Cu ORD multi-furnizor asta
+    // înseamnă că blocul 2 nu poate insera deloc: DELETE-ul (cheiat acum și pe bloc) nu-i
+    // atinge rândul, iar INSERT-ul cade pe 23505. Cheia se RELAXEAZĂ, nu se strânge:
+    // (t,id,slot) unic  ⇒  (t,id,slot,COALESCE(bloc_idx,0)) unic.
+    //
+    // ⛔ NU e cazul migrației 095: acolo producția avea deja duplicate și CREATE UNIQUE INDEX
+    // eșua TĂCUT. Aici coliziunea e IMPOSIBILĂ prin construcție — indexul vechi garantează deja
+    // unicitatea pe (t,id,slot), iar toate rândurile existente au bloc_idx NULL ⇒ COALESCE = 0.
+    //
+    // Singurul consumator al vechii chei e `ON CONFLICT (form_type, form_id, slot)` din backfill-ul
+    // migrației 079. Pe o bază NOUĂ, 079 rulează înaintea acestei migrații ⇒ inferența își găsește
+    // indexul. Pe bazele existente, 079 e deja aplicată și nu se re-rulează.
+    id: '107_formulare_capturi_uniq_bloc',
+    sql: `
+      DROP INDEX IF EXISTS uniq_formulare_capturi_form_slot;
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_formulare_capturi_form_slot_bloc
+        ON formulare_capturi (form_type, form_id, slot, (COALESCE(bloc_idx, 0)));
+    `
+  },
+  {
+    // #131a — Responsabilul CAB poate fi un COMPARTIMENT, nu doar o persoană. Exclusiv cu
+    // `assigned_to`: exact una dintre cele două e non-NULL. Nullable, fără DEFAULT, fără
+    // backfill — documentele existente rămân pe `assigned_to`, comportament neschimbat.
+    // ⛔ Fără CHECK de exclusivitate în DB: rândurile istorice au ambele NULL (draft
+    // netrimis), iar un CHECK ar trebui să tolereze și cazul ăla — poarta stă în
+    // `submitFormular`, unde e și mesajul de eroare util.
+    id: '108_formulare_p2_compartiment',
+    sql: `
+      ALTER TABLE formulare_df  ADD COLUMN IF NOT EXISTS p2_compartiment TEXT;
+      ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS p2_compartiment TEXT;
+    `
   }
 ];
 

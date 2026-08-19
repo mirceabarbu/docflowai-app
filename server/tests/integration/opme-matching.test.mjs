@@ -165,17 +165,21 @@ describe('POST /api/opme/import + matcher — seed ALOP-uri care matchează', ()
           if (!tripletToAlop.has(key)) {
             tripletToAlop.set(key, `alop-${tripletToAlop.size + 1}`);
           }
-          return { rows: [{ alop_id: tripletToAlop.get(key) }] };
+          // #128d: selecția e un SUPERSET în SQL, iar regula (cif+triplet+IBAN, per bloc)
+          // se aplică în JS ⇒ fixture-ul trebuie să livreze și datele ORD-ului.
+          return { rows: [{ alop_id: tripletToAlop.get(key), cif_beneficiar: cif,
+            iban_beneficiar: null, blocuri: null,
+            ord_rows: [{ cod_angajament: cod, indicator_angajament: ind }] }] };
         }),
 
       // Cif + rândurile ORD ale ALOP-ului (params: [alopId]) — reconstruite din
       // tripletul asignat acelui alop (fiecare alop are exact un triplet în fixture).
-      H(s => s.includes('AS cif, o.rows AS ord_rows'), async (_sql, params) => {
+      H(s => s.includes('SELECT o.cif_beneficiar, o.iban_beneficiar, o.rows AS ord_rows'), async (_sql, params) => {
         const alopId = params[0];
         for (const [key, aid] of tripletToAlop.entries()) {
           if (aid === alopId) {
             const [cod, ind, cif] = key.split('|');
-            return { rows: [{ cif, ord_rows: [
+            return { rows: [{ cif_beneficiar: cif, ord_rows: [
               { cod_angajament: cod, indicator_angajament: ind, suma_ordonantata_plata: tripletToSum.get(key) || 0 }
             ] }] };
           }
@@ -196,13 +200,15 @@ describe('POST /api/opme/import + matcher — seed ALOP-uri care matchează', ()
           return { rows: [{ expected: total }] };
         }),
 
-      // Pool of pending lines pe CIF-ul ORD-ului (params: [org_id, cif, alopId]).
+      // Pool of pending lines pe CIF-urile blocurilor ORD-ului
+      // (params: [org_id, cifuri[], alopId] — #128d: ARRAY, un CIF per bloc).
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async (_sql, params) => {
-          const [_org, cif] = params;
-          const lines = makePendingLines().filter(l => l.cif_beneficiar === cif)
+          const [_org, cifuri] = params;
+          const lines = makePendingLines().filter(l => cifuri.includes(l.cif_beneficiar))
             .map(l => ({
               id: l.id, cod_angajament: l.cod_angajament, indicator_angajament: l.indicator_angajament,
+              cif_beneficiar: l.cif_beneficiar,
               suma_op: l.suma_op, nr_op: l.nr_op, opme_import_id: importId,
             }));
           return { rows: lines };
@@ -267,8 +273,8 @@ describe('tryAutoConfirmAlop — absorbție retro pe linie pending', () => {
           ],
         }] })),
 
-      H(s => s.includes('AS cif, o.rows AS ord_rows'), async () => ({
-        rows: [{ cif: '2801201082577', ord_rows: [
+      H(s => s.includes('SELECT o.cif_beneficiar, o.iban_beneficiar, o.rows AS ord_rows'), async () => ({
+        rows: [{ cif_beneficiar: '2801201082577', ord_rows: [
           { cod_angajament: 'AAB2FMGM4HG', indicator_angajament: 'AAB', suma_ordonantata_plata: '4061.00' }
         ] }]
       })),
@@ -280,7 +286,7 @@ describe('tryAutoConfirmAlop — absorbție retro pe linie pending', () => {
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async () => ({ rows: [
           { id: 'L-OLD', cod_angajament: 'AAB2FMGM4HG', indicator_angajament: 'AAB',
-            suma_op: 4061, nr_op: '1310', opme_import_id: 'imp-old' }
+            cif_beneficiar: '2801201082577', suma_op: 4061, nr_op: '1310', opme_import_id: 'imp-old' }
         ] })),
 
       H(s => s.includes('FROM opme_imports') && s.includes('WHERE id = ANY'),

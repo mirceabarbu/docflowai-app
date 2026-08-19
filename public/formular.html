@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.693">
   <link rel="stylesheet" href="/css/df/shell.css?v=3.9.693">
   <link rel="stylesheet" href="/css/df/components.css?v=3.9.717">
-  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.751">
+  <link rel="stylesheet" href="/css/formular/formular.css?v=3.9.778">
   <script src="/js/df-utils.js?v=3.9.693"></script>
   <script src="/js/df-entitlements.js?v=3.9.693"></script>
   <script src="/js/df-shell.js?v=3.9.707"></script>
@@ -248,6 +248,8 @@
           <th>Inițiator</th>
           <th>Compartiment</th>
           <th>Responsabil CAB</th>
+          <th class="lst-col-ord">Valoare ORD</th>
+          <th class="lst-col-ord">Plătit</th>
           <th>Status</th>
           <th>Creat</th>
           <th>Actualizat</th>
@@ -773,6 +775,11 @@
 <div class="status" id="sBar"></div>
 
 <!-- ═══ ORDNT ═══════════════════════════════════════════════════════════════ -->
+<!-- #128h: data-bloc="0" a fost MUTAT de pe #form-ordnt pe containerul .ord-bloc care înfășoară
+     BLOC P1 + BLOC P2 (vezi #ord-blocuri mai jos). Dacă rămânea aici, blocurile 2+ adăugate în
+     formular ar fi devenit DESCENDENȚI ai blocului 0, iar rândurile lor s-ar fi scurs în
+     totalurile/colectarea blocului 0. `o-nrUnic` (BLOC ANTET) rămâne UNIC PE DOCUMENT și se
+     citește global pentru toate blocurile (ORD_FLD_GLOBAL_ID în core.js). -->
 <div id="form-ordnt">
 <div class="df-alop-ctx" id="alop-ctx-ordnt"></div>
 <div id="motiv-bar-ordnt" style="display:none;max-width:1200px;margin:4px auto;padding:10px 16px;background:rgba(255,140,0,.08);border:1px solid rgba(255,140,0,.3);border-radius:8px;font-size:.84rem;color:#ffaa44"><strong>Deficiențe menționate:</strong> <span id="motiv-text-ordnt"></span></div>
@@ -819,11 +826,16 @@
       <select id="o-df-sel" class="di" style="max-width:280px;font-size:11px;background:#0d1630;color:#e8eeff;border:1px solid rgba(255,255,255,.15);-webkit-appearance:none;appearance:none" onchange="selectDfAprobat()">
         <option value="" style="background:#0d1630;color:#e8eeff">— selectare DF aprobat —</option>
       </select>
-      <input id="o-nrUnic" type="hidden"/>
+      <input id="o-nrUnic" type="hidden" data-fld="nr_unic_inreg"/>
       <input type="hidden" id="o-df-id"/>
     </div>
   </div>
 </div>
+
+<!-- #128h — gazda blocurilor de furnizor. Blocul 0 e markup-ul istoric (BLOC P1 + BLOC P2,
+     id-uri neatinse); blocurile 2+ se adaugă aici ca FRAȚI ai lui, din șablonul din core.js. -->
+<div id="ord-blocuri">
+<div class="ord-bloc" data-bloc="0">
 
 <!-- BLOC P1 — Compartiment specialitate -->
 <div class="df-block df-block-p1" id="bloc-ord-p1">
@@ -841,47 +853,52 @@
       <div>
         <div class="dl req">Beneficiar</div>
         <div class="ac-wrap">
-          <textarea id="o-benef" class="dt" maxlength="150" rows="2" oninput="debouncedBenefSearch()" autocomplete="off"></textarea>
-          <div id="o-benef-drop" class="ac-drop"></div>
-          <div id="o-benef-status" style="margin-top:6px;min-height:0;" aria-live="polite"></div>
+          <!-- #128j — handlerele inline (oninput/onblur) au fost ÎNLOCUITE cu delegare pe
+               #ord-blocuri (list.js). NU le readăuga: s-ar declanșa de două ori. -->
+          <textarea id="o-benef" class="dt" maxlength="150" rows="2" autocomplete="off" data-fld="beneficiar"></textarea>
+          <div id="o-benef-drop" class="ac-drop" data-role="benef-drop"></div>
+          <div id="o-benef-status" style="margin-top:6px;min-height:0;" aria-live="polite" data-role="benef-status"></div>
         </div>
       </div>
     </div>
     <div class="df-row df-row-1">
       <div>
         <div class="dl req">Documente justificative <span style="font-weight:400;font-size:10px">(max 90 car.)</span></div>
-        <input id="o-docsj" class="di" maxlength="90"/>
+        <input id="o-docsj" class="di" maxlength="90" data-fld="documente_justificative"/>
       </div>
     </div>
-    <div class="att-zone"><div class="att-list" id="o-alist"></div></div>
+    <!-- #128m — blocul 0 își PĂSTREAZĂ id-urile (o-alist / o-ainp / o-adata) și primește ȘI
+         `data-role`, exact ca la #128j pentru benef-drop/cifb-spin: blocurile 2+ au aceleași
+         roluri, dar ZERO id-uri, iar rezolvarea per bloc merge uniform pe toate. -->
+    <div class="att-zone"><div class="att-list" id="o-alist" data-role="att-list"></div></div>
     <div class="att-br">
-      <button class="att-btn" onclick="document.getElementById('o-ainp').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-paperclip"/></svg> Atașează fișiere</button>
-      <input type="file" id="o-ainp" class="att-inp" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
+      <button class="att-btn" data-role="att-btn" onclick="document.getElementById('o-ainp').click()"><svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-paperclip"/></svg> Atașează fișiere</button>
+      <input type="file" id="o-ainp" class="att-inp" data-role="att-input" multiple onchange="addAtt(event,'o-alist','o-adata')"/>
     </div>
-    <input type="hidden" id="o-adata" value="[]"/>
+    <input type="hidden" id="o-adata" value="[]" data-role="att-data"/>
     <div class="doc-hr"></div>
     <div class="df-row df-row-3">
       <div>
-        <div class="dl req">CIF beneficiar <span id="o-cifb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
-        <input id="o-cifb" class="di" maxlength="12" onblur="window._lookupByCif&&window._lookupByCif()" autocomplete="off"/>
+        <div class="dl req">CIF beneficiar <span id="o-cifb-spin" data-role="cifb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
+        <input id="o-cifb" class="di" maxlength="12" autocomplete="off" data-fld="cif_beneficiar"/>
       </div>
       <div>
         <div class="dl req">IBAN beneficiar</div>
-        <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..."/>
+        <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..." data-fld="iban_beneficiar"/>
       </div>
       <div>
         <div class="dl req">Bancă beneficiar</div>
-        <input id="o-banca" class="di" maxlength="100"/>
+        <input id="o-banca" class="di" maxlength="100" data-fld="banca_beneficiar"/>
       </div>
     </div>
     <div class="df-row df-row-2">
       <div>
         <div class="dl">Informații privind plata</div>
-        <input id="o-inf1" class="di" maxlength="70"/>
+        <input id="o-inf1" class="di" maxlength="70" data-fld="inf_pv_plata"/>
       </div>
       <div>
         <div class="dl">Informații privind plata (cont.)</div>
-        <input id="o-inf2" class="di" maxlength="70"/>
+        <input id="o-inf2" class="di" maxlength="70" data-fld="inf_pv_plata1"/>
       </div>
     </div>
   </div>
@@ -924,10 +941,12 @@
         <tr class="df-total">
           <td class="tot">TOTAL</td>
           <td class="cx">X</td><td class="cx">X</td><td class="cx">X</td>
-          <td class="num" id="o-t-rec">0</td>
-          <td class="num" id="o-t-plati">0</td>
-          <td class="num" id="o-t-suma">0</td>
-          <td class="num" id="o-t-neplat">0</td>
+          <!-- #128h: celulele blocului 0 poartă AMBELE — `id` istoric (upTot scrie în ele ca
+               până acum) + `data-tot` (calea generică per bloc). Aceeași valoare pe ambele. -->
+          <td class="num" id="o-t-rec" data-tot="rec">0</td>
+          <td class="num" id="o-t-plati" data-tot="plati">0</td>
+          <td class="num" id="o-t-suma" data-tot="suma">0</td>
+          <td class="num" id="o-t-neplat" data-tot="neplat">0</td>
           <td><button class="badd" onclick="addOR()" title="Adaugă rând">+</button></td>
         </tr>
       </tfoot>
@@ -935,7 +954,9 @@
     </div>
     <!-- Atenționare inline buget an exercițiu (P1+P2) — soft, vizuală. Blocajul hard rămâne
          la finalizare (server). Paritate cu validateOrdBugetAnCurent via valorile din GET. -->
-    <div id="ord-buget-warn" class="secb-buget-warn" style="display:none"></div>
+    <!-- #128o — `data-role` e selectorul UNIC prin care _checkOrdBuget găsește bannerele
+         TUTUROR blocurilor. `id`-ul rămâne pentru compatibilitate (ancore, teste vechi). -->
+    <div id="ord-buget-warn" class="secb-buget-warn" data-role="buget-warn" style="display:none"></div>
     <div class="cap-lbl">Captură imagine din sistemul de control al angajamentelor bugetare (anexă la ordonanțarea de plată)</div>
     <div class="cap-zone" id="o-czone" ondragover="dov(event,'o-czone')" ondragleave="dlv(event,'o-czone')" ondrop="ddp(event,'o-cimg','o-czone','o-cph')">
       <input type="file" accept="image/*" onchange="fimg(event,'o-cimg','o-cph')"/>
@@ -953,6 +974,12 @@
     <div class="cap-br"><button class="att-btn" onclick="clrImg('o-cimg2','o-cph2')"><svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-x"/></svg>Șterge imaginea</button></div>
     </div>
   </div>
+</div>
+
+</div><!-- /.ord-bloc[data-bloc=0] -->
+</div><!-- /#ord-blocuri -->
+<div style="max-width:1200px;margin:0 auto 10px;display:flex;justify-content:flex-end">
+  <button type="button" id="btn-add-bloc" class="df-action-btn" onclick="addBlocOrd()" title="Adaugă un al doilea furnizor pe aceeași ordonanțare">+ Adaugă furnizor</button>
 </div>
 
 <div class="result" id="result-ordnt">
@@ -1281,8 +1308,13 @@
 <div class="modal-ov" id="modal-p2" onclick="if(event.target===this)closeModal()">
   <div class="modal-box">
     <div class="modal-title">Selectează Responsabilul Buget</div>
+    <!-- #131b — comutator Persoană/Compartiment. ST.p2Mode e stare, clasa "primary" e reflectarea vizuală. -->
+    <div id="modal-p2-mode-switch" style="display:flex;gap:8px;margin-bottom:10px">
+      <button type="button" class="df-action-btn sm primary" id="modal-p2-mode-user" onclick="setP2Mode('user')">Persoană</button>
+      <button type="button" class="df-action-btn sm" id="modal-p2-mode-comp" onclick="setP2Mode('comp')">Compartiment</button>
+    </div>
     <input class="modal-search" id="modal-search" placeholder="Caută după nume sau email..."
-      oninput="filterModalUsers()" autocomplete="off"/>
+      oninput="_p2RenderList()" autocomplete="off"/>
     <div class="modal-list" id="modal-user-list"></div>
     <div class="modal-acts">
       <button class="df-action-btn" onclick="closeModal()">Anulează</button>
@@ -1471,18 +1503,18 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.708"></script>
-<script src="/js/formular/core.js?v=3.9.693" defer></script>
+<script src="/js/formular/core.js?v=3.9.775" defer></script>
 <script src="/js/formular/verif.js?v=3.9.693" defer></script>
 <script src="/js/shared/pagin.js?v=3.9.722" defer></script>
 <script src="/js/formular/alop.js?v=3.9.761" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.760" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.693" defer></script>
-<script src="/js/formular/draft.js?v=3.9.693" defer></script>
+<script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.693" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.703" defer></script>
-<script src="/js/formular/list.js?v=3.9.755" defer></script>
+<script src="/js/formular/list.js?v=3.9.780" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
-<script src="/js/formular/doc.js?v=3.9.736" defer></script>
+<script src="/js/formular/doc.js?v=3.9.780" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>
 <script src="/js/shared/file-item.js?v=3.9.693" defer></script>
 <script src="/js/formular/formular.js?v=3.9.693" defer></script>

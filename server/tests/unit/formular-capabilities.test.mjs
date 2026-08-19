@@ -131,3 +131,79 @@ describe('computeDocCapabilities (ORD=ordnt) — fără revizii', () => {
     expect(c.can_send_p2).toBe(true);
   });
 });
+
+// ── #129 — can_reopen („Redeschide document") ────────────────────────────────
+describe('#129 can_reopen — oglinda porții de pe server', () => {
+  const ADMIN = { userId: 99, role: 'admin', orgId: 1 };
+  const ORGADM = { userId: 99, role: 'org_admin', orgId: 1 };
+  const C = (o, a = ACTOR, ft = 'notafd') => computeDocCapabilities(D(o), a, ft);
+
+  it('1 ⭐ completed + p1 + fără flux activ → can_reopen (DF și ORD)', () => {
+    expect(C({ status: 'completed', created_by: 1 }).can_reopen).toBe(true);
+    expect(C({ status: 'completed', created_by: 1 }, ACTOR, 'ordnt').can_reopen).toBe(true);
+  });
+
+  it('2 ⭐ completed + p1 + flow_active → NU can_reopen (is_on_flow rămâne true)', () => {
+    const c = C({ status: 'completed', created_by: 1, flow_active: true });
+    expect(c.can_reopen).toBe(false);
+    expect(c.is_on_flow).toBe(true);
+  });
+
+  it('3 aprobat → NU can_reopen, la orice rol', () => {
+    for (const a of [ACTOR, ADMIN, ORGADM]) {
+      expect(C({ status: 'aprobat', created_by: 1, flow_id: 'F1' }, a).can_reopen).toBe(false);
+      expect(C({ status: 'completed', created_by: 1, aprobat: true, flow_id: 'F1' }, a).can_reopen).toBe(false);
+    }
+  });
+
+  it('4 draft / pending_p2 / returnat / transmis_flux → NU can_reopen', () => {
+    for (const s of ['draft', 'pending_p2', 'returnat', 'transmis_flux']) {
+      expect(C({ status: s, created_by: 1 }).can_reopen, s).toBe(false);
+    }
+  });
+
+  it('5 completed + p2 (utilizator simplu) → NU can_reopen', () => {
+    expect(C({ status: 'completed', created_by: 2, assigned_to: 1 }).can_reopen).toBe(false);
+  });
+
+  it('6 ⭐ completed + admin / org_admin (nici creator, nici assignee) → can_reopen', () => {
+    const doc = { status: 'completed', created_by: 2, assigned_to: 3 };
+    expect(C(doc, ADMIN).can_reopen).toBe(true);
+    expect(C(doc, ORGADM).can_reopen).toBe(true);
+    // admin care e ȘI assignee → ramura is_completed_p2, dar can_reopen rămâne true
+    const cAdminP2 = C({ status: 'completed', created_by: 2, assigned_to: 99 }, ADMIN);
+    expect(cAdminP2.is_completed_p2).toBe(true);
+    expect(cAdminP2.can_reopen).toBe(true);
+  });
+
+  it('7 non-regresie: restul capabilităților nu se schimbă', () => {
+    // completed + p1 fără flux: exact ca înainte de lot, plus can_reopen
+    const c = C({ status: 'completed', created_by: 1 });
+    expect(c.can_generate_or_launch).toBe(true);
+    expect(c.can_export_xml).toBe(true);
+    expect(c.can_send_p2).toBe(false);
+    expect(c.can_save).toBe(false);
+    expect(c.can_reset).toBe(false);
+    expect(c.can_revise).toBe(false);
+    // completed + p2
+    const p2 = C({ status: 'completed', created_by: 2, assigned_to: 1 });
+    expect(p2.is_completed_p2).toBe(true);
+    expect(p2.can_export_xml).toBe(true);
+    expect(p2.can_generate_or_launch).toBe(false);
+    // aprobat
+    const ap = C({ status: 'aprobat', flow_id: 'F1' });
+    expect(ap.can_download_signed).toBe(true);
+    expect(ap.can_export_xml).toBe(true);
+    expect(ap.can_generate_or_launch).toBe(false);
+    // draft
+    const dr = C({ status: 'draft', created_by: 1 });
+    expect(dr.can_send_p2).toBe(true);
+    expect(dr.can_reset).toBe(true);
+    expect(dr.can_export_xml).toBe(false);
+    expect(dr.can_generate_or_launch).toBe(false);
+  });
+
+  it('can_reopen există în obiectul gol (emptyCaps), default false', () => {
+    expect(computeDocCapabilities(null, ACTOR, 'notafd')).toHaveProperty('can_reopen', false);
+  });
+});

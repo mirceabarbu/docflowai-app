@@ -190,12 +190,14 @@ router.get('/api/formulare-df/:id', async (req, res) => {
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
+    // #131a — actorComp e scos din bloc: îl consumă și computeDocCapabilities (Responsabil
+    // CAB pe COMPARTIMENT ⇒ rolul P2 se derivă din compartiment când assigned_to e NULL).
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
     {
-      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
-    doc.capabilities = computeDocCapabilities(doc, actor, 'notafd');
+    doc.capabilities = computeDocCapabilities(doc, actor, 'notafd', actorComp);
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df get error');
@@ -222,12 +224,14 @@ router.get('/api/formulare-df/:id/xml', async (req, res) => {
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     const doc = rows[0];
+    // #131a — actorComp e scos din bloc: îl consumă și computeDocCapabilities (Responsabil
+    // CAB pe COMPARTIMENT ⇒ rolul P2 se derivă din compartiment când assigned_to e NULL).
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
     {
-      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
       const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
     }
-    const caps = computeDocCapabilities(doc, actor, 'notafd');
+    const caps = computeDocCapabilities(doc, actor, 'notafd', actorComp);
     if (!caps.can_export_xml) {
       return res.status(409).json({ error: 'not_exportable',
         message: 'Documentul nu este validat (Secțiunea A+B complete) — exportul XML nu este disponibil.' });
@@ -474,7 +478,7 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
         actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
         fromStatus: 'completed', toStatus: 'draft', meta: { version_nou: doc.version + 1 } });
     }
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd');
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd', actorComp);
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df update error');

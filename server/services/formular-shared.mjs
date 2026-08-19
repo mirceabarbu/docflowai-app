@@ -22,6 +22,7 @@ import { crediteBugetareAnCurent } from './buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
 import { codSsiBlockResponse } from './cod-ssi-validate.mjs';
 import { normalizeAngajamentRows } from './angajament-normalize.mjs';
+import { blocuriDinOrd, pregatesteScriereBlocuri, normalizeBlocIdx } from './ord-blocuri.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -68,15 +69,31 @@ export const ORD_IDENT_COLS = ['cod_angajament', 'indicator_angajament', 'progra
  * @param {Array}  ctrlRows    rows_ctrl al DF-ului legat
  * @returns {Array}            rândurile cu cele 4 coloane suprascrise din DF
  *
- * Corelare POZIȚIONALĂ — identică cu prefill-ul din onDfSelect (list.js:176).
+ * Corelare pe `ctrl_idx` când e prezent și valid, altfel POZIȚIONALĂ — identică cu prefill-ul
+ * din onDfSelect (list.js:176).
  * Rândurile din ORD peste lungimea rows_ctrl (dacă apar) rămân NEATINSE: nu inventăm coduri.
  */
 export function deriveOrdIdentityCols(clientRows, ctrlRows) {
   if (!Array.isArray(clientRows)) return clientRows;
   if (!Array.isArray(ctrlRows) || !ctrlRows.length) return clientRows;   // fără sursă ⇒ nu atingem
   return clientRows.map((row, i) => {
-    const src = ctrlRows[i];
     if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+    // #128g: `ctrl_idx` = indexul rândului sursă din rows_ctrl, ștampilat de frontend la
+    // pre-popularea din DF (list.js onDfSelect). Corelarea POZIȚIONALĂ (rândul i ← ctrlRows[i])
+    // se rupe la ORD cu mai multe blocuri: rândurile blocului 2 stau la coada listei plate, dar
+    // trimit la angajamente de la începutul DF-ului ⇒ identitate derivată din rândul greșit,
+    // tăcut. `ctrl_idx` face explicit ce era implicit; NU adaugă încredere în client — e doar un
+    // pointer într-o listă pe care serverul o citește el însuși din DF, iar valorile vin tot de
+    // acolo. Un `ctrl_idx` absent, nenumeric sau în afara intervalului cade pe poziție ⇒
+    // comportament identic cu cel de dinainte pentru tot ce există azi.
+    // Abatere DELIBERATĂ de la specul lotului: doar `number` și `string` sunt candidați.
+    // `Number(true) === 1` și `Number([]) === 0` ⇒ un `ctrl_idx: true` ar fi pointat mut la
+    // rândul 1. Tipurile astea nu vin din DOM niciodată; le respingem ca să cadă pe poziție.
+    const raw = row.ctrl_idx;
+    const parsed = (typeof raw === 'number' || (typeof raw === 'string' && raw !== ''))
+      ? Number(raw) : NaN;
+    const idx = (Number.isInteger(parsed) && parsed >= 0 && parsed < ctrlRows.length) ? parsed : i;
+    const src = ctrlRows[idx];
     if (!src || typeof src !== 'object') return row;
     const out = { ...row };
     for (const k of ORD_IDENT_COLS) out[k] = src[k] ?? null;
@@ -171,6 +188,7 @@ export const FORMULAR_TYPES = {
     p2Fields: ORD_P2_FIELDS,
     submitStatuses: ['draft', 'returnat'],   // ASIMETRIE: fără 'de_revizuit'
     budgetCheck: 'hard_col5',                // ORD: validare hard col.5 ≥ 0 → 422
+    rowsBlocGuard: true,                     // ASIMETRIE: /complete refuză un `rows` care nu acoperă toate blocurile (#128l)
     codSsiValidate: false,                   // ASIMETRIE: validarea Cod SSI vs Clasa 8 nu s-a extins la ORD
 
     alopOnComplete: null,                    // ORD complete NU atinge ALOP
@@ -333,8 +351,15 @@ async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
 export async function submitFormular({ type, id, actor, body }) {
   const cfg = FORMULAR_TYPES[type];
   try {
-    const { assigned_to } = body || {};
-    if (!assigned_to) return { status: 400, body: { error: 'assigned_to obligatoriu' } };
+    // #131a — Responsabilul CAB e FIE o persoană (`assigned_to`), FIE un compartiment
+    // (`assigned_comp`). Exclusiv: niciodată amândouă. Mesajul pentru „niciunul" rămâne
+    // NESCHIMBAT, ca un frontend vechi din cache să se comporte identic.
+    const { assigned_to, assigned_comp } = body || {};
+    if (!assigned_to && !assigned_comp)
+      return { status: 400, body: { error: 'assigned_to obligatoriu' } };
+    if (assigned_to && assigned_comp)
+      return { status: 400, body: { error: 'assigned_ambiguu',
+        message: 'Alegeți fie o persoană, fie un compartiment.' } };
 
     const { rows: existing } = await pool.query(
       `SELECT * FROM ${cfg.table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
@@ -342,8 +367,9 @@ export async function submitFormular({ type, id, actor, body }) {
     );
     if (!existing.length) return { status: 404, body: { error: 'not_found' } };
     const doc = existing[0];
+    let actorComp = '';
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
+      actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
       if (!authz.allowed) return { status: 403, body: { error: authz.reason } };
     }
@@ -370,6 +396,52 @@ export async function submitFormular({ type, id, actor, body }) {
       if (overBudget) return overBudget;
     }
 
+    // ── #131a — calea COMPARTIMENT ───────────────────────────────────────────
+    if (assigned_comp) {
+      // Compartimentul trebuie să existe în organizație cu cel puțin un utilizator ACTIV.
+      // `TRIM` pe ambele părți + refuz pe șir gol: aceeași convenție ca `_userIsInComp`
+      // (authz-formular.mjs:64), altfel un compartiment scris cu spații ar crea un document
+      // pe care nimeni nu-l poate edita.
+      const compTrim = String(assigned_comp || '').trim();
+      if (!compTrim) return { status: 400, body: { error: 'compartiment_invalid' } };
+      const { rows: membri } = await pool.query(
+        `SELECT id, email FROM users
+          WHERE org_id=$1 AND TRIM(compartiment)=$2 AND TRIM(compartiment)<>''
+            AND deleted_at IS NULL`,
+        [actor.orgId, compTrim]
+      );
+      if (!membri.length) return { status: 400, body: { error: 'compartiment_fara_membri',
+        message: 'Compartimentul selectat nu are utilizatori activi.' } };
+
+      // Exclusivitate: `assigned_to` se GOLEȘTE. O retrimitere compartiment→persoană
+      // face oglinda (vezi calea de mai jos, care golește `p2_compartiment`).
+      const { rows: updated } = await pool.query(`
+        UPDATE ${cfg.table}
+        SET status='pending_p2', assigned_to=NULL, p2_compartiment=$1,
+            submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
+        WHERE id=$2 AND org_id=$3
+        RETURNING *
+      `, [compTrim, id, actor.orgId, actor.userId]);
+
+      // Notificare per membru, SECVENȚIAL (un compartiment mare ar deschide zeci de
+      // conexiuni deodată din pool). `sendNotif` înghite erorile — o notificare picată
+      // nu rupe trimiterea. Expeditorul nu se notifică pe sine.
+      for (const m of membri) {
+        if (String(m.id) === String(actor.userId)) continue;
+        await sendNotif(m.id, cfg.notif.submit.type, cfg.notif.submit.title,
+          cfg.notif.submit.message(actor, doc), { form_type: type, form_id: id });
+      }
+
+      logger.info({ id, p2_compartiment: compTrim, membri: membri.length, actor: actor.email },
+        `formulare-${type} trimis la compartimentul P2`);
+      await recordFormularAudit({ orgId: actor.orgId, formType: type, formId: id,
+        actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
+        fromStatus: doc.status, toStatus: 'pending_p2',
+        meta: { assigned_comp: compTrim, membri: membri.length } });
+      updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
+      return { status: 200, body: { ok: true, document: updated[0], assigned_comp: compTrim } };
+    }
+
     // Verifică că P2 e din același org
     const { rows: p2rows } = await pool.query(
       'SELECT id, email, nume FROM users WHERE id=$1 AND org_id=$2', [assigned_to, actor.orgId]
@@ -377,9 +449,11 @@ export async function submitFormular({ type, id, actor, body }) {
     if (!p2rows.length) return { status: 400, body: { error: 'utilizator_invalid' } };
     const p2 = p2rows[0];
 
+    // #131a — `p2_compartiment=NULL`: fără asta, o retrimitere către o PERSOANĂ după una
+    // către compartiment ar lăsa ambele setate și ar rupe exclusivitatea.
     const { rows: updated } = await pool.query(`
       UPDATE ${cfg.table}
-      SET status='pending_p2', assigned_to=$1, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
+      SET status='pending_p2', assigned_to=$1, p2_compartiment=NULL, submitted_at=NOW(), updated_at=NOW(), motiv_returnare=NULL, updated_by=$4
       WHERE id=$2 AND org_id=$3
       RETURNING *
     `, [assigned_to, id, actor.orgId, actor.userId]);
@@ -391,7 +465,7 @@ export async function submitFormular({ type, id, actor, body }) {
     await recordFormularAudit({ orgId: actor.orgId, formType: type, formId: id,
       actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
       fromStatus: doc.status, toStatus: 'pending_p2', meta: { assigned_to } });
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
     return { status: 200, body: { ok: true, document: updated[0], assigned_to: p2 } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} submit error`);
@@ -409,8 +483,9 @@ export async function completeFormular({ type, id, actor, body }) {
     );
     if (!existing.length) return { status: 404, body: { error: 'not_found' } };
     const doc = existing[0];
+    let actorComp = '';   // #131a — necesar la computeDocCapabilities de la finalul funcției
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
+      actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
       // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
       // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
@@ -429,6 +504,38 @@ export async function completeFormular({ type, id, actor, body }) {
     // ORD.rows e câmpul efectiv potrivit de opme-matcher.mjs:127.
     if ('rows_ctrl' in data) data.rows_ctrl = normalizeAngajamentRows(data.rows_ctrl);
     if ('rows'      in data) data.rows      = normalizeAngajamentRows(data.rows);
+
+    // #128l — GARDĂ fail-closed: `/complete` REÎNLOCUIEȘTE `rows` în întregime. Un client vechi
+    // (sau o cale nemigrată) care trimite doar rândurile blocului 0 ștergea TĂCUT rândurile
+    // furnizorilor 2+ — beneficiarul lor supraviețuia în `blocuri`, deci simptomul era
+    // „bloc completat, tabel gol". NU fuzionăm automat cu rândurile din DB: un merge ar învia
+    // rânduri șterse intenționat de utilizator. Un 409 e vizibil; pierderea de date, nu.
+    // Sigur prin construcție: validarea de client cere cel puțin un rând per bloc, deci un
+    // `/complete` legitim acoperă mereu toate blocurile.
+    if (cfg.rowsBlocGuard && 'rows' in data) {
+      const blocuriDecl = blocuriDinOrd(doc);
+      if (blocuriDecl.length > 1) {
+        const primite = new Set(
+          (Array.isArray(data.rows) ? data.rows : [])
+            .map((r) => normalizeBlocIdx(r?.bloc_idx))
+        );
+        const lipsa = blocuriDecl.map((b) => b.bloc_idx).filter((i) => !primite.has(i));
+        if (lipsa.length) {
+          logger.warn({ ordId: id, blocuriDeclarate: blocuriDecl.length, blocIdxPrimite: [...primite] },
+            'complete ORD respins — rândurile unor blocuri lipsesc din payload');
+          const eticheta = lipsa.map((i) => `Furnizor ${i + 1}`).join(', ');
+          return { status: 409, body: {
+            error: 'rows_bloc_lipsa',
+            message: `Lipsesc rândurile pentru: ${eticheta}. Reîncărcați pagina (Ctrl+F5) și reluați finalizarea — altfel rândurile acestor furnizori s-ar pierde.`,
+            blocuri_lipsa: lipsa,
+          } };
+        }
+      }
+      // Normalizarea `bloc_idx` (numeric, implicit 0) — REFOLOSITĂ din ord-blocuri.mjs, nu
+      // duplicată. `body: {}` ⇒ nu recalculăm `blocuri`/oglinda aici: `/complete` scrie DOAR `rows`.
+      const { rows: rowsCuBloc } = pregatesteScriereBlocuri({ body: {}, data, docExistent: doc });
+      if (rowsCuBloc !== undefined) data.rows = rowsCuBloc;
+    }
 
     // GARDĂ Cod SSI (DF): finalizarea P2 e RESPINSĂ dacă rămâne un cod inexistent în Clasa 8.
     // Validăm starea EFECTIVĂ: rows_ctrl din body (editarea P2) + rows_val/rows_plati persistate
@@ -494,7 +601,7 @@ export async function completeFormular({ type, id, actor, body }) {
         actorId: actor.userId, actorEmail: actor.email, eventType: 'legat_alop',
         meta: { alop_id: linkedAlopId } });
     }
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
     return { status: 200, body: { ok: true, document: updated[0] } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} complete error`);
@@ -514,8 +621,9 @@ export async function returnFormular({ type, id, actor, body }) {
     );
     if (!rows.length) return { status: 404, body: { error: 'not_found' } };
     const doc = rows[0];
+    let actorComp = '';   // #131a — necesar la computeDocCapabilities de la finalul funcției
     {
-      const actorComp = await loadActorComp(pool, actor.userId);
+      actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
       // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
       const isP2Side = authz.allowed
@@ -535,7 +643,7 @@ export async function returnFormular({ type, id, actor, body }) {
       actorId: actor.userId, actorEmail: actor.email, eventType: 'returnat',
       fromStatus: doc.status, toStatus: 'returnat', meta: { motiv: motiv.trim() } });
     const out = upd[0];
-    out.capabilities = computeDocCapabilities(out, actor, cfg.capsFt);
+    out.capabilities = computeDocCapabilities(out, actor, cfg.capsFt, actorComp);
     return { status: 200, body: { ok: true, document: out } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} returneaza error`);

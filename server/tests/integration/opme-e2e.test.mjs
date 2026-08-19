@@ -150,17 +150,21 @@ describe('OPME E2E — flux complet F1129 → ALOP confirmat → export CSV', ()
           const [_org, cif, cod, ind] = params;
           const key = `${cod}|${ind}|${cif}`;
           if (tripletToAlop.has(key)) {
-            return { rows: [{ alop_id: tripletToAlop.get(key) }] };
+            // #128d: selecția e SUPERSET în SQL, regula (cif+triplet+IBAN, per bloc) se
+            // aplică în JS ⇒ fixture-ul trebuie să livreze și datele ORD-ului.
+            return { rows: [{ alop_id: tripletToAlop.get(key), cif_beneficiar: cif,
+              iban_beneficiar: null, blocuri: null,
+              ord_rows: [{ cod_angajament: cod, indicator_angajament: ind }] }] };
           }
           return { rows: [] };
         }),
       // Cif + rândurile ORD ale ALOP-ului (params: [alopId])
-      H(s => s.includes('AS cif, o.rows AS ord_rows'), async (_sql, params) => {
+      H(s => s.includes('SELECT o.cif_beneficiar, o.iban_beneficiar, o.rows AS ord_rows'), async (_sql, params) => {
         const alopId = params[0];
         for (const [key, aid] of tripletToAlop.entries()) {
           if (aid === alopId) {
             const [cod, ind, cif] = key.split('|');
-            return { rows: [{ cif, ord_rows: [
+            return { rows: [{ cif_beneficiar: cif, ord_rows: [
               { cod_angajament: cod, indicator_angajament: ind, suma_ordonantata_plata: tripletToSum.get(key) || 0 }
             ] }] };
           }
@@ -177,13 +181,14 @@ describe('OPME E2E — flux complet F1129 → ALOP confirmat → export CSV', ()
           }
           return { rows: [{ expected: total }] };
         }),
-      // Pool of pending lines pe CIF (params: [org_id, cif, alopId])
+      // Pool of pending lines pe CIF-urile blocurilor (params: [org_id, cifuri[], alopId])
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async (_sql, params) => {
-          const [_org, cif] = params;
-          const lines = makePendingLines().filter(l => l.cif_beneficiar === cif)
+          const [_org, cifuri] = params;
+          const lines = makePendingLines().filter(l => cifuri.includes(l.cif_beneficiar))
             .map(l => ({
               id: l.id, cod_angajament: l.cod_angajament, indicator_angajament: l.indicator_angajament,
+              cif_beneficiar: l.cif_beneficiar,
               suma_op: l.suma_op, nr_op: l.nr_op, opme_import_id: importId,
             }));
           return { rows: lines };
@@ -242,8 +247,8 @@ describe('OPME E2E — flux complet F1129 → ALOP confirmat → export CSV', ()
             suma_ordonantata_plata: '4061.00',
           }],
         }] })),
-      H(s => s.includes('AS cif, o.rows AS ord_rows'), async () => ({
-        rows: [{ cif: TRIPLET_A.cif, ord_rows: [
+      H(s => s.includes('SELECT o.cif_beneficiar, o.iban_beneficiar, o.rows AS ord_rows'), async () => ({
+        rows: [{ cif_beneficiar: TRIPLET_A.cif, ord_rows: [
           { cod_angajament: TRIPLET_A.cod, indicator_angajament: TRIPLET_A.ind, suma_ordonantata_plata: '4061.00' }
         ] }]
       })),
@@ -253,7 +258,7 @@ describe('OPME E2E — flux complet F1129 → ALOP confirmat → export CSV', ()
       H(s => s.includes("match_status IN ('pending','unmatched','partial')"),
         async () => ({ rows: [
           { id: 'L-OLD', cod_angajament: TRIPLET_A.cod, indicator_angajament: TRIPLET_A.ind,
-            suma_op: 4061, nr_op: '1310', opme_import_id: 'imp-old' }
+            cif_beneficiar: TRIPLET_A.cif, suma_op: 4061, nr_op: '1310', opme_import_id: 'imp-old' }
         ] })),
       H(s => s.includes('FROM opme_imports') && s.includes('WHERE id = ANY'),
         async () => ({ rows: [{ data_op: new Date('2026-04-01'), nr_documents: '0099' }] })),

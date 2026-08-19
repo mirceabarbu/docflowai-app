@@ -72,18 +72,24 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
     // v3.9.499: ștergem doar captura din același slot (default 1 backward compat)
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+    // #128n: blocul de furnizor (ORD multi-bloc), ortogonal pe slot — exact ca la atașamente.
+    // ⚠️ Fără `bloc_idx` în cheia DELETE-ului, captura furnizorului 2 o ȘTERGE pe a
+    // furnizorului 1, tăcut, iar utilizatorul vede confirmare de succes. Ăsta e bug-ul
+    // pe care îl repară lotul; regula „o captură per slot" devine „per (slot, bloc)".
+    // Rândurile legacy au `bloc_idx` NULL ⇒ `COALESCE(bloc_idx, 0)` le citește ca blocul 0.
+    const blocIdx = _blocIdx(req);
     await pool.query(
-      'DELETE FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3',
-      [type, id, slot]
+      'DELETE FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND COALESCE(bloc_idx, 0)=$4',
+      [type, id, slot, blocIdx]
     );
 
     const { rows: inserted } = await pool.query(`
-      INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, filename, mimetype, size_bytes, slot, created_at
-    `, [type, id, actor.userId, filename, mimetype, data.length, data, slot]);
+      INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot, bloc_idx)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, filename, mimetype, size_bytes, slot, bloc_idx, created_at
+    `, [type, id, actor.userId, filename, mimetype, data.length, data, slot, blocIdx]);
 
-    logger.info({ type, id, slot, size: data.length, actor: actor.email }, 'formulare-captura upload');
+    logger.info({ type, id, slot, bloc: blocIdx, size: data.length, actor: actor.email }, 'formulare-captura upload');
     res.json({ ok: true, captura: inserted[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-captura upload error');
@@ -114,9 +120,11 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
     // v3.9.499: filtrare pe slot (default 1 backward compat pentru DF + clienti vechi)
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+    // #128n: cerere FĂRĂ `?bloc` ⇒ blocul 0 = exact captura pe care o vede clientul de azi.
+    const blocIdx = _blocIdx(req);
     const { rows } = await pool.query(
-      'SELECT filename, mimetype, data FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 ORDER BY created_at DESC LIMIT 1',
-      [type, id, slot]
+      'SELECT filename, mimetype, data FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND COALESCE(bloc_idx, 0)=$4 ORDER BY created_at DESC LIMIT 1',
+      [type, id, slot, blocIdx]
     );
     if (!rows.length) return res.status(404).json({ error: 'no_captura', slot });
     const { filename, mimetype, data } = rows[0];
@@ -132,6 +140,14 @@ router.get('/api/formulare-capturi/:type/:id', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // v3.9.500: ATAȘAMENTE (DF și ORD) — pattern simetric cu formulare_capturi
 // ─────────────────────────────────────────────────────────────────────────────
+
+// #128m — blocul de furnizor țintă (`?bloc=N`). Absent / invalid ⇒ 0, adică exact
+// comportamentul de dinainte: clienții vechi și DF-ul nu trimit parametrul, iar rândurile
+// legacy au `bloc_idx` NULL, citit tot ca 0 (`COALESCE(bloc_idx, 0)`).
+function _blocIdx(req) {
+  const n = parseInt(req.query.bloc, 10);
+  return Number.isInteger(n) && n >= 0 ? n : 0;
+}
 
 // POST /api/formulare-atasamente/:type/:id — upload atașament (max 10MB)
 router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
@@ -157,6 +173,8 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     // v3.9.501: slot pentru a permite multiple seturi per formular (DF n-fdad vs n-adata)
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+    // #128m: blocul de furnizor (ORD multi-bloc); ortogonal pe slot.
+    const blocIdx = _blocIdx(req);
 
     const chunks = [];
     req.on('data', c => chunks.push(c));
@@ -183,28 +201,32 @@ router.post('/api/formulare-atasamente/:type/:id', _csrf, async (req, res) => {
     // ⛔ Fără index unic: producția are deja duplicate, indexul ar eșua la creare (tiparul 095).
     // Un fișier CORECTAT cu același nume are aproape sigur altă dimensiune, deci trece; dacă
     // vreodată nu trece, calea rămasă e ștergerea atașamentului vechi și reîncărcarea.
+    // #128m: cheia de dedup e EXTINSĂ cu `bloc_idx`. Fără dimensiunea de bloc, ACELAȘI fișier
+    // nu ar putea fi atașat la doi furnizori — dedup-ul l-ar întoarce pe cel al blocului 0, iar
+    // blocul 2 ar rămâne fără atașament. Dedup-ul rămâne la fel de strict ÎN INTERIORUL unui bloc.
     const { rows: dupAtt } = await pool.query(`
-      SELECT id, filename, mime_type, size_bytes, slot, created_at
+      SELECT id, filename, mime_type, size_bytes, slot, bloc_idx, created_at
         FROM formulare_atasamente
        WHERE form_type = $1 AND form_id = $2 AND slot = $3
          AND filename = $4 AND size_bytes = $5
+         AND COALESCE(bloc_idx, 0) = $6
          AND deleted_at IS NULL
        ORDER BY created_at ASC
        LIMIT 1
-    `, [type, id, slot, filename, data.length]);
+    `, [type, id, slot, filename, data.length, blocIdx]);
     if (dupAtt.length) {
-      logger.warn({ type, id, slot, filename, existingId: dupAtt[0].id, actor: actor.email },
+      logger.warn({ type, id, slot, bloc: blocIdx, filename, existingId: dupAtt[0].id, actor: actor.email },
         'formulare-atasament: upload duplicat — s-a returnat atașamentul existent');
       return res.json({ ok: true, atasament: dupAtt[0], deduplicated: true });
     }
 
     const { rows: inserted } = await pool.query(`
-      INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING id, filename, mime_type, size_bytes, slot, created_at
-    `, [type, id, actor.userId, filename, mime_type, data.length, data, slot]);
+      INSERT INTO formulare_atasamente (form_type, form_id, uploaded_by, filename, mime_type, size_bytes, data, slot, bloc_idx)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING id, filename, mime_type, size_bytes, slot, bloc_idx, created_at
+    `, [type, id, actor.userId, filename, mime_type, data.length, data, slot, blocIdx]);
 
-    logger.info({ type, id, slot, attId: inserted[0].id, size: data.length, actor: actor.email }, 'formulare-atasament upload');
+    logger.info({ type, id, slot, bloc: blocIdx, attId: inserted[0].id, size: data.length, actor: actor.email }, 'formulare-atasament upload');
     res.json({ ok: true, atasament: inserted[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-atasament upload error');
@@ -235,13 +257,24 @@ router.get('/api/formulare-atasamente/:type/:id', async (req, res) => {
     // v3.9.501: filtrare per slot (default 1 backward compat)
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
+    // #128m: filtrare per bloc de furnizor. Cerere FĂRĂ `?bloc` ⇒ blocul 0 — exact lista
+    // pe care o vede clientul de azi (rândurile legacy au bloc_idx NULL ⇒ tot blocul 0).
+    // #128p: `?bloc=all` ⇒ TOATE blocurile, într-o singură cerere. Necesar la crearea
+    // fluxului, unde preview-ul trebuie să arate exact ce copiază
+    // `copyFormularAttachmentsToFlow`, care e bloc-agnostică. Fără el, preview-ul spunea
+    // „1 fișier(e)" iar în pachetul de semnare apăreau toate — divergență de afișare.
+    // Pattern null-tolerant (ca la #105g): $4 NULL ⇒ predicatul nu filtrează, fără reindexare.
+    const totBlocurile = req.query.bloc === 'all';
+    const blocIdx = _blocIdx(req);
 
     const { rows } = await pool.query(
-      `SELECT id, filename, mime_type, size_bytes, uploaded_by, slot, created_at
+      `SELECT id, filename, mime_type, size_bytes, uploaded_by, slot, COALESCE(bloc_idx, 0) AS bloc_idx, created_at
        FROM formulare_atasamente
-       WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND deleted_at IS NULL
-       ORDER BY created_at ASC`,
-      [type, id, slot]
+       WHERE form_type=$1 AND form_id=$2 AND slot=$3
+         AND ($4::int IS NULL OR COALESCE(bloc_idx, 0) = $4)
+         AND deleted_at IS NULL
+       ORDER BY COALESCE(bloc_idx, 0) ASC, created_at ASC`,
+      [type, id, slot, totBlocurile ? null : blocIdx]
     );
     res.json({ ok: true, atasamente: rows });
   } catch (e) {
@@ -343,7 +376,11 @@ router.get('/api/formulare/utilizatori-org', async (req, res) => {
               (leave_start IS NOT NULL AND leave_end IS NOT NULL
                AND leave_start <= CURRENT_DATE AND leave_end >= CURRENT_DATE) AS on_leave
        FROM users
-       WHERE org_id=$1 AND id != $2
+       -- #131b: exclude conturile dezactivate (soft-delete, migrația 067). Ruta asta scăpase
+       -- de regula #52; fără filtru, modalul de Responsabil CAB listează conturi șterse, iar
+       -- lista de compartimente derivată din ea (mai jos) ar oferi compartimente pe care
+       -- submitFormular le respinge cu compartiment_fara_membri.
+       WHERE org_id=$1 AND id != $2 AND deleted_at IS NULL
        ORDER BY
          CASE WHEN TRIM(COALESCE(compartiment,'')) = $3 AND $3 <> '' THEN 0 ELSE 1 END,
          COALESCE(nume, email) ASC`,
@@ -460,6 +497,18 @@ router.get('/api/formulare/list', async (req, res) => {
                     AND TRIM(uc.compartiment) = $${c1}
                     AND TRIM(uc.compartiment) <> ''
                 )
+                -- #131a — document atribuit COMPARTIMENTULUI meu.
+                OR TRIM(COALESCE(fd.p2_compartiment,'')) = $${c1}
+                -- #131a — oglinda lipsă a lui \`p2_comp\`: document atribuit unei PERSOANE din
+                -- compartimentul meu. \`canEditFormular\` îmi dă deja dreptul de editare
+                -- (authz-formular.mjs:90-92), dar documentul nu apărea în listă ⇒ puteam edita
+                -- ceva ce nu puteam găsi. Inconsecvență de dinaintea acestui lot.
+                OR EXISTS (
+                  SELECT 1 FROM users up
+                  WHERE up.id = fd.assigned_to
+                    AND TRIM(up.compartiment) = $${c1}
+                    AND TRIM(up.compartiment) <> ''
+                )
               )`);
             }
           }
@@ -497,7 +546,12 @@ router.get('/api/formulare/list', async (req, res) => {
       }
       if (p2) {
         const likeP2 = `%${p2}%`;
-        conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
+        const iA = params.push(likeP2);
+        const iB = params.push(likeP2);
+        // #131a — cu atribuire pe COMPARTIMENT, u2 e NULL (assigned_to NULL) ⇒ fără această
+        // ramură documentul n-ar fi găsit niciodată de filtru. Refolosim indexul deja împins.
+        conds.push(`(u2.email ILIKE $${iA} OR u2.nume ILIKE $${iB}
+                     OR TRIM(COALESCE(fd.p2_compartiment,'')) ILIKE $${iA})`);
       }
       if (nr) {
         // #121: căutarea după Nr. la DF acoperă și denumirea ALOP-ului legat —
@@ -558,7 +612,9 @@ router.get('/api/formulare/list', async (req, res) => {
           ) AS badge_status,
           COALESCE(u1.nume, u1.email) AS initiator,
           u1.compartiment AS initiator_comp,
-          COALESCE(u2.nume, u2.email) AS p2,
+          -- #131a — Responsabil CAB = persoana (u2) SAU compartimentul atribuit.
+          COALESCE(u2.nume, u2.email, NULLIF(TRIM(fd.p2_compartiment),'')) AS p2,
+          NULLIF(TRIM(fd.p2_compartiment),'') AS p2_compartiment,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (
             ${isOrgManager ? 'TRUE' : `fd.created_by = $${params.push(actor.userId)}`}
@@ -610,6 +666,18 @@ router.get('/api/formulare/list', async (req, res) => {
                     AND TRIM(uc.compartiment) = $${c1}
                     AND TRIM(uc.compartiment) <> ''
                 )
+                -- #131a — document atribuit COMPARTIMENTULUI meu.
+                OR TRIM(COALESCE(fo.p2_compartiment,'')) = $${c1}
+                -- #131a — oglinda lipsă a lui \`p2_comp\`: document atribuit unei PERSOANE din
+                -- compartimentul meu. \`canEditFormular\` îmi dă deja dreptul de editare
+                -- (authz-formular.mjs:90-92), dar documentul nu apărea în listă ⇒ puteam edita
+                -- ceva ce nu puteam găsi. Inconsecvență de dinaintea acestui lot.
+                OR EXISTS (
+                  SELECT 1 FROM users up
+                  WHERE up.id = fo.assigned_to
+                    AND TRIM(up.compartiment) = $${c1}
+                    AND TRIM(up.compartiment) <> ''
+                )
               )`);
             }
           }
@@ -643,7 +711,12 @@ router.get('/api/formulare/list', async (req, res) => {
       }
       if (p2) {
         const likeP2 = `%${p2}%`;
-        conds.push(`(u2.email ILIKE $${params.push(likeP2)} OR u2.nume ILIKE $${params.push(likeP2)})`);
+        const iA = params.push(likeP2);
+        const iB = params.push(likeP2);
+        // #131a — cu atribuire pe COMPARTIMENT, u2 e NULL (assigned_to NULL) ⇒ fără această
+        // ramură documentul n-ar fi găsit niciodată de filtru. Refolosim indexul deja împins.
+        conds.push(`(u2.email ILIKE $${iA} OR u2.nume ILIKE $${iB}
+                     OR TRIM(COALESCE(fo.p2_compartiment,'')) ILIKE $${iA})`);
       }
       if (nr) {
         // #121: căutarea după Nr. la ORD acoperă și denumirea furnizorului (fo.beneficiar).
@@ -676,9 +749,28 @@ router.get('/api/formulare/list', async (req, res) => {
           ) AS badge_status,
           CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                THEN true ELSE false END AS aprobat,
+          -- #130 — valoarea ordonanțării = suma col.4 peste TOATE rândurile. După #128,
+          -- rows conține rândurile tuturor blocurilor de furnizor (fiecare cu bloc_idx),
+          -- deci suma e pe întreaga ordonanțare, nu pe primul furnizor. Expresie IDENTICĂ
+          -- cu ord_valoare din routes/alop.mjs:386-387 — sursă unică de formulă.
+          (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
+             FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
+          -- #130 — cât s-a plătit din ACEASTĂ ordonanțare. Legătura ORD-plată trăiește pe
+          -- DOUĂ niveluri: ciclul CURENT stă pe alop_instances.ord_id, iar ciclurile ÎNCHISE
+          -- sunt arhivate în alop_ord_cicluri (rând inserat de noua-lichidare). Un ORD e
+          -- într-unul SAU în celălalt, niciodată în amândouă — dar preferăm rândul arhivat,
+          -- fiindcă e valoarea înghețată la închiderea ciclului.
+          COALESCE(
+            (SELECT c.plata_suma_efectiva FROM alop_ord_cicluri c
+              WHERE c.ord_id = fo.id AND c.org_id = fo.org_id LIMIT 1),
+            (SELECT a.plata_suma_efectiva FROM alop_instances a
+              WHERE a.ord_id = fo.id AND a.org_id = fo.org_id AND a.cancelled_at IS NULL LIMIT 1)
+          ) AS plata_suma,
           COALESCE(u1.nume, u1.email) AS initiator,
           u1.compartiment AS initiator_comp,
-          COALESCE(u2.nume, u2.email) AS p2,
+          -- #131a — Responsabil CAB = persoana (u2) SAU compartimentul atribuit.
+          COALESCE(u2.nume, u2.email, NULLIF(TRIM(fo.p2_compartiment),'')) AS p2,
+          NULLIF(TRIM(fo.p2_compartiment),'') AS p2_compartiment,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           (
             ${isOrgManager ? 'TRUE' : `fo.created_by = $${params.push(actor.userId)}`}

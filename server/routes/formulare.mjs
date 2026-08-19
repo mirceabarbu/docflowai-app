@@ -56,13 +56,22 @@ function validateOrdnt(d) {
   if (!/^[1-9]\d{1,9}$/.test(d.Cif || '')) errs.push('Cif format invalid');
   if (!/^([1-9]|0[1-9]|[12][0-9]|3[01])\.([1-9]|0[1-9]|1[012])\.\d{4}$/.test(d.DataOrdontPl || ''))
     errs.push('DataOrdontPl format invalid (DD.MM.YYYY)');
-  const df = d.docFd || {};
-  if (!df.beneficiar)      errs.push('beneficiar obligatoriu');
-  if (!df.iban_beneficiar) errs.push('iban_beneficiar obligatoriu');
-  if (!df.cif_beneficiar)  errs.push('cif_beneficiar obligatoriu');
-  if (!/^[1-9]\d{1,9}$/.test(df.cif_beneficiar || '')) errs.push('cif_beneficiar format invalid');
-  if (!Array.isArray(df.rowTfd) || df.rowTfd.length === 0)
-    errs.push('Cel putin un rand rowTfd obligatoriu');
+  // #128e — `docFd` poate fi un ARRAY de blocuri (multi-beneficiar). Normalizare identică
+  // cu cea din `serializeOrdnt` (ordnt-serializer.mjs) — ⛔ un singur tipar, nu inventa altul.
+  const docs = Array.isArray(d.docFd) ? d.docFd : [d.docFd || {}];
+  if (docs.length === 0) errs.push('Cel putin un bloc docFd obligatoriu');
+  // ⭐ Prefixul `blocul N: ` apare DOAR când există mai multe blocuri — la un singur bloc
+  // (tot ce există azi în producție) mesajele rămân byte-identice cu cele dinainte de #128e.
+  docs.forEach((df0, i) => {
+    const df = df0 || {};
+    const p  = docs.length > 1 ? `blocul ${i + 1}: ` : '';
+    if (!df.beneficiar)      errs.push(p + 'beneficiar obligatoriu');
+    if (!df.iban_beneficiar) errs.push(p + 'iban_beneficiar obligatoriu');
+    if (!df.cif_beneficiar)  errs.push(p + 'cif_beneficiar obligatoriu');
+    if (!/^[1-9]\d{1,9}$/.test(df.cif_beneficiar || '')) errs.push(p + 'cif_beneficiar format invalid');
+    if (!Array.isArray(df.rowTfd) || df.rowTfd.length === 0)
+      errs.push(p + 'Cel putin un rand rowTfd obligatoriu');
+  });
   return errs;
 }
 
@@ -832,8 +841,41 @@ async function generatePdfSimple(formType, data) {
 
   // ── Conținut ORDNT ─────────────────────────────────────────────────────────
 
-  function buildOrdnt() {
-    const df = data.docFd || {};
+  // #128n — etichetele capturilor sunt MUTATE aici (erau după `buildOrdnt`), fiindcă
+  // `buildOrdnt` le folosește acum în interiorul buclei de blocuri. Sunt `const`, deci
+  // trebuie inițializate ÎNAINTE de execuția lui `buildOrdnt` (altfel TDZ). Text NESCHIMBAT.
+  const _capLabel1 = 'Captură imagine din sistemul de control al angajamentelor bugetare';
+  const _capLabel2 = 'Captură \u201eInformații complete contract\u201d din sistemul de control al angajamentelor bugetare';
+
+  async function buildOrdnt() {
+    // #128e — `docFd` poate fi un ARRAY de blocuri (multi-beneficiar). Normalizare identică cu
+    // `validateOrdnt` / `serializeOrdnt`. Un singur bloc ⇒ ieșire IDENTICĂ cu cea de dinainte:
+    // niciun antet, niciun separator, niciun `ensureY` în plus (totul e gardat de `i > 0`).
+    const docs = Array.isArray(data.docFd) ? data.docFd : [data.docFd || {}];
+    for (let i = 0; i < docs.length; i++) {
+      const df0 = docs[i];
+      // Titlu discret înaintea blocurilor 2..N, ca cititorul să știe al cui e tabelul.
+      // ⛔ Fără `addPage()` per bloc — formularul MF nu paginează per beneficiar; `ensureY`
+      // doar evită ca titlul să rămână orfan la baza paginii.
+      if (i > 0) {
+        ensureY(LH * 3);
+        txt(`Beneficiar ${i + 1} din ${docs.length}`, ML, y, { font: fB, size: 8.5 });
+        y -= LH;
+      }
+      buildOrdntBloc(df0 || {});
+      // #128n — capturile blocului, imediat după conținutul lui. Un singur bloc ⇒ aceeași
+      // ordine ca înainte de acest lot. `capturiBlocuri` lipsă (client vechi din cache) ⇒
+      // blocul 0 cade pe cheile istorice, restul blocurilor rămân fără captură.
+      const capB = Array.isArray(data.capturiBlocuri) ? (data.capturiBlocuri[i] || {}) : null;
+      const c1 = capB ? capB.c1 : (i === 0 ? data.captureImageBase64   : null);
+      const c2 = capB ? capB.c2 : (i === 0 ? data.captureImageBase64_2 : null);
+      const sufix = docs.length > 1 ? ` — furnizorul ${i + 1}` : '';
+      await embedCapture(c1, _capLabel1 + sufix);
+      await embedCapture(c2, _capLabel2 + sufix);
+    }
+  }
+
+  function buildOrdntBloc(df) {
 
     // ── Numar unic de inregistrare al documentului de fundamentare ─────────
     boxedField('Numar unic de inregistrare al documentului de fundamentare:',
@@ -922,17 +964,10 @@ async function generatePdfSimple(formType, data) {
 
   newPage();
   drawDocHeader();
-  if (formType === 'notafd') buildNotafd(); else buildOrdnt();
-
-  // ── Capturi imagine (după conținut, înainte de footer) ─────────────────────
-  const _capLabel1 = 'Captură imagine din sistemul de control al angajamentelor bugetare';
-  const _capLabel2 = 'Captură \u201eInformații complete contract\u201d din sistemul de control al angajamentelor bugetare';
-  if (formType === 'ordnt') {
-    await embedCapture(data.captureImageBase64,   _capLabel1);
-    await embedCapture(data.captureImageBase64_2, _capLabel2);
-  } else {
-    await embedCapture(data.captureImageBase64, _capLabel1);
-  }
+  // #128n — la ORD capturile se randează ÎN buildOrdnt, per bloc (un singur bloc ⇒ ordine
+  // identică cu cea de dinainte). Calea DF rămâne neschimbată.
+  if (formType === 'notafd') { buildNotafd(); await embedCapture(data.captureImageBase64, _capLabel1); }
+  else await buildOrdnt();
 
   // ── Footer pe fiecare pagină ───────────────────────────────────────────────
 

@@ -51,6 +51,24 @@ function _draftCollect(ft) {
     });
   });
 
+  // #128h — blocurile de furnizor ORD (2+). Blocul 0 e deja acoperit de inputs[id] + rows
+  // ['o-tbody']; salvăm TOATE blocurile ca listă omogenă, indexată pe `data-bloc`, cu
+  // câmpurile lor (`data-fld`) și rândurile lor (`data-f` + pointerul `ctrl_idx` din #128g).
+  // Un draft SALVAT ÎNAINTE de #128h nu are cheia asta — restaurarea lui rămâne identică.
+  if (ft === 'ordnt') {
+    state.ordBlocuri = [...document.querySelectorAll('.ord-bloc')].map(el => {
+      const o = { fields: {}, rows: [] };
+      el.querySelectorAll('[data-fld]').forEach(inp => { o.fields[inp.dataset.fld] = inp.value; });
+      el.querySelectorAll('tbody tr').forEach(tr => {
+        const r = {};
+        tr.querySelectorAll('input[data-f]').forEach(inp => { r[inp.dataset.f] = inp.value; });
+        if (tr.dataset.ctrlIdx !== undefined && tr.dataset.ctrlIdx !== '') r.ctrl_idx = tr.dataset.ctrlIdx;
+        o.rows.push(r);
+      });
+      return o;
+    });
+  }
+
   return state;
 }
 
@@ -100,6 +118,28 @@ function _draftApply(ft, state) {
       });
     });
   });
+
+  // #128h — blocurile de furnizor ORD 2+ : RECREATE din șablon înainte de a li se pune
+  // valorile. Draft vechi (fără `ordBlocuri`) ⇒ ramura nu se execută, restaurarea rămâne
+  // exact ca înainte (un singur bloc).
+  if (ft === 'ordnt' && Array.isArray(state.ordBlocuri) && typeof renderOrdBlocuri === 'function') {
+    const els = renderOrdBlocuri(state.ordBlocuri.map(b => (b && b.fields) || {}));
+    state.ordBlocuri.forEach((b, i) => {
+      if (i === 0 || !b) return;               // blocul 0 e restaurat prin id-uri + rows['o-tbody']
+      const tbody = els[i] && els[i].querySelector('tbody');
+      if (!tbody) return;
+      (b.rows || []).forEach(rowData => {
+        addOR(tbody);
+        const tr = tbody.querySelector('tr:last-child');
+        if (!tr) return;
+        Object.entries(rowData).forEach(([f, v]) => {
+          if (f === 'ctrl_idx') { tr.dataset.ctrlIdx = String(v); return; }
+          const inp = tr.querySelector(`[data-f="${f}"]`);
+          if (inp) inp.value = v;
+        });
+      });
+    });
+  }
 
   // Recalculează totaluri și col 7 după restore
   upTot && upTot();
