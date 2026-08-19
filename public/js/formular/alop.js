@@ -71,20 +71,24 @@ const ROLE_LABEL = {
   cfp_propriu:       'CFP Propriu',
 };
 
-function _alopStatusBadge(status, dfFlowId, a){
+// #132b — starea afișată vine ACUM de la server (`badge_status`, derivat în alop.mjs
+// prin SQL_ALOP_BADGE). Derivările client („Pe flux — semnare", „Revizie pe flux")
+// au fost ȘTERSE: erau al doilea adevăr, invizibil pentru filtre.
+// `a.status` rămâne fallback doar pentru un răspuns vechi din cache-ul browserului.
+function _alopStatusBadge(a){
   const m={
-    'draft':       {icon:'ico-edit-pencil',     text:'Draft',           color:'#64748b'},
-    'angajare':    {icon:'ico-clock',           text:'DF în lucru',     color:'#f97316'},
-    'lichidare':   {icon:'ico-check-square',    text:'Lichidare',       color:'#f59e0b'},
-    'ordonantare': {icon:'ico-file-signature',  text:'Ordonanțare',     color:'#8b5cf6'},
-    'plata':       {icon:'ico-send',            text:'Plată',           color:'#f97316'},
-    'completed':   {icon:'ico-check-circle',    text:'Finalizat',       color:'#10b981'},
-    'cancelled':   {icon:'ico-x-circle',        text:'Anulat',          color:'#ef4444'},
+    'draft':         {icon:'ico-edit-pencil',     text:'Draft',             color:'#64748b'},
+    'angajare':      {icon:'ico-clock',           text:'DF în lucru',       color:'#f97316'},
+    'angajare_flux': {icon:'ico-pen-tool',        text:'Pe flux — semnare', color:'#6366f1'},
+    'revizie_flux':  {icon:'ico-pen-tool',        text:'Revizie pe flux',   color:'#6366f1'},
+    'lichidare':     {icon:'ico-check-square',    text:'Lichidare',         color:'#f59e0b'},
+    'ordonantare':   {icon:'ico-file-signature',  text:'Ordonanțare',       color:'#8b5cf6'},
+    'plata':         {icon:'ico-send',            text:'Plată',             color:'#f97316'},
+    'completed':     {icon:'ico-check-circle',    text:'Finalizat',         color:'#10b981'},
+    'cancelled':     {icon:'ico-x-circle',        text:'Anulat',            color:'#ef4444'},
   };
-  let s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
-  if(status==='angajare' && a && a.df_flow_active) s={icon:'ico-pen-tool',text:'Pe flux — semnare',color:'#6366f1'};
-  if(a && a.df_revizie_nr>0 && a.df_flow_active && !a.df_aprobat)
-    s={icon:'ico-pen-tool', text:'Revizie pe flux', color:'#6366f1'};
+  const status=(a&&(a.badge_status||a.status))||'';
+  const s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
   const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.475#${s.icon}"/></svg>`;
   return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(s.text)}</span>`;
 }
@@ -244,7 +248,7 @@ async function loadAlop(){
           ${a.compartiment?`<br><span style="font-size:.75rem;color:var(--df-text-3)">${esc(a.compartiment)}</span>`:''}
         </td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${esc(a.creator_name||a.creator_email||'—')}</td>
-        <td>${_alopStatusBadge(a.status,a.df_flow_id,a)}</td>
+        <td>${_alopStatusBadge(a)}</td>
         <td style="font-size:.78rem;color:var(--df-text-3)">${esc(_alopFazaLabel(a.status))}</td>
         <td style="font-size:.82rem">
           <div>${fmtRON(a.valoare_totala)}</div>
@@ -738,7 +742,7 @@ function renderAlopDetail(a,container){
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
-          ${_alopStatusBadge(a.status,a.df_flow_id,a)}
+          ${_alopStatusBadge(a)}
           ${caps.can_refresh?`<button class="df-action-btn sm" onclick="alopRefreshCurrent()" title="Actualizează status">↻ Actualizează</button>`:''}
         </div>
       </div>

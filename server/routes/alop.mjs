@@ -35,6 +35,43 @@ import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
 
+// ── #132b — sursă UNICĂ pentru starea AFIȘATĂ a unui dosar ALOP ──────────────
+// Înainte, badge-ul se calcula pe client (alop.js) iar filtrul pe `a.status` brut,
+// deci „Pe flux — semnare" și „Revizie pe flux" se vedeau dar nu se puteau filtra.
+//
+// ⚠️ Scris EXCLUSIV pe `a.*` + subinterogări CORELATE, deliberat.
+// Interogarea de COUNT din GET /api/alop nu are NICIUN join (regula #121):
+// orice referință la aliasul `df` ar rupe-o. Prin corelare, aceeași expresie
+// merge identic în SELECT, în WHERE-ul listei și în WHERE-ul COUNT-ului.
+//
+// ⚠️ Ordinea ramurilor CASE = ordinea de precedență din vechiul cod client:
+// „revizie pe flux" suprascria „pe flux — semnare", care suprascria statusul brut.
+// Nu reordona ramurile.
+const SQL_ALOP_DF_FLOW = `COALESCE((SELECT dfx.flow_id FROM formulare_df dfx WHERE dfx.id = a.df_id), a.df_flow_id)`;
+
+const SQL_ALOP_FLUX_DF_ACTIV = `EXISTS (
+  SELECT 1 FROM flows fx
+   WHERE fx.id::text = ${SQL_ALOP_DF_FLOW}
+     AND fx.deleted_at IS NULL
+     AND (fx.data->>'completed') IS DISTINCT FROM 'true'
+     AND (fx.data->>'status')    IS DISTINCT FROM 'cancelled'
+     AND (fx.data->>'status')    IS DISTINCT FROM 'refused')`;
+
+const SQL_ALOP_DF_APROBAT = `EXISTS (
+  SELECT 1 FROM flows fx
+   WHERE fx.id::text = ${SQL_ALOP_DF_FLOW}
+     AND ((fx.data->>'status') = 'completed' OR (fx.data->>'completed')::boolean = true))`;
+
+const SQL_ALOP_DF_ARE_REVIZIE = `COALESCE((SELECT dfx.revizie_nr FROM formulare_df dfx WHERE dfx.id = a.df_id), 0) > 0`;
+
+const SQL_ALOP_BADGE = `CASE
+    WHEN ${SQL_ALOP_DF_ARE_REVIZIE} AND ${SQL_ALOP_FLUX_DF_ACTIV} AND NOT (${SQL_ALOP_DF_APROBAT})
+      THEN 'revizie_flux'
+    WHEN a.status = 'angajare' AND ${SQL_ALOP_FLUX_DF_ACTIV}
+      THEN 'angajare_flux'
+    ELSE a.status
+  END`;
+
 const router = Router();
 
 // WS push injectat la montare (pentru notificări live — ex. factură lichidată)
@@ -326,8 +363,13 @@ router.get('/api/alop', async (req, res) => {
     let where = '($1::int IS NULL OR a.org_id = $1) AND a.cancelled_at IS NULL';
     where += await buildAlopVisibilityWhere(actor, params);
     if (status) {
+      // #132b — filtrul e inversa EXACTĂ a badge-ului afișat: aceeași expresie, o
+      // singură sursă de adevăr. Acceptă atât stările brute (draft/lichidare/…)
+      // cât și cele DERIVATE ('angajare_flux', 'revizie_flux').
+      // Costul: expresia se evaluează și în COUNT — acceptabil la volumul actual
+      // (~120 dosare/org) și corelată strict pe `a`, deci COUNT-ul rămâne fără join.
       params.push(status);
-      where += ` AND a.status = $${params.length}`;
+      where += ` AND (${SQL_ALOP_BADGE}) = $${params.length}`;
     }
     // #121: filtre listă ALOP (oglindesc DF/ORD). Toate pe a.* (valabile și în COUNT, care n-are JOIN),
     // iar „creat de" printr-un EXISTS corelat pe users — NU adăuga un JOIN în cele două query-uri.
@@ -406,7 +448,9 @@ router.get('/api/alop', async (req, res) => {
         EXISTS (
           SELECT 1 FROM opme_lines ol WHERE ol.matched_alop_id = a.id
         ) AS has_opme_lines,
-        (a.status NOT IN ('completed','cancelled') AND a.df_id IS NULL AND a.ord_id IS NULL) AS can_delete
+        (a.status NOT IN ('completed','cancelled') AND a.df_id IS NULL AND a.ord_id IS NULL) AS can_delete,
+        -- #132b — starea AFIȘATĂ, derivată server-side. Clientul nu mai recalculează nimic.
+        ${SQL_ALOP_BADGE} AS badge_status
       FROM alop_instances a
       LEFT JOIN users        u  ON u.id  = a.created_by
       LEFT JOIN formulare_df df ON df.id = a.df_id
@@ -680,6 +724,9 @@ router.get('/api/alop/:id', async (req, res) => {
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS ord_aprobat,
+        -- #132b — aceeași expresie ca în listă: cardul de detaliu și rândul din listă
+        -- nu mai pot să se contrazică.
+        ${SQL_ALOP_BADGE} AS badge_status,
         ul.nume AS lichidare_by_name,
         up.nume AS plata_by_name,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)

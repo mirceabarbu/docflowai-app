@@ -326,9 +326,13 @@
         <div class="flt-grp" id="flt-a-status-grp">
           <label class="flt-lbl">Status</label>
           <select id="flt-a-status" class="flt-sel" onchange="_alopFilterChanged()">
+            <!-- #132b — valorile = exact ieșirile lui SQL_ALOP_BADGE (server/routes/alop.mjs).
+                 „Anulat" lipsește DELIBERAT: lista exclude `a.cancelled_at IS NOT NULL`. -->
             <option value="">Toate</option>
             <option value="draft">Draft</option>
             <option value="angajare">DF în lucru</option>
+            <option value="angajare_flux">Pe flux — semnare</option>
+            <option value="revizie_flux">Revizie pe flux</option>
             <option value="lichidare">Lichidare</option>
             <option value="ordonantare">Ordonanțare</option>
             <option value="plata">Plată</option>
@@ -1508,7 +1512,7 @@
 <script src="/js/formular/core.js?v=3.9.775" defer></script>
 <script src="/js/formular/verif.js?v=3.9.693" defer></script>
 <script src="/js/shared/pagin.js?v=3.9.722" defer></script>
-<script src="/js/formular/alop.js?v=3.9.761" defer></script>
+<script src="/js/formular/alop.js?v=3.9.783" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.760" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.693" defer></script>
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
