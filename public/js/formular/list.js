@@ -770,7 +770,9 @@ function _renderLstTable(rows,type){
       </td>
       <td>${esc(row.initiator||'—')}</td>
       <td>${esc(row.initiator_comp||'—')}</td>
-      <td>${esc(row.p2||'—')}</td>
+      <td>${row.p2_compartiment
+        ? `<span title="Atribuit întregului compartiment — oricine din el poate completa">👥 ${esc(row.p2_compartiment)}</span>`
+        : esc(row.p2||'—')}</td>
       <td class="lst-col-ord" style="text-align:right;white-space:nowrap">${_lstBani(row.ord_valoare)}</td>
       <td class="lst-col-ord" style="text-align:right;white-space:nowrap">${_lstPlata(row.plata_suma,row.ord_valoare)}</td>
       <td>${_stBadge(row.badge_status)}</td>

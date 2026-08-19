@@ -376,7 +376,11 @@ router.get('/api/formulare/utilizatori-org', async (req, res) => {
               (leave_start IS NOT NULL AND leave_end IS NOT NULL
                AND leave_start <= CURRENT_DATE AND leave_end >= CURRENT_DATE) AS on_leave
        FROM users
-       WHERE org_id=$1 AND id != $2
+       -- #131b: exclude conturile dezactivate (soft-delete, migrația 067). Ruta asta scăpase
+       -- de regula #52; fără filtru, modalul de Responsabil CAB listează conturi șterse, iar
+       -- lista de compartimente derivată din ea (mai jos) ar oferi compartimente pe care
+       -- submitFormular le respinge cu compartiment_fara_membri.
+       WHERE org_id=$1 AND id != $2 AND deleted_at IS NULL
        ORDER BY
          CASE WHEN TRIM(COALESCE(compartiment,'')) = $3 AND $3 <> '' THEN 0 ELSE 1 END,
          COALESCE(nume, email) ASC`,

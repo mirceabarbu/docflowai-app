@@ -1690,9 +1690,12 @@ async function showP2Modal(ft){
     if(!ST.docId[ft]) return; // eroarea a fost deja afișată de saveDoc
     clrS();
   }
-  ST.pendingFt=ft;ST.selectedP2Id=null;
+  ST.pendingFt=ft;ST.selectedP2Id=null;ST.selectedP2Comp=null;
+  if(ST.p2Mode===undefined) ST.p2Mode='user';
   document.getElementById('modal-confirm').disabled=true;
   document.getElementById('modal-search').value='';
+  document.getElementById('modal-p2-mode-user').classList.toggle('primary',ST.p2Mode==='user');
+  document.getElementById('modal-p2-mode-comp').classList.toggle('primary',ST.p2Mode==='comp');
   const listEl=document.getElementById('modal-user-list');
   listEl.innerHTML='<div style="color:var(--df-text-3);font-size:.8rem;text-align:center;padding:10px">Se încarcă...</div>';
   document.getElementById('modal-p2').classList.add('show');
@@ -1709,7 +1712,29 @@ async function showP2Modal(ft){
   }
   if(ST.p2FilterByComp===undefined) ST.p2FilterByComp=!!(ST.cabCompartiment||ST.actorCompartiment);
   _renderP2FilterToggle();
-  filterModalUsers();
+  _p2RenderList();
+}
+
+// #131b — comutator Persoană/Compartiment. Golește selecția modului părăsit, altfel cineva
+// alege o persoană, comută pe compartiment, apasă Trimite — și pleacă persoana (sau invers).
+function setP2Mode(mode){
+  if(ST.p2Mode===mode)return;
+  ST.p2Mode=mode;
+  ST.selectedP2Id=null;
+  ST.selectedP2Comp=null;
+  document.getElementById('modal-confirm').disabled=true;
+  document.getElementById('modal-p2-mode-user').classList.toggle('primary',mode==='user');
+  document.getElementById('modal-p2-mode-comp').classList.toggle('primary',mode==='comp');
+  document.getElementById('modal-search').value='';
+  _renderP2FilterToggle();
+  _p2RenderList();
+}
+
+// Punct unic de intrare pentru randarea listei modalului — dispecerizează pe mod. filterModalUsers
+// (mod Persoană) rămâne neatinsă; modul Compartiment are randare proprie (_renderP2CompList).
+function _p2RenderList(){
+  if(ST.p2Mode==='comp') _renderP2CompList();
+  else filterModalUsers();
 }
 
 function _renderP2FilterToggle(){
@@ -1717,7 +1742,8 @@ function _renderP2FilterToggle(){
   if(!searchEl) return;
   let toggleEl=document.getElementById('modal-p2-comp-toggle');
   const filterComp=(ST.cabCompartiment||ST.actorCompartiment||'');
-  if(!filterComp){
+  // #131b — bifa "Doar din <compartiment>" e a modului Persoană; nu are sens în modul Compartiment.
+  if(!filterComp||ST.p2Mode==='comp'){
     if(toggleEl) toggleEl.style.display='none';
     return;
   }
@@ -1781,8 +1807,58 @@ function selectP2(id){
   document.getElementById('modal-confirm').disabled=false;
   filterModalUsers();
 }
+
+// #131b — compartimentele se derivă din utilizatorii activi ai organizației. Deliberat:
+// lista oferită de client coincide EXACT cu ce acceptă `submitFormular` (compartiment cu cel
+// puțin un utilizator activ), deci nu putem oferi o opțiune pe care serverul o respinge cu
+// `compartiment_fara_membri`. O rută nouă ar fi introdus un al doilea adevăr.
+function _p2Compartimente(){
+  const m=new Map();
+  (ST.orgUsers||[]).forEach(u=>{
+    const c=(u.compartiment||'').trim();
+    if(!c)return;
+    const e=m.get(c)||{nume:c,total:0,disponibili:0};
+    e.total++; if(!u.on_leave)e.disponibili++;
+    m.set(c,e);
+  });
+  return [...m.values()].sort((a,b)=>a.nume.localeCompare(b.nume,'ro'));
+}
+function selectP2Comp(nume){
+  ST.selectedP2Comp=nume;
+  document.getElementById('modal-confirm').disabled=false;
+  _renderP2CompList();
+}
+function _renderP2CompList(){
+  const q=(document.getElementById('modal-search')?.value||'').toLowerCase();
+  const listEl=document.getElementById('modal-user-list');
+  const comps=_p2Compartimente().filter(c=>c.nume.toLowerCase().includes(q));
+  if(!comps.length){
+    listEl.innerHTML=`<div style="color:var(--df-text-3);font-size:.8rem;text-align:center;padding:10px">Niciun compartiment găsit.</div>`;
+    return;
+  }
+  listEl.innerHTML=comps.map(c=>{
+    const nEsc=c.nume.replace(/</g,'&lt;');
+    const nAttr=c.nume.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    // #131b — serverul nu blochează pe concediu (nu selectezi un om anume, ci compartimentul);
+    // un blocaj în UI ar fi al doilea adevăr. Doar marcaj vizual când toți sunt indisponibili.
+    const warnBadge=(c.disponibili===0)
+      ? ` <span style="font-size:.66rem;padding:1px 6px;border-radius:8px;background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25);margin-left:4px">toți în concediu</span>`
+      : '';
+    const subDisp=c.disponibili<c.total?` · ${c.disponibili} disponibili`:'';
+    return `<div class="modal-user${ST.selectedP2Comp===c.nume?' sel':''}" onclick="selectP2Comp('${nAttr}')">
+      <div style="flex:1">
+        <div class="modal-u-name">👥 ${nEsc}${warnBadge}</div>
+        <div class="modal-u-sub">${c.total} membri${subDisp}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
 async function confirmP2(){
-  if(!ST.selectedP2Id||!ST.pendingFt)return;
+  // #131b — două ținte exclusive: o persoană SAU un compartiment. Backendul (#131a) respinge
+  // cu `assigned_ambiguu` dacă primește ambele, deci trimitem exact una.
+  const _peComp=ST.p2Mode==='comp';
+  if(!ST.pendingFt)return;
+  if(_peComp?!ST.selectedP2Comp:!ST.selectedP2Id)return;
   const ft=ST.pendingFt;
   // Salvăm mai întâi + salvăm beneficiarul nou (dacă ORD)
   await saveDoc(ft);
@@ -1793,7 +1869,7 @@ async function confirmP2(){
     const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/submit`,{
       method:'POST',credentials:'include',
       headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
-      body:JSON.stringify({assigned_to:ST.selectedP2Id}),
+      body:JSON.stringify(_peComp?{assigned_comp:ST.selectedP2Comp}:{assigned_to:ST.selectedP2Id}),
     });
     const j=await r.json();
     if(!r.ok||!j.ok){
@@ -1801,6 +1877,8 @@ async function confirmP2(){
       // strict la P2 — receptii e câmpul lui P2). Mesaj clar pe 422 buget_an_curent_depasit.
       if(j.error==='buget_an_curent_depasit'){
         setS('⛔ '+(j.message||'Suma ordonanțată depășește bugetul anului de exercițiu.'),'err');
+      }else if(j.error==='assigned_ambiguu'||j.error==='compartiment_fara_membri'){
+        setS(j.message||j.error,'err');
       }else{
         setS(j.error||'Eroare la trimitere','err');
       }
@@ -1811,7 +1889,9 @@ async function confirmP2(){
     ST.docCapabilities[ft]=j.document?.capabilities||null;
     // Redirect automat la centralizare după trimite P2
     setTimeout(()=>showListSection(),1200);
-    setS(`Trimis la ${j.assigned_to?.nume||j.assigned_to?.email||'Responsabil CAB'}.`,'ok');
+    setS(_peComp
+      ? `Trimis la compartimentul ${ST.selectedP2Comp}.`
+      : `Trimis la ${j.assigned_to?.nume||j.assigned_to?.email||'Responsabil CAB'}.`,'ok');
   }catch(e){setS('Eroare: '+e.message,'err');}
 }
 
@@ -2182,6 +2262,10 @@ function resetF(ft){
   window.filterModalUsers           = filterModalUsers;
   window.selectP2                   = selectP2;
   window.confirmP2                  = confirmP2;
+  window.setP2Mode                  = setP2Mode;
+  window._p2RenderList              = _p2RenderList;
+  window._p2Compartimente           = _p2Compartimente;
+  window.selectP2Comp               = selectP2Comp;
   window.validateSecB               = validateSecB;
   window.completeAsP2               = completeAsP2;
   window.resetDocToP1               = resetDocToP1;

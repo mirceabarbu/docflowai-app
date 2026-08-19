@@ -1308,8 +1308,13 @@
 <div class="modal-ov" id="modal-p2" onclick="if(event.target===this)closeModal()">
   <div class="modal-box">
     <div class="modal-title">Selectează Responsabilul Buget</div>
+    <!-- #131b — comutator Persoană/Compartiment. ST.p2Mode e stare, clasa "primary" e reflectarea vizuală. -->
+    <div id="modal-p2-mode-switch" style="display:flex;gap:8px;margin-bottom:10px">
+      <button type="button" class="df-action-btn sm primary" id="modal-p2-mode-user" onclick="setP2Mode('user')">Persoană</button>
+      <button type="button" class="df-action-btn sm" id="modal-p2-mode-comp" onclick="setP2Mode('comp')">Compartiment</button>
+    </div>
     <input class="modal-search" id="modal-search" placeholder="Caută după nume sau email..."
-      oninput="filterModalUsers()" autocomplete="off"/>
+      oninput="_p2RenderList()" autocomplete="off"/>
     <div class="modal-list" id="modal-user-list"></div>
     <div class="modal-acts">
       <button class="df-action-btn" onclick="closeModal()">Anulează</button>
@@ -1507,9 +1512,9 @@
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.693" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.703" defer></script>
-<script src="/js/formular/list.js?v=3.9.778" defer></script>
+<script src="/js/formular/list.js?v=3.9.780" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
-<script src="/js/formular/doc.js?v=3.9.777" defer></script>
+<script src="/js/formular/doc.js?v=3.9.780" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>
 <script src="/js/shared/file-item.js?v=3.9.693" defer></script>
 <script src="/js/formular/formular.js?v=3.9.693" defer></script>
