@@ -201,15 +201,17 @@
       <div class="flt-grp" id="flt-status-grp">
         <label class="flt-lbl">Status</label>
         <select id="flt-status" class="flt-sel" onchange="loadList()">
+          <!-- #132a — set INIȚIAL (DF). Lista reală e rescrisă de _setLstStatusOpts()
+               din list.js la fiecare încărcare, fiindcă DF și ORD nu au aceleași stări. -->
           <option value="all">Toate</option>
           <option value="draft">Draft</option>
           <option value="pending_p2">La Responsabil CAB</option>
+          <option value="returnat">Returnat</option>
           <option value="completed">Completat</option>
-          <option value="generat_pdf">PDF generat</option>
           <option value="transmis_flux">Trimis flux</option>
+          <option value="de_revizuit">De revizuit</option>
           <option value="aprobat">Aprobat</option>
-          <option value="respins">Respins</option>
-          <option value="anulat">Anulat</option>
+          <option value="neaprobat">Neaprobat</option>
         </select>
       </div>
       <!-- 6. De la -->
@@ -1512,7 +1514,7 @@
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.693" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.703" defer></script>
-<script src="/js/formular/list.js?v=3.9.780" defer></script>
+<script src="/js/formular/list.js?v=3.9.782" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
 <script src="/js/formular/doc.js?v=3.9.780" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>

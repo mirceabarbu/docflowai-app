@@ -664,9 +664,38 @@ function _setLstCount(total){
   wEl.textContent = _lstCountLabel(n);
   box.hidden = false;
 }
+// #132a — DF și ORD NU au aceleași stări. `neaprobat` și `de_revizuit` se scriu exclusiv
+// pe formulare_df (garda isNotafd din formular-capabilities.mjs:87-88), iar `transmis_flux`
+// e scris brut doar la DF (FORMULAR_TYPES.df.linkFlowSetsStatus; la ORD e null, se derivă).
+// ORICE valoare de aici trebuie să aibă ramura ei de filtru în shared.mjs, altfel filtrul
+// cade tăcut pe ramura generică și întoarce zero rezultate.
+const _LST_STATUS_OPTS={
+  df:[['all','Toate'],['draft','Draft'],['pending_p2','La Responsabil CAB'],['returnat','Returnat'],
+      ['completed','Completat'],['transmis_flux','Trimis flux'],['de_revizuit','De revizuit'],
+      ['aprobat','Aprobat'],['neaprobat','Neaprobat']],
+  ord:[['all','Toate'],['draft','Draft'],['pending_p2','La Responsabil CAB'],['returnat','Returnat'],
+       ['completed','Completat'],['transmis_flux','Trimis flux'],['aprobat','Aprobat'],
+       ['neaprobat','Neaprobat']]
+};
+function _setLstStatusOpts(type){
+  const sel=document.getElementById('flt-status');
+  if(!sel)return;
+  const opts=_LST_STATUS_OPTS[type];
+  if(!opts)return;                        // alte taburi nu folosesc acest select
+  if(sel.dataset.lstType===type)return;   // deja populat pentru tipul curent — idempotent
+  const prev=sel.value;
+  sel.replaceChildren(...opts.map(function(o){
+    const el=document.createElement('option');el.value=o[0];el.textContent=o[1];return el;
+  }));
+  sel.dataset.lstType=type;
+  sel.value=opts.some(function(o){return o[0]===prev;})?prev:'all';
+}
 async function loadList(){
   // #130 — încărcarea inițială nu trece prin switchListTab, deci comutarea clasei se repetă aici.
   document.querySelector('.lst-table-wrap')?.classList.toggle('lst-tip-ord',_lstState.type==='ord');
+  // #132a — din același motiv, opțiunile de Status se sincronizează AICI (nu în switchListTab):
+  // e singurul punct prin care trec toate căile de încărcare a listei DF/ORD.
+  _setLstStatusOpts(_lstState.type);
   const tb=document.getElementById('lst-tbody');
   const em=document.getElementById('lst-empty');
   const ld=document.getElementById('lst-loading');

@@ -131,13 +131,15 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       diag: (row) => { expect(row.aprobat).toBe(false); },
     },
     {
-      // #115: flux REFUZAT e TERMINAL, la fel ca 'cancelled' — aliniere cu ALOP (alop.mjs deja corect).
-      name: 'completed + flux refuzat → completed (NU transmis_flux)',
+      // #115 a stabilit că un flux refuzat e TERMINAL (nu mai e transmis_flux). #132a păstrează asta
+      // și înlocuiește doar fallback-ul pe statusul brut cu 'neaprobat' derivat — la ORD nimic nu scrie
+      // vreodată acea coloană (asimetrie față de signing.mjs:153), deci un ORD refuzat apărea „Completat".
+      name: 'completed + flux refuzat → neaprobat (terminal, NU transmis_flux)',
       seed: async () => {
         const flowId = await seedFlowX('flow-ord-refused', { status: 'refused' });
         return seedOrd({ orgId: 1, createdBy: 1, status: 'completed', flowId });
       },
-      expectedBadge: 'completed',
+      expectedBadge: 'neaprobat',
       diag: (row) => { expect(row.aprobat).toBe(false); },
     },
     {
@@ -236,15 +238,17 @@ d('formulare-status-display: matrice parametrizată DF+ORD (anti-regresie badge)
       },
     },
     {
-      // #115: flux REFUZAT e TERMINAL, la fel ca 'cancelled' — aliniere cu ALOP (alop.mjs deja corect).
-      name: 'completed + flux refuzat → completed (NU transmis_flux)',
+      // #115 a stabilit că un flux refuzat e TERMINAL (nu mai e transmis_flux). #132a păstrează asta
+      // și înlocuiește doar fallback-ul pe statusul brut cu 'neaprobat' derivat (signing.mjs:153 scrie
+      // 'neaprobat' pe DF la refuz, dar nu prinde cazul de_revizuit — vezi comentariul din shared.mjs).
+      name: 'completed + flux refuzat → neaprobat (terminal, NU transmis_flux)',
       seed: async () => {
         const flowId = await seedFlowX('flow-df-refused', { status: 'refused' });
         return seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId });
       },
-      expectedBadge: 'completed',
+      expectedBadge: 'neaprobat',
       diag: (row) => {
-        expect(row).toHaveProperty('badge_status', 'completed');
+        expect(row).toHaveProperty('badge_status', 'neaprobat');
         expect(row.aprobat).toBe(false);
       },
     },

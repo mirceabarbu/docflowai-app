@@ -520,6 +520,10 @@ router.get('/api/formulare/list', async (req, res) => {
       // altfel status brut. Filtrele de mai jos sunt inversa algebrică a acestei derivări (filtru ⟺ badge).
       const _dfTransmis = `fd.status='completed' AND fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled' AND (f.data->>'status') IS DISTINCT FROM 'refused'`;
       const _dfAprobat  = `fd.flow_id IS NOT NULL AND ((f.data->>'status')='completed' OR (f.data->>'completed')::boolean=true)`;
+      // #132a — refuzul se DERIVĂ din flux, nu se citește din coloană. Motiv: garda
+      // `WHERE status IN ('transmis_flux','completed')` din signing.mjs:153 nu prinde un DF
+      // aflat în `de_revizuit` când fluxul e refuzat ⇒ badge-ul rămânea „De revizuit".
+      const _dfRespins  = `fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status') IN ('refused','rejected')`;
 
       if (status && status !== 'all') {
         if (status === 'transmis_flux') {
@@ -528,13 +532,18 @@ router.get('/api/formulare/list', async (req, res) => {
         } else if (status === 'aprobat') {
           // badge='aprobat' ⟺ NOT _dfTransmis AND (_dfAprobat SAU status brut='aprobat').
           conds.push(`((${_dfTransmis}) IS NOT TRUE AND ((${_dfAprobat}) OR fd.status='aprobat'))`);
-        } else if (status === 'respins') {
-          conds.push(`fd.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
+        } else if (status === 'neaprobat') {
+          // badge='neaprobat' ⟺ refuz derivat din flux, SAU status brut 'neaprobat'
+          // (cazul în care fluxul a fost între timp șters ⇒ derivarea nu mai are ce citi).
+          conds.push(`((${_dfRespins}) OR (fd.status='neaprobat' AND (${_dfTransmis}) IS NOT TRUE AND (${_dfAprobat}) IS NOT TRUE))`);
         } else if (status === 'completed') {
-          // badge='completed' ⟺ status='completed' care NU derivă transmis_flux/aprobat.
-          conds.push(`(fd.status='completed' AND (${_dfTransmis}) IS NOT TRUE AND (${_dfAprobat}) IS NOT TRUE)`);
+          // badge='completed' ⟺ status='completed' care NU derivă transmis_flux/aprobat/neaprobat.
+          conds.push(`(fd.status='completed' AND (${_dfTransmis}) IS NOT TRUE AND (${_dfRespins}) IS NOT TRUE AND (${_dfAprobat}) IS NOT TRUE)`);
         } else {
-          conds.push(`fd.status=$${params.push(status)}`);
+          // Stările brute (draft/pending_p2/returnat/de_revizuit): badge = status BRUT
+          // doar dacă niciuna dintre derivări nu îl acoperă. Fără aceste două gărzi,
+          // filtrul „De revizuit" ar întoarce documente al căror badge arată „Neaprobat".
+          conds.push(`(fd.status=$${params.push(status)} AND (${_dfRespins}) IS NOT TRUE AND (${_dfAprobat}) IS NOT TRUE)`);
         }
       }
       if (from) conds.push(`fd.created_at >= $${params.push(from)}`);
@@ -606,6 +615,14 @@ router.get('/api/formulare/list', async (req, res) => {
                       AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
                       AND (f.data->>'status')    IS DISTINCT FROM 'refused'
                  THEN 'transmis_flux' END,
+            -- #132a — refuz derivat din flux (același predicat ca fragmentul de filtru
+            -- de mai sus). Nu se suprapune cu 'transmis_flux' (acela exclude explicit
+            -- 'refused') și nici cu 'aprobat'
+            -- (un flux refuzat nu poate fi completat).
+            CASE WHEN fd.flow_id IS NOT NULL
+                      AND f.deleted_at IS NULL
+                      AND (f.data->>'status') IN ('refused','rejected')
+                 THEN 'neaprobat' END,
             CASE WHEN fd.flow_id IS NOT NULL
                       AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                  THEN 'aprobat' ELSE fd.status END
@@ -688,18 +705,22 @@ router.get('/api/formulare/list', async (req, res) => {
       // Inversa algebrică a derivării badge (filtru ⟺ badge), identic cu blocul DF dar cu aliasul `fo`.
       const _foTransmis = `fo.status='completed' AND fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled' AND (f.data->>'status') IS DISTINCT FROM 'refused'`;
       const _foAprobat  = `fo.flow_id IS NOT NULL AND ((f.data->>'status')='completed' OR (f.data->>'completed')::boolean=true)`;
+      // #132a — la ORD refuzul NU e scris NICĂIERI în coloana `status` (asimetrie față de DF,
+      // unde signing.mjs:153 pune 'neaprobat'). Fără derivarea de mai jos, un ORD refuzat
+      // rămâne afișat „Completat". Vezi FORMULAR_TYPES.ord.linkFlowSetsStatus = null.
+      const _foRespins  = `fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status') IN ('refused','rejected')`;
 
       if (status && status !== 'all') {
         if (status === 'transmis_flux') {
           conds.push(`((${_foTransmis}) OR (fo.status='transmis_flux' AND (${_foAprobat}) IS NOT TRUE))`);
         } else if (status === 'aprobat') {
           conds.push(`((${_foTransmis}) IS NOT TRUE AND ((${_foAprobat}) OR fo.status='aprobat'))`);
-        } else if (status === 'respins') {
-          conds.push(`fo.flow_id IS NOT NULL AND f.data->>'status' IN ('refused','rejected')`);
+        } else if (status === 'neaprobat') {
+          conds.push(`((${_foRespins}) OR (fo.status='neaprobat' AND (${_foTransmis}) IS NOT TRUE AND (${_foAprobat}) IS NOT TRUE))`);
         } else if (status === 'completed') {
-          conds.push(`(fo.status='completed' AND (${_foTransmis}) IS NOT TRUE AND (${_foAprobat}) IS NOT TRUE)`);
+          conds.push(`(fo.status='completed' AND (${_foTransmis}) IS NOT TRUE AND (${_foRespins}) IS NOT TRUE AND (${_foAprobat}) IS NOT TRUE)`);
         } else {
-          conds.push(`fo.status=$${params.push(status)}`);
+          conds.push(`(fo.status=$${params.push(status)} AND (${_foRespins}) IS NOT TRUE AND (${_foAprobat}) IS NOT TRUE)`);
         }
       }
       if (from) conds.push(`fo.created_at >= $${params.push(from)}`);
@@ -743,6 +764,10 @@ router.get('/api/formulare/list', async (req, res) => {
                       AND (f.data->>'status')    IS DISTINCT FROM 'cancelled'
                       AND (f.data->>'status')    IS DISTINCT FROM 'refused'
                  THEN 'transmis_flux' END,
+            CASE WHEN fo.flow_id IS NOT NULL
+                      AND f.deleted_at IS NULL
+                      AND (f.data->>'status') IN ('refused','rejected')
+                 THEN 'neaprobat' END,
             CASE WHEN fo.flow_id IS NOT NULL
                       AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
                  THEN 'aprobat' ELSE fo.status END
