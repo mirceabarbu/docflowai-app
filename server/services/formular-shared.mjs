@@ -23,6 +23,7 @@ import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
 import { codSsiBlockResponse } from './cod-ssi-validate.mjs';
 import { normalizeAngajamentRows } from './angajament-normalize.mjs';
 import { blocuriDinOrd, pregatesteScriereBlocuri, normalizeBlocIdx } from './ord-blocuri.mjs';
+import { dfAprobatSql } from './df-aprobat-sql.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -811,12 +812,7 @@ async function relinkAlopOnDfDelete(doc, id, actor) {
       // `else` de mai jos golea df_id (incidentul 04.08.2026). Se acceptă ambele.
       const { rows: parentRows } = await pool.query(
         `SELECT fd.id, fd.flow_id, fd.status,
-                (fd.flow_id IS NOT NULL
-                 AND f.deleted_at IS NULL
-                 AND f.data->>'status' IS DISTINCT FROM 'cancelled'
-                 AND f.data->>'status' IS DISTINCT FROM 'refused'
-                 AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-                ) AS aprobat
+                ${dfAprobatSql('fd', 'f')} AS aprobat
            FROM formulare_df fd
            LEFT JOIN flows f ON f.id = fd.flow_id
           WHERE fd.id=$1 AND fd.deleted_at IS NULL LIMIT 1`,

@@ -12,6 +12,7 @@ import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../../services/authz-scope.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
+import { dfAprobatSql } from '../../services/df-aprobat-sql.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -178,12 +179,7 @@ router.post('/flows/:flowId/refuse', async (req, res) => {
           // (pe calea cloud rămânea 'completed' → părintele nu se restaura niciodată). Ambele acceptate.
           const { rows: parentRows } = await pool.query(
             `SELECT fd.id, fd.flow_id, fd.status,
-                    (fd.flow_id IS NOT NULL
-                     AND f.deleted_at IS NULL
-                     AND f.data->>'status' IS DISTINCT FROM 'cancelled'
-                     AND f.data->>'status' IS DISTINCT FROM 'refused'
-                     AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-                    ) AS aprobat
+                    ${dfAprobatSql('fd', 'f')} AS aprobat
                FROM formulare_df fd
                LEFT JOIN flows f ON f.id = fd.flow_id
               WHERE fd.id=$1 AND fd.deleted_at IS NULL LIMIT 1`,

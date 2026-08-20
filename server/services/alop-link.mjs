@@ -26,6 +26,7 @@
 
 import { logger } from '../middleware/logger.mjs';
 import { dosarKeyExpr, dosarKeyOf } from './df-dosar-key.mjs';
+import { dfAprobatSql } from './df-aprobat-sql.mjs';
 
 export async function selfHealAlopDfLink(pool, flowId) {
   if (!pool || !flowId) return;
@@ -126,10 +127,7 @@ export async function selfHealAlopDfLinkByAlop(pool, alopId) {
         JOIN flows f ON f.id = fd.flow_id
        WHERE fd.source_alop_id = $1
          AND fd.deleted_at IS NULL
-         AND f.deleted_at IS NULL
-         AND f.data->>'status' IS DISTINCT FROM 'cancelled'
-         AND f.data->>'status' IS DISTINCT FROM 'refused'
-         AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+         AND ${dfAprobatSql('fd', 'f')}
        ORDER BY fd.revizie_nr DESC, fd.created_at DESC
     `, [alopId]);
 

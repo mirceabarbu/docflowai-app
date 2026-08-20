@@ -31,6 +31,7 @@ import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
+import { dfAprobatExistsSql } from '../services/df-aprobat-sql.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
@@ -57,10 +58,9 @@ const SQL_ALOP_FLUX_DF_ACTIV = `EXISTS (
      AND (fx.data->>'status')    IS DISTINCT FROM 'cancelled'
      AND (fx.data->>'status')    IS DISTINCT FROM 'refused')`;
 
-const SQL_ALOP_DF_APROBAT = `EXISTS (
-  SELECT 1 FROM flows fx
-   WHERE fx.id::text = ${SQL_ALOP_DF_FLOW}
-     AND ((fx.data->>'status') = 'completed' OR (fx.data->>'completed')::boolean = true))`;
+// #134d — gărzile lipsă (deleted_at/cancelled/refused) aliniate cu SQL_ALOP_FLUX_DF_ACTIV;
+// vezi server/services/df-aprobat-sql.mjs pentru justificarea fiecărei gărzi.
+const SQL_ALOP_DF_APROBAT = dfAprobatExistsSql(SQL_ALOP_DF_FLOW);
 
 const SQL_ALOP_DF_ARE_REVIZIE = `COALESCE((SELECT dfx.revizie_nr FROM formulare_df dfx WHERE dfx.id = a.df_id), 0) > 0`;
 
