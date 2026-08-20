@@ -13,6 +13,7 @@ import request from 'supertest';
 import { hasTestDb, migrate, truncateAll, pool,
          seedOrgUser, seedDf, seedOrd, seedAlop, seedFlowApproved, getAlop, getAlopCicluri, makeAuthCookie } from '../helpers/db-real.mjs';
 import { buildApp } from './helpers/app.mjs';
+import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
 
 const d = describe.skipIf(!hasTestDb());
 
@@ -105,19 +106,32 @@ d('POST /api/alop/:id/noua-lichidare — ciclu multi-ORD', () => {
       orgId: 1, createdBy: 1, status: 'completed', dfId: r0Id, dfFlowId: flowId, ordId,
       plataSumaEfectiva: 1000, cicluCurent: 1,
     });
+    await pool.query(`UPDATE formulare_df SET source_alop_id=$2 WHERE id=$1`, [r0Id, alopId]);
 
     // Buget epuizat pe R0 → 400 limita_depasita.
     const blocat = await request(app).post(`/api/alop/${alopId}/noua-lichidare`).set('Cookie', cookie()).send({});
     expect(blocat.status).toBe(400);
     expect(blocat.body.error).toBe('limita_depasita');
 
-    // Revizuiește DF-ul (relink ALOP completed → R1, invariant v3.9.554) și mărește col.10.
+    // Revizuiește DF-ul și mărește col.10.
     const rev = await request(app).post(`/api/formulare-df/${r0Id}/revizuieste`).set('Cookie', cookie()).send({ motiv: 'suplimentare buget' });
     expect(rev.status).toBe(200);
     const r1Id = rev.body.df.id;
     await pool.query(`UPDATE formulare_df SET rows_ctrl=$2::jsonb WHERE id=$1`,
       [r1Id, JSON.stringify([{ sum_rezv_crdt_bug_act: '5000' }])]);
-    expect((await getAlop(alopId)).df_id).toBe(r1Id); // relink invariant
+
+    // #134f — cât timp R1 e în DRAFT, plafonul rămâne al lui R0: blocajul PERSISTĂ.
+    // (Înainte, pointerul sărea pe draft și bugetul se debloca fără nicio aprobare.)
+    const inca = await request(app).post(`/api/alop/${alopId}/noua-lichidare`).set('Cookie', cookie()).send({});
+    expect(inca.status).toBe(400);
+    expect(inca.body.error).toBe('limita_depasita');
+    expect((await getAlop(alopId)).df_id).toBe(r0Id);
+
+    // Aprobarea reviziei mută pointerul (invariant: și pe ALOP `completed`).
+    const r1Flow = await seedFlowApproved();
+    await pool.query(`UPDATE formulare_df SET flow_id=$2, status='aprobat' WHERE id=$1`, [r1Id, r1Flow]);
+    await selfHealAlopDfLink(pool, r1Flow);
+    expect((await getAlop(alopId)).df_id).toBe(r1Id); // relink invariant, la APROBARE
 
     // Acum col.10 (5000) − ordonanțat curent (1000) = 4000 > 0 → ciclu nou permis.
     const res = await request(app).post(`/api/alop/${alopId}/noua-lichidare`).set('Cookie', cookie()).send({});

@@ -317,13 +317,23 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
     expect(rowsValParsed[0].influente).toBe(0);
   });
 
-  it('200 — UPDATE alop_instances re-link la noua revizie cu df_flow_id=NULL', async () => {
+  // #134f — testul ASERTA relegarea EAGER (`UPDATE alop_instances ... WHERE df_id=$2`),
+  // adică exact statement-ul șters de acest lot. `alop_instances.df_id` înseamnă de acum
+  // „revizia ÎN VIGOARE" (ultima aprobată): pointerul NU se mai mută la crearea reviziei,
+  // ci abia la aprobarea ei, prin selfHealAlopDfLink. Aserția veche cimenta comportamentul
+  // pe care lotul îl schimbă deliberat, deci a fost INVERSATĂ, nu ștearsă: singurul
+  // `UPDATE alop_instances` care mai are voie să plece de aici e FALLBACK-ul gardat pe
+  // `df_id IS NULL` (legătură deja ruptă după ștergerea unei revizii sau un refuz).
+  it('200 — /revizuieste NU mai mută pointerul ALOP; doar fallback-ul gardat pe df_id IS NULL', async () => {
     const r0Aprobat = makeDfRow({
       status: 'aprobat', flow_id: FLOW_ID,
       rows_val: [{ valt_actualiz: 100, valt_rev_prec: 0, influente: 100 }],
       rows_ctrl: [{}],
     });
-    const r1 = makeDfRow({ id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_ID });
+    const r1 = makeDfRow({
+      id: DF_R1_ID, revizie_nr: 1, parent_df_id: DF_ID,
+      source_alop_id: 'alop-1',   // proveniență prezentă ⇒ fallback-ul chiar se evaluează
+    });
 
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ ...r0Aprobat, aprobat: true }] })
@@ -336,11 +346,17 @@ describe('POST /:id/revizuieste — creare R1+ cu prefill', () => {
       .set('Cookie', `auth_token=${makeToken()}`)
       .send({ motiv: 'test' });
 
-    const alopUpdate = dbModule.__mockClient.query.mock.calls.find(c =>
-      String(c[0]).includes('UPDATE alop_instances') && String(c[0]).includes('df_flow_id=NULL')
+    const alopUpdates = dbModule.__mockClient.query.mock.calls.filter(c =>
+      String(c[0]).includes('UPDATE alop_instances')
     );
-    expect(alopUpdate).toBeDefined();
-    expect(alopUpdate[1]).toEqual([DF_R1_ID, DF_ID, 1]);
+
+    // ⛔ nicio relegare eager: niciun statement nu mai cheiază pe pointerul vechi.
+    expect(alopUpdates.some(c => String(c[0]).includes('WHERE df_id=$2'))).toBe(false);
+
+    // ✅ fallback-ul rămâne NEATINS — gardat strict pe legătura ruptă.
+    expect(alopUpdates).toHaveLength(1);
+    expect(String(alopUpdates[0][0])).toContain('df_id IS NULL');
+    expect(alopUpdates[0][1]).toEqual([DF_R1_ID, 'alop-1', 1]);
   });
 
   it('400 — refuză /revizuieste pe DF cu status=draft (neaprobat fără flag)', async () => {

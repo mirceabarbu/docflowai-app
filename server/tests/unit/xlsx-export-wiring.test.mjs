@@ -109,6 +109,31 @@ describe('#133b — formular.html: exact două butoane noi de export', () => {
   });
 });
 
+describe('#133c — cele trei butoane de export sunt vizual identice (primary + ico-download + text)', () => {
+  const BTN_IDS = ['btn-lst-export', 'btn-alop-export', 'clasa8-btn-export'];
+
+  it('8. toate trei au class="df-action-btn primary" (sau conțin ambele clase)', () => {
+    for (const id of BTN_IDS) {
+      const re = new RegExp(`id="${id}"[^>]*class="([^"]*)"|class="([^"]*)"[^>]*id="${id}"`);
+      const m = formularHtmlSrc.match(re);
+      expect(m, `buton #${id} nu a fost găsit`).not.toBeNull();
+      const cls = m[1] || m[2] || '';
+      expect(cls).toContain('df-action-btn');
+      expect(cls).toContain('primary');
+    }
+  });
+
+  it('9. toate trei folosesc #ico-download și textul Export Excel', () => {
+    for (const id of BTN_IDS) {
+      const idx = formularHtmlSrc.indexOf(`id="${id}"`);
+      expect(idx, `buton #${id} nu a fost găsit`).toBeGreaterThan(-1);
+      const chunk = formularHtmlSrc.slice(idx, idx + 300);
+      expect(chunk).toContain('#ico-download');
+      expect(chunk).toContain('Export Excel');
+    }
+  });
+});
+
 describe('#133b — non-regresie raportul Clasa 8 (doar încărcătorul s-a schimbat)', () => {
   const jsSrc = readPublic('js/formular/clasa8.js');
 

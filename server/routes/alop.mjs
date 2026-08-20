@@ -31,7 +31,10 @@ import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
-import { dfAprobatExistsSql } from '../services/df-aprobat-sql.mjs';
+import {
+  sqlDosarAreFluxActiv, sqlDosarAreAprobat,
+  sqlRevizieInLucruId, sqlRevizieInLucruNr,
+} from '../services/alop-dosar-sql.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
@@ -48,24 +51,33 @@ import * as _opmeMatcher from '../services/opme-matcher.mjs';
 // ⚠️ Ordinea ramurilor CASE = ordinea de precedență din vechiul cod client:
 // „revizie pe flux" suprascria „pe flux — semnare", care suprascria statusul brut.
 // Nu reordona ramurile.
-const SQL_ALOP_DF_FLOW = `COALESCE((SELECT dfx.flow_id FROM formulare_df dfx WHERE dfx.id = a.df_id), a.df_flow_id)`;
+// ── #134e — derivările de stare trec de pe POINTERUL a.df_id pe DOSAR ────────
+// Vezi server/services/alop-dosar-sql.mjs. Fragmentele rămân corelate STRICT pe `a.*`
+// (fără nicio referință la aliasul `df`), deci COUNT-ul fără join rămâne valid.
+const SQL_ALOP_FLUX_DF_ACTIV = sqlDosarAreFluxActiv('a');
 
-const SQL_ALOP_FLUX_DF_ACTIV = `EXISTS (
-  SELECT 1 FROM flows fx
-   WHERE fx.id::text = ${SQL_ALOP_DF_FLOW}
-     AND fx.deleted_at IS NULL
-     AND (fx.data->>'completed') IS DISTINCT FROM 'true'
-     AND (fx.data->>'status')    IS DISTINCT FROM 'cancelled'
-     AND (fx.data->>'status')    IS DISTINCT FROM 'refused')`;
+// #134d — definiția aprobării vine din df-aprobat-sql.mjs; #134e o ridică de la
+// „revizia POINTATĂ e aprobată" la „DOSARUL are o revizie aprobată".
+const SQL_ALOP_DF_APROBAT = sqlDosarAreAprobat('a');
 
-// #134d — gărzile lipsă (deleted_at/cancelled/refused) aliniate cu SQL_ALOP_FLUX_DF_ACTIV;
-// vezi server/services/df-aprobat-sql.mjs pentru justificarea fiecărei gărzi.
-const SQL_ALOP_DF_APROBAT = dfAprobatExistsSql(SQL_ALOP_DF_FLOW);
+// #134e — revizia în lucru a dosarului (derivată, fără coloană nouă).
+const SQL_ALOP_REVIZIE_LUCRU_ID = sqlRevizieInLucruId('a');
+const SQL_ALOP_REVIZIE_LUCRU_NR = sqlRevizieInLucruNr('a');
 
-const SQL_ALOP_DF_ARE_REVIZIE = `COALESCE((SELECT dfx.revizie_nr FROM formulare_df dfx WHERE dfx.id = a.df_id), 0) > 0`;
-
+// ⚠️ #134f — prima condiție a ramurii „revizie_flux" era `SQL_ALOP_DF_ARE_REVIZIE`, adică
+// „revizia POINTATĂ de a.df_id are revizie_nr > 0". Sub noua semantică (`df_id` = revizia ÎN
+// VIGOARE) pointerul stă pe R0 cât timp R1 e pe flux ⇒ condiția devine falsă și badge-ul s-ar
+// stinge exact în cazul pentru care există. A fost ȘTEARSĂ: a treia condiție o acoperă integral
+// — „există o revizie în lucru" (SQL_ALOP_REVIZIE_LUCRU_ID) impune deja `revizie_nr > 0`.
+// Constanta n-a mai rămas cu niciun consumator, deci a dispărut odată cu ea.
+//
+// ⚠️ #134e — a treia condiție a ramurii „revizie_flux" era `NOT (SQL_ALOP_DF_APROBAT)`,
+// adică „revizia POINTATĂ nu e încă aprobată". Odată ce `df_aprobat` devine o proprietate
+// a DOSARULUI (R0 aprobat ⇒ true pe viață), acea negație ar fi stins badge-ul exact în
+// cazul pentru care există. Înlocuită cu proprietatea echivalentă la nivel de dosar:
+// „există o revizie neaprobată" — structura și ORDINEA ramurilor rămân neatinse.
 const SQL_ALOP_BADGE = `CASE
-    WHEN ${SQL_ALOP_DF_ARE_REVIZIE} AND ${SQL_ALOP_FLUX_DF_ACTIV} AND NOT (${SQL_ALOP_DF_APROBAT})
+    WHEN ${SQL_ALOP_FLUX_DF_ACTIV} AND (${SQL_ALOP_REVIZIE_LUCRU_ID}) IS NOT NULL
       THEN 'revizie_flux'
     WHEN a.status = 'angajare' AND ${SQL_ALOP_FLUX_DF_ACTIV}
       THEN 'angajare_flux'
@@ -419,16 +431,11 @@ router.get('/api/alop', async (req, res) => {
         fo.status        AS ord_status,
         df.revizie_nr                AS df_revizie_nr,
         df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,
-        (SELECT CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL
-                      AND fdf.deleted_at IS NULL
-                      AND (fdf.data->>'completed') IS DISTINCT FROM 'true'
-                      AND (fdf.data->>'status')    IS DISTINCT FROM 'cancelled'
-                      AND (fdf.data->>'status')    IS DISTINCT FROM 'refused'
-                 THEN true ELSE false END
-         FROM flows fdf WHERE fdf.id::text = COALESCE(df.flow_id, a.df_flow_id)) AS df_flow_active,
-        (SELECT CASE WHEN (fdf.data->>'status')='completed' OR (fdf.data->>'completed')::boolean=true
-                 THEN true ELSE false END
-         FROM flows fdf WHERE fdf.id::text = COALESCE(df.flow_id, a.df_flow_id)) AS df_aprobat,
+        -- #134e — derivate pe DOSAR, nu pe pointerul a.df_id (alop-dosar-sql.mjs)
+        ${SQL_ALOP_FLUX_DF_ACTIV} AS df_flow_active,
+        ${SQL_ALOP_DF_APROBAT}    AS df_aprobat,
+        ${SQL_ALOP_REVIZIE_LUCRU_ID} AS df_revizie_lucru_id,
+        ${SQL_ALOP_REVIZIE_LUCRU_NR} AS df_revizie_lucru_nr,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
@@ -722,15 +729,12 @@ router.get('/api/alop/:id', async (req, res) => {
         fo.status                    AS ord_status,
         f1.id AS df_flow_exists,
         f2.id AS ord_flow_exists,
-        CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL AND (
-          f1.data->>'status' = 'completed' OR (f1.data->>'completed')::boolean = true
-        ) THEN true ELSE false END AS df_aprobat,
-        CASE WHEN COALESCE(df.flow_id, a.df_flow_id) IS NOT NULL
-                  AND f1.deleted_at IS NULL
-                  AND (f1.data->>'completed') IS DISTINCT FROM 'true'
-                  AND (f1.data->>'status')    IS DISTINCT FROM 'cancelled'
-                  AND (f1.data->>'status')    IS DISTINCT FROM 'refused'
-             THEN true ELSE false END AS df_flow_active,
+        -- #134e — derivate pe DOSAR, nu pe pointerul a.df_id (alop-dosar-sql.mjs).
+        -- Identice cu cele din listă: cardul de detaliu și rândul din listă nu pot diverge.
+        ${SQL_ALOP_DF_APROBAT}    AS df_aprobat,
+        ${SQL_ALOP_FLUX_DF_ACTIV} AS df_flow_active,
+        ${SQL_ALOP_REVIZIE_LUCRU_ID} AS df_revizie_lucru_id,
+        ${SQL_ALOP_REVIZIE_LUCRU_NR} AS df_revizie_lucru_nr,
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS ord_aprobat,
@@ -752,13 +756,11 @@ router.get('/api/alop/:id', async (req, res) => {
         COALESCE(a.suma_totala_platita,0) + COALESCE(a.plata_suma_efectiva,0) AS suma_platita_total,
         a.ciclu_curent,
         cicluri.cicluri_json AS cicluri_istorice,
-        EXISTS(
-          SELECT 1 FROM formulare_df fd2
-          WHERE fd2.parent_df_id = df.id
-            AND fd2.org_id = a.org_id
-            AND fd2.status IN ('draft','pending_p2','completed','returnat','transmis_flux','de_revizuit')
-            AND fd2.deleted_at IS NULL
-        ) AS df_revizie_in_lucru
+        -- #134e — era un EXISTS pe legătura părinte→copil a DF-ului POINTAT (coloana de
+        -- parentaj din formulare_df), cod MORT din 2026-05-03 (pointerul
+        -- a.df_id se muta pe revizia nouă, deci nicio revizie nu mai era „copil" al lui).
+        -- Acum se derivă pe DOSAR: garda anti-revizii-paralele redevine vie.
+        (${SQL_ALOP_REVIZIE_LUCRU_ID}) IS NOT NULL AS df_revizie_in_lucru
       FROM alop_instances a
       LEFT JOIN users        u   ON u.id   = a.created_by
       LEFT JOIN formulare_df df  ON df.id  = a.df_id
