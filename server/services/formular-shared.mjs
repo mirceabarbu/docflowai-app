@@ -281,9 +281,58 @@ function validateOrdCol5(rows) {
 //
 // Întoarce `{ anExercitiu, bugetAnCurent, cicluriArhivate }`, sau `null` dacă nu există
 // `dfId` ori DF-ul nu există (nimic de plafonat).
-export async function computeOrdBudgetContext({ dfId, orgId }) {
+/**
+ * #134b — rezolvă DOSARUL ALOP pentru contextul de buget al unui ORD.
+ * NU folosi `alop_instances.df_id` ca sursă principală: e un pointer MOBIL (se mută
+ * la crearea unei revizii DF), în timp ce `formulare_ord.df_id` e ÎNGHEȚAT pe revizia
+ * de la emitere. Când cei doi diverg, corelarea veche `a.df_id = df.id` nu mai
+ * potrivea nimic ⇒ cicluriArhivate = 0 ⇒ plafonul 422 ignora tot ce se ordonanțase.
+ * Ordinea = descrescătoare după încredere; fallback-ul pe pointer e doar pentru
+ * documentele vechi, fără `source_alop_id`.
+ * Întoarce id-ul ALOP sau null.
+ */
+export async function resolveAlopIdForBudget({ ordId, dfId, orgId }, db = pool) {
+  // Pasul 1 — prin ORD (cel mai sigur: ORD-ul e înghețat). Ciclul CURENT…
+  if (ordId) {
+    const cur = await db.query(
+      `SELECT a.id FROM alop_instances a
+        WHERE a.ord_id = $1 AND a.org_id = $2 AND a.cancelled_at IS NULL
+        LIMIT 1`, [ordId, orgId]);
+    if (cur.rows.length) return cur.rows[0].id;
+    // …apoi ciclurile ARHIVATE.
+    const arh = await db.query(
+      `SELECT a.id FROM alop_ord_cicluri c
+         JOIN alop_instances a ON a.id = c.alop_id
+        WHERE c.ord_id = $1 AND a.org_id = $2 AND a.cancelled_at IS NULL
+        LIMIT 1`, [ordId, orgId]);
+    if (arh.rows.length) return arh.rows[0].id;
+  }
+  if (!dfId) return null;
+  // Pasul 2 — prin proveniența DF-ului (mig. 084): scrisă la creare, nu se mai mișcă.
+  const prov = await db.query(
+    `SELECT a.id FROM formulare_df df
+       JOIN alop_instances a ON a.id = df.source_alop_id
+      WHERE df.id = $1 AND a.org_id = $2 AND a.cancelled_at IS NULL
+      LIMIT 1`, [dfId, orgId]);
+  if (prov.rows.length) return prov.rows[0].id;
+  // Pasul 3 — fallback pe pointerul mobil, pentru documentele vechi fără proveniență.
+  const ptr = await db.query(
+    `SELECT a.id FROM alop_instances a
+      WHERE a.df_id = $1 AND a.org_id = $2 AND a.cancelled_at IS NULL
+      LIMIT 1`, [dfId, orgId]);
+  return ptr.rows.length ? ptr.rows[0].id : null;
+}
+
+export async function computeOrdBudgetContext({ dfId, orgId, ordId = null }) {
   if (!dfId) return null;
   const anExercitiu = new Date().getFullYear();
+  const alopId = await resolveAlopIdForBudget({ ordId, dfId, orgId });
+  if (!alopId) {
+    // `cicluriArhivate = 0` e LEGITIM aici (dosar fără cicluri arhivate), dar poate ascunde
+    // și un dosar nerezolvat — nu-l lăsăm tăcut, ca la bug-ul #134b.
+    logger.warn({ dfId, ordId },
+      'computeOrdBudgetContext: dosar ALOP nerezolvat — plafon fără cicluri arhivate');
+  }
   const { rows } = await pool.query(
     `SELECT
        df.rows_ctrl,
@@ -297,7 +346,11 @@ export async function computeOrdBudgetContext({ dfId, orgId }) {
            LEFT JOIN jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r ON true
            WHERE fo.id = c.ord_id
          ) co
-         WHERE a.df_id = df.id AND a.org_id = $2 AND a.cancelled_at IS NULL
+         -- #134b — corelare prin DOSARUL ALOP rezolvat explicit (resolveAlopIdForBudget),
+         -- NU prin a.df_id = df.id: df e revizia INGHETATA a ORD-ului, iar a.df_id
+         -- e pointerul MOBIL al dosarului. La prima revizie DF cei doi divergeau si
+         -- subinterogarea intorcea 0 — plafonul ignora tacut tot ce se ordonantase deja.
+         WHERE a.id = $4::uuid AND a.org_id = $2 AND a.cancelled_at IS NULL
            AND COALESCE(
                  c.an_exercitiu,
                  EXTRACT(YEAR FROM c.plata_data)::int,
@@ -306,7 +359,7 @@ export async function computeOrdBudgetContext({ dfId, orgId }) {
        ), 0) AS cicluri_arhivate
      FROM formulare_df df
      WHERE df.id = $1`,
-    [dfId, orgId, anExercitiu]
+    [dfId, orgId, anExercitiu, alopId]
   );
   if (!rows.length) return null; // DF inexistent — nimic de verificat
 
@@ -324,7 +377,7 @@ async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
     const n = Number(String(v).trim().replace(/\s/g, ''));
     return isNaN(n) ? 0 : n;
   };
-  const ctx = await computeOrdBudgetContext({ dfId: ordDoc.df_id, orgId });
+  const ctx = await computeOrdBudgetContext({ dfId: ordDoc.df_id, orgId, ordId: ordDoc.id });
   if (!ctx) return null; // DF inexistent — nimic de verificat
   const { anExercitiu, bugetAnCurent, cicluriArhivate } = ctx;
   const ordCurentNou = (Array.isArray(newRows) ? newRows : [])

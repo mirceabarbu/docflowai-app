@@ -176,7 +176,9 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
     // (acel. helper). Frontend-ul sumează rândurile din UI + cicluri_arhivate și compară cu
     // buget_an_curent. NULL când ORD-ul nu are df_id (nimic de plafonat).
     try {
-      const ctx = await computeOrdBudgetContext({ dfId: doc.df_id, orgId: actor.orgId });
+      // #134b — `ordId` dat explicit: dosarul ALOP se rezolvă prin ORD (pointerul `alop.df_id`
+      // se mută la revizia DF și nu mai potrivește revizia înghețată a ORD-ului).
+      const ctx = await computeOrdBudgetContext({ dfId: doc.df_id, orgId: actor.orgId, ordId: doc.id });
       if (ctx) {
         doc.an_exercitiu = ctx.anExercitiu;
         doc.buget_an_curent = ctx.bugetAnCurent;
