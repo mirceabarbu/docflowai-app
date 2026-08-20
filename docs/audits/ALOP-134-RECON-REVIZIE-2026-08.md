@@ -508,3 +508,101 @@ rămâne REALĂ și reparabilă corect (dovedită direct pe expresia izolată, v
 dar nu avea, până acum, un simptom observabil prin `badge_status`. Asta o face totuși corectă
 de reparat — o refolosire viitoare a `SQL_ALOP_DF_APROBAT` în afara acelui context (plan posibil
 la #134e) ar fi moștenit bug-ul tăcut.
+
+---
+
+## R5-bis — backfill `source_alop_id` (#134g)
+
+### De ce — blocajul d7
+
+Reconul #134e (Etapa 6, d7) a stabilit că sub varianta **(A)** — pointerul `alop_instances.df_id`
+rămâne pe revizia **în vigoare** — lansarea unui flux pentru R(n+1) e **REFUZATĂ**:
+`checkFlowLinkable` → `403 flux_alt_document`, `checkFlowSigned` → `409 document_nesemnat`.
+`claimsAlopDocument` are două căi și niciuna nu se mai potrivește: cea directă
+(`meta.dfId === alop.df_id`) și cea „cloud fără DF" (gardată de `alopDocId == null`).
+
+Reparația (#134f) generalizează a doua cale la „documentul aparține **DOSARULUI** ALOP-ului",
+pe predicatul `sqlFdInDosar` livrat la #134e. Dar acel predicat are o **ramură LEGACY** pentru
+DF-urile cu `source_alop_id IS NULL`, care cheiază pe `org_id + nr_unic_inreg` — exact vectorul
+de coliziune din `docs/incidents/DF-NR-DUPLICAT.md`. Ca poartă de **AFIȘARE** e acceptabilă; ca
+poartă de **SECURITATE** pentru lansarea unui flux, **NU**.
+
+**Decizia owner-ului: nu slăbim poarta — eliminăm cazul legacy.** #134g propagă
+`source_alop_id` pe lanțurile de revizii DEJA legate de un ALOP, ca #134f să poată cheia strict
+pe `source_alop_id = alop.id`, fără niciun fallback.
+
+### Ce scrie
+
+`tools/backfill-df-source-alop.mjs` — **script one-off de mentenanță, NU migrație**, cu
+**dry-run implicit**. Scrie o singură coloană:
+
+```sql
+UPDATE formulare_df SET source_alop_id = <alop.id>, updated_at = NOW()
+ WHERE id = ANY(<membrii lanțului>) AND source_alop_id IS NULL AND deleted_at IS NULL
+```
+
+- **Candidați:** `alop_instances` cu `df_id IS NOT NULL`, `cancelled_at IS NULL`, al căror DF
+  pointat (nesters) are `source_alop_id IS NULL`.
+- **Lanțul:** CTE recursiv pe muchiile `parent_df_id`, traversate **NEORIENTAT** (strămoși ȘI
+  descendenți), `deleted_at IS NULL`, cu calea vizitată păstrată în `path` (protecție anti-ciclu)
+  și plafon de adâncime 200. ⛔ **Niciodată prin `nr_unic_inreg`** — acela e chiar vectorul de
+  coliziune pe care lotul îl elimină.
+- 🔒 **ALL-OR-NOTHING pe lanț:** o tranzacție per lanț (`BEGIN`/`COMMIT`), cu verificare de
+  `rowCount` == numărul de membri cu `source_alop_id NULL`; orice nepotrivire ⇒ `ROLLBACK` +
+  raport. Un lanț scris parțial ar rupe `has_newer_revision` și `/revizuieste` („Această revizie
+  nu mai este cea curentă" pe viață) — starea artificială de la #134c.
+- **Idempotent:** a doua rulare cu `--apply` raportează zero scrieri (candidații dispar).
+- ⛔ **NU** mută `alop_instances.df_id` — aceea e #134h, care rulează **după** #134f.
+
+### Cele patru porți de skip (+ a cincea, pentru date corupte)
+
+Fiecare sare **LANȚUL ÎNTREG** și se raportează **nominal, cu id-uri concrete**:
+
+| Poartă | Condiție |
+|---|---|
+| **S1** revendicat de altcineva | vreun membru are `source_alop_id` non-NULL diferit de `alop.id` |
+| **S2** ambiguu | două ALOP-uri necancelate pointează în același lanț (verificare NEfiltrată pe `--org`) |
+| **S3** coliziune de revizie | două rânduri active din lanț au același `revizie_nr` — ar viola `df_source_alop_revizie_uniq` (migrația 095); acoperă și `revizie_nr` deja ocupat pe acel ALOP de rânduri din **afara** lanțului |
+| **S4** org diferit | vreun membru are alt `org_id` decât ALOP-ul |
+| **CICLU** | buclă în `parent_df_id` (sau adâncime ≥ 200) — lanț neinterpretabil; scriptul îl sare și **continuă** cu restul |
+
+### Efectul secundar, dovedit — `source_alop_id` ESTE cheia de dosar
+
+`dosarKeyExpr = COALESCE(fd.source_alop_id::text, fd.nr_unic_inreg)` (#126). Scriind coloana,
+se **schimbă cheia** pentru acele DF-uri. Consumatori reali: `/aprobate` (`DISTINCT ON`),
+`has_newer_revision`, `nr_partajat`, `/revizii`, `trasabilitate.mjs`, `clasa8.mjs`,
+`/revizuieste`.
+
+- **Lanț cu număr UNIC ⇒ zero regresie** (aceeași partiție, alt nume) — dovedit pe răspunsul
+  HTTP în `server/tests/db/backfill-df-source-alop.test.mjs` (B7).
+- **Lanțuri care ÎMPART un număr ⇒ se SEPARĂ** — adică se repară exact bug-ul atacat de #126.
+  Contaminarea a fost **reprodusă pe fixture-ul nemodificat** (B8): înainte de backfill, R0-ul
+  dosarului B primea `has_newer_revision=true` / `latest_revizie_nr=1` de la R1-ul dosarului A,
+  `/revizii` pe B întorcea și cele două documente ale dosarului A, `/aprobate` pierdea B0 din
+  dropdown-ul ORD, iar badge-ul `nr_partajat` era **false** (avertizarea nu se aprindea, fiindcă
+  ambele dosare aveau aceeași cheie). După backfill: `has_newer_revision=false`,
+  `/revizii` = doar B0, B0 revine în `/aprobate`, `nr_partajat=true` pe toate trei.
+
+### Instrucțiune de rulare (Mircea)
+
+⚠️ Scriptul **nu** a fost rulat pe nicio bază reală de către agent. Ordinea obligatorie:
+
+1. **Backup întâi** — snapshot de volum Railway (plus, dacă e la îndemână, `pg_dump` local).
+   Scriptul e ADD-ONLY pe o singură coloană, dar schimbă o cheie de grupare: fără backup nu
+   există cale de întoarcere.
+2. **Dry-run** (implicit, nu scrie nimic) — citește raportul integral, în special secțiunea
+   `SĂRITE`:
+   ```bash
+   node tools/backfill-df-source-alop.mjs
+   ```
+   Opțional, gradual pe o singură organizație: `node tools/backfill-df-source-alop.mjs --org=<int>`.
+   ⚠️ `--org=` primește un **INTEGER** (`organizations.id`), nu un UUID.
+3. **Apply:**
+   ```bash
+   node tools/backfill-df-source-alop.mjs --apply
+   ```
+4. **Dry-run din nou** — confirmarea idempotenței: trebuie să raporteze **0 lanțuri examinate,
+   0 scrieri**.
+
+Fiecare lanț sărit apare cu ALOP-ul, DF-ul de pornire, membrii și motivul — investigabil
+individual, fără interogări suplimentare.
