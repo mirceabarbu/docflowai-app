@@ -25,6 +25,7 @@
  */
 
 import { logger } from '../middleware/logger.mjs';
+import { dosarKeyExpr, dosarKeyOf } from './df-dosar-key.mjs';
 
 export async function selfHealAlopDfLink(pool, flowId) {
   if (!pool || !flowId) return;
@@ -42,8 +43,8 @@ export async function selfHealAlopDfLink(pool, flowId) {
 
     // Re-leagă DOAR dacă ALOP-ul e necancelat (include ALOP-urile completed — vezi
     // invariantul de mai sus) și df_id e NULL (legătură ruptă: refuz R0, link-df ratat)
-    // sau pointează la o altă revizie a aceluiași document (același nr_unic_inreg).
-    // Un df_id care pointează la un DF cu alt nr_unic_inreg NU se atinge (relegare manuală).
+    // sau pointează la o altă revizie a aceluiași DOSAR (dosarKeyExpr, #134c).
+    // Un df_id care pointează la un DF din alt dosar NU se atinge (relegare manuală).
     const { rowCount } = await pool.query(
       `UPDATE alop_instances a
           SET df_id = $1, df_flow_id = $2, df_completed_at = NOW(), updated_at = NOW()
@@ -53,11 +54,16 @@ export async function selfHealAlopDfLink(pool, flowId) {
           AND (
             a.df_id IS NULL
             OR EXISTS (
+              -- #134c - cheia e DOSARUL, nu numarul de inregistrare. In productie exista
+              -- nr_unic_inreg duplicate intre dosare diferite (docs/incidents/DF-NR-DUPLICAT.md),
+              -- deci comparatia pe numar accepta drept "aceeasi serie" un DF din alt dosar.
+              -- #126 a convertit cinci interogari pe dosarKeyExpr si a sarit peste aceasta.
               SELECT 1 FROM formulare_df fd
-               WHERE fd.id = a.df_id AND fd.org_id = $4 AND fd.nr_unic_inreg = $5
+               WHERE fd.id = a.df_id AND fd.org_id = $4
+                 AND ${dosarKeyExpr('fd')} = $5
             )
           )`,
-      [df.id, flowId, df.source_alop_id, df.org_id, df.nr_unic_inreg]
+      [df.id, flowId, df.source_alop_id, df.org_id, dosarKeyOf(df)]
     );
     if (!rowCount) return;
 

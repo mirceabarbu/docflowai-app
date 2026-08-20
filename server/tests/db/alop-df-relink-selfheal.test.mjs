@@ -151,11 +151,15 @@ d('Linking DF↔ALOP — invariant relink-pe-completed + self-heal', () => {
 
   it('df_id pointează la revizia veche (același nr_unic) → relink la cea aprobată acum', async () => {
     const oldFlowId = await seedFlowApproved();
-    const r0Id = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: oldFlowId, nrUnic: 'DF-SH-3' });
-    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId: r0Id, dfFlowId: oldFlowId });
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare' });
+    // #134c: dupa fix, identitatea e DOSARUL (source_alop_id) — r0 il poarta de la creare,
+    // reflectand invariantul real (revizuieste COPIAZA source_alop_id din parinte, nu-l
+    // adauga doar pe copil). Inainte de fix testul seta source_alop_id DOAR pe r1 (via UPDATE
+    // dupa creare), o stare artificiala ce nu apare in productie pe calea reala /revizuieste.
+    const r0Id = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: oldFlowId, nrUnic: 'DF-SH-3', sourceAlopId: alopId });
+    await pool.query(`UPDATE alop_instances SET df_id=$2, df_flow_id=$3 WHERE id=$1`, [alopId, r0Id, oldFlowId]);
     const newFlowId = await seedFlowApproved();
-    const r1Id = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: newFlowId, nrUnic: 'DF-SH-3', revizieNr: 1, parentDfId: r0Id });
-    await pool.query(`UPDATE formulare_df SET source_alop_id=$2 WHERE id=$1`, [r1Id, alopId]);
+    const r1Id = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: newFlowId, nrUnic: 'DF-SH-3', revizieNr: 1, parentDfId: r0Id, sourceAlopId: alopId });
 
     await selfHealAlopDfLink(pool, newFlowId);
 
@@ -238,5 +242,110 @@ d('Linking DF↔ALOP — invariant relink-pe-completed + self-heal', () => {
     const res = await request(app).post(`/api/alop/${alop2}/link-df`).set('Cookie', p1()).send({ df_id: dfId });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('df_deja_legat');
+  });
+
+  // ── #134c: garda de self-heal cheiaza pe DOSAR (source_alop_id), nu pe nr_unic_inreg ──
+  // Context: nr_unic_inreg poate fi DUPLICAT intre dosare ALOP diferite in productie
+  // (docs/incidents/DF-NR-DUPLICAT.md). Garda veche compara doar numarul -> accepta
+  // gresit un DF dintr-un alt dosar drept "aceeasi serie".
+
+  it('K1 (invariant): df_id legat manual la un DF din ALT dosar, cu ACELASI nr_unic_inreg → ramane neatins (garda cheiaza pe dosar, nu pe numar)', async () => {
+    // Dosarul Y: ALOP AY cu propriul DF, acelasi numar de inregistrare '4711'.
+    const alopY = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', titlu: 'ALOP Y' });
+    const dyR0 = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: '4711', sourceAlopId: alopY });
+
+    // Dosarul X: ALOP AX legat MANUAL la DF-ul dosarului Y (relegare manuala, cross-dosar).
+    const alopX = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', titlu: 'ALOP X', dfId: dyR0 });
+
+    // Se aproba o revizie a PROPRIULUI DF al dosarului X, cu ACELASI numar '4711'.
+    const flowX1 = await seedFlowApproved();
+    const dxR1 = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: flowX1, nrUnic: '4711', sourceAlopId: alopX, revizieNr: 1 });
+
+    await selfHealAlopDfLink(pool, flowX1);
+
+    const a = await getAlop(alopX);
+    // Garda pe DOSAR: dyR0 apartine dosarului Y (source_alop_id=alopY) != dosarul lui dxR1 (alopX)
+    // => EXISTS fals => relegarea manuala NU e suprascrisa.
+    expect(a.df_id).toBe(dyR0);
+    expect(a.df_flow_id).toBeNull();
+  });
+
+  it('K2 (non-regresie): relegare corecta in cadrul aceluiasi dosar, chiar cu numar comun cu alt dosar', async () => {
+    // Un alt dosar (Y) cu acelasi numar, ca sa dovedim ca relinkul nu se bazeaza pe numar.
+    await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: '4711' });
+
+    const dxR0Flow = await seedFlowApproved();
+    const dxR0 = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: dxR0Flow, nrUnic: '4711' });
+    const alopX = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId: dxR0, dfFlowId: dxR0Flow });
+    await pool.query(`UPDATE formulare_df SET source_alop_id=$2 WHERE id=$1`, [dxR0, alopX]);
+
+    const dxR1Flow = await seedFlowApproved();
+    const dxR1 = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: dxR1Flow, nrUnic: '4711', sourceAlopId: alopX, revizieNr: 1, parentDfId: dxR0 });
+
+    await selfHealAlopDfLink(pool, dxR1Flow);
+
+    const a = await getAlop(alopX);
+    expect(a.df_id).toBe(dxR1);
+    expect(a.df_flow_id).toBe(dxR1Flow);
+  });
+
+  // NOTĂ (raportată, nu ascunsă): selfHealAlopDfLink SELECTEAZĂ DF-ul aprobat cu
+  // `source_alop_id IS NOT NULL` (linia 36) — deci `df` din funcție are ÎNTOTDEAUNA
+  // source_alop_id populat, niciodată `dosarKeyOf(df)` nu cade pe fallback-ul de
+  // nr_unic_inreg. Fallback-ul rămâne relevant pentru fd (a.df_id) dacă acesta e
+  // legacy — dar atunci comparația e mereu FALS (nr_unic text vs. UUID alopId),
+  // deci un fd cu adevărat legacy (fără source_alop_id) NU mai e recunoscut ca
+  // "aceeași serie" doar pe bază de număr — comportament NOU, mai strict decât
+  // înainte, dar SIGUR (nu suprascrie o legătură ambiguă). K3 testează în schimb
+  // invariantul relevant la acest call-site: match-ul se face pe DOSAR (id), nu pe
+  // număr — chiar dacă numărul de înregistrare diferă între revizii.
+  it('K3: match pe dosar (source_alop_id), nu pe numar — functioneaza chiar daca nr_unic_inreg difera intre revizii', async () => {
+    const oldFlowId = await seedFlowApproved();
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare' });
+    const r0Id = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: oldFlowId, nrUnic: 'DF-NUM-VECHI', sourceAlopId: alopId });
+    await pool.query(`UPDATE alop_instances SET df_id=$2, df_flow_id=$3 WHERE id=$1`, [alopId, r0Id, oldFlowId]);
+
+    const newFlowId = await seedFlowApproved();
+    // Numar DIFERIT fata de r0Id (editat intre revizii), dar acelasi dosar (source_alop_id).
+    const r1Id = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId: newFlowId, nrUnic: 'DF-NUM-NOU', revizieNr: 1, parentDfId: r0Id, sourceAlopId: alopId });
+
+    await selfHealAlopDfLink(pool, newFlowId);
+
+    const a = await getAlop(alopId);
+    expect(a.df_id).toBe(r1Id);
+    expect(a.df_flow_id).toBe(newFlowId);
+  });
+
+  it('K4: df_id pointeaza la un DF din alt dosar (numar diferit) → relegare manuala respectata, ALOP neatins', async () => {
+    const otherDfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-K4-ALTUL' });
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId: otherDfId });
+    const flowId = await seedFlowApproved();
+    const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId, nrUnic: 'DF-K4-NOU', sourceAlopId: alopId });
+
+    await selfHealAlopDfLink(pool, flowId);
+
+    const a = await getAlop(alopId);
+    expect(a.df_id).toBe(otherDfId);
+    expect(a.df_flow_id).toBeNull();
+  });
+
+  it('K5: izolare pe org — un DF cu aceeasi cheie de dosar din alt org NU potriveste', async () => {
+    const { orgId: org2 } = await seedOrgUser({ orgName: 'Org Test 2', role: 'user', email: 'p1-org2@x.ro' });
+    const flowId = await seedFlowApproved();
+    const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare' });
+    // DF cu source_alop_id = alopId, dar in alt ORG (izolare multi-tenant) — nu ar trebui gasit
+    // de selectia initiala (flow_id + source_alop_id), dar testam explicit garda EXISTS pe org_id
+    // legand manual un df_id "strain" si verificand ca nu se produce relegare cross-org.
+    const foreignDf = await seedDf({ orgId: org2, createdBy: 1, status: 'aprobat', nrUnic: 'DF-K5', sourceAlopId: alopId });
+    await pool.query(`UPDATE alop_instances SET df_id=$2 WHERE id=$1`, [alopId, foreignDf]);
+
+    await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId, nrUnic: 'DF-K5', sourceAlopId: alopId, revizieNr: 1 });
+
+    await selfHealAlopDfLink(pool, flowId);
+
+    const a = await getAlop(alopId);
+    // EXISTS-ul din garda filtreaza pe fd.org_id = $4 (org-ul DF-ului aprobat acum, org 1);
+    // foreignDf e in org 2 -> nu trece de filtrul de org -> ramane relegarea straina neatinsa.
+    expect(a.df_id).toBe(foreignDf);
   });
 });
