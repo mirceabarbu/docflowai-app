@@ -6,7 +6,7 @@
  * `window.XLSX` e MOCK-UIT — testele nu ating rețeaua (nu se apelează `load()`).
  */
 
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -140,4 +140,73 @@ describe('DFXlsx.save', () => {
     globalThis.window.XLSX = undefined;
     await expect(DFXlsx.save([['A']], { filename: 'x.xlsx' })).rejects.toThrow();
   }, 15000);
+});
+
+describe('#133c — normalizarea numelui fișierului (extensie .xlsx + un singur underscore)', () => {
+  beforeEach(() => {
+    delete globalThis.window.XLSX;
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-20T12:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("1. 'DF_' ⇒ 'DF_2026-08-20.xlsx' (UN singur underscore, extensie prezentă)", async () => {
+    const { XLSX, calls } = mockXlsxLib();
+    globalThis.window.XLSX = XLSX;
+    await DFXlsx.save([['A']], { filename: 'DF_' });
+    expect(calls.writeFile[0].filename).toBe('DF_2026-08-20.xlsx');
+  });
+
+  it("2. 'DF' (fără underscore) ⇒ același rezultat", async () => {
+    const { XLSX, calls } = mockXlsxLib();
+    globalThis.window.XLSX = XLSX;
+    await DFXlsx.save([['A']], { filename: 'DF' });
+    expect(calls.writeFile[0].filename).toBe('DF_2026-08-20.xlsx');
+  });
+
+  it("3. 'ALOP_' și 'ORD_' ⇒ nume corecte cu extensie", async () => {
+    const { XLSX: XLSX1, calls: calls1 } = mockXlsxLib();
+    globalThis.window.XLSX = XLSX1;
+    await DFXlsx.save([['A']], { filename: 'ALOP_' });
+    expect(calls1.writeFile[0].filename).toBe('ALOP_2026-08-20.xlsx');
+
+    delete globalThis.window.XLSX;
+    const { XLSX: XLSX2, calls: calls2 } = mockXlsxLib();
+    globalThis.window.XLSX = XLSX2;
+    await DFXlsx.save([['A']], { filename: 'ORD_' });
+    expect(calls2.writeFile[0].filename).toBe('ORD_2026-08-20.xlsx');
+  });
+
+  it('4. idempotență: un nume cu data ȘI extensia deja prezente nu le primește a doua oară', async () => {
+    const { XLSX, calls } = mockXlsxLib();
+    globalThis.window.XLSX = XLSX;
+    await DFXlsx.save([['A']], { filename: 'DF_2026-08-20.xlsx' });
+    expect(calls.writeFile[0].filename).toBe('DF_2026-08-20.xlsx');
+  });
+
+  it('5. numele final se termină cu .xlsx exact o dată, zero .xlsx.xlsx', async () => {
+    const { XLSX, calls } = mockXlsxLib();
+    globalThis.window.XLSX = XLSX;
+    await DFXlsx.save([['A']], { filename: 'DF_2026-08-20.xlsx' });
+    const fname = calls.writeFile[0].filename;
+    expect(fname).toMatch(/\.xlsx$/);
+    expect(fname).not.toContain('.xlsx.xlsx');
+  });
+
+  it('6. zero underscore dublu în numele final', async () => {
+    const { XLSX, calls } = mockXlsxLib();
+    globalThis.window.XLSX = XLSX;
+    await DFXlsx.save([['A']], { filename: 'DF_' });
+    expect(calls.writeFile[0].filename).not.toContain('__');
+  });
+
+  it('7. calea reală e XLSX.writeFile (nu Blob) — bookType nu se aplică aici', async () => {
+    const { XLSX, calls } = mockXlsxLib();
+    globalThis.window.XLSX = XLSX;
+    await DFXlsx.save([['A']], { filename: 'DF_' });
+    expect(calls.writeFile.length).toBe(1);
+    expect(calls.writeFile[0]).toHaveProperty('wb');
+  });
 });

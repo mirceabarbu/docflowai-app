@@ -27,13 +27,17 @@
     return _loading;
   }
 
+  // #133c — numele fisierului: baza curatata de separatori si de extensie, apoi
+  // _AAAA-LL-ZZ cu UN singur underscore, apoi .xlsx exact o data. Fara extensie,
+  // Windows nu deschide fisierul la dublu-click si XLSX.writeFile nu mai poate
+  // deduce bookType. Apelantii trimit 'DF_'/'ORD_'/'ALOP_' si NU se modifica.
   function _withDateSuffix(filename) {
     const dateStr = new Date().toISOString().slice(0, 10);
-    const suffix = '_' + dateStr;
-    if (filename.includes(suffix)) return filename;
-    const dot = filename.lastIndexOf('.');
-    if (dot === -1) return filename + suffix;
-    return filename.slice(0, dot) + suffix + filename.slice(dot);
+    let base = String(filename || 'export');
+    base = base.replace(/\.(xlsx|xls)$/i, '');
+    base = base.replace(/[_\-\s]+$/, '');
+    if (!base.endsWith('_' + dateStr)) base = base + '_' + dateStr;
+    return base + '.xlsx';
   }
 
   async function save(aoa, opts) {
