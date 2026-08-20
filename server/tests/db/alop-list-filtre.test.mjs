@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { hasTestDb, migrate, truncateAll, pool,
-         seedOrgUser, seedAlop, makeAuthCookie } from '../helpers/db-real.mjs';
+         seedOrgUser, seedAlop, seedDf, seedFlow, makeAuthCookie } from '../helpers/db-real.mjs';
 import { buildApp } from './helpers/app.mjs';
 
 const d = describe.skipIf(!hasTestDb());
@@ -101,5 +101,150 @@ d('GET /api/alop — filtre listă (#121)', () => {
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(0);
     expect(res.body.alop).toEqual([]);
+  });
+
+  // ── #132b — badge_status derivat server-side; filtrul e inversa lui exactă ─────────
+  //
+  // Fixtures (fiecare cu un rând REAL în `flows`, ca derivarea să aibă ce citi):
+  //   A — angajare, DF fără flux                       ⇒ angajare
+  //   B — angajare, DF cu flux ACTIV, revizie_nr=0     ⇒ angajare_flux
+  //   C — lichidare, DF revizie_nr=1 + flux ACTIV      ⇒ revizie_flux (revizia bate FAZA)
+  //   D — lichidare, DF fără revizie                   ⇒ lichidare
+  //   E — angajare, flux REFUZAT (deci NU activ)       ⇒ angajare
+  describe('#132b — badge_status + filtru derivat', () => {
+    let A, B, C, D, E;
+
+    async function seedBadgeFixtures() {
+      // A — DF fără flux
+      const dfA = await seedDf({ orgId, createdBy: adminId, status: 'completed', nrUnic: 'DF-A' });
+      A = await seedAlop({ orgId, createdBy: adminId, status: 'angajare', titlu: 'ALOP A', dfId: dfA });
+
+      // B — DF cu flux ACTIV (pending), fără revizie
+      const flB = await seedFlow({ orgId, completed: false });
+      const dfB = await seedDf({ orgId, createdBy: adminId, status: 'transmis_flux', nrUnic: 'DF-B', flowId: flB });
+      B = await seedAlop({ orgId, createdBy: adminId, status: 'angajare', titlu: 'ALOP B', dfId: dfB, dfFlowId: flB });
+
+      // C — revizie R1 pe flux ACTIV, dar ALOP e deja în lichidare
+      const flC = await seedFlow({ orgId, completed: false });
+      const dfC = await seedDf({ orgId, createdBy: adminId, status: 'transmis_flux', nrUnic: 'DF-C', flowId: flC, revizieNr: 1 });
+      C = await seedAlop({ orgId, createdBy: adminId, status: 'lichidare', titlu: 'ALOP C', dfId: dfC, dfFlowId: flC });
+
+      // D — lichidare curată, DF fără revizie și fără flux activ
+      const dfD = await seedDf({ orgId, createdBy: adminId, status: 'completed', nrUnic: 'DF-D' });
+      D = await seedAlop({ orgId, createdBy: adminId, status: 'lichidare', titlu: 'ALOP D', dfId: dfD });
+
+      // E — flux REFUZAT ⇒ nu e activ ⇒ badge rămâne faza brută
+      const flE = await seedFlow({ orgId, completed: false });
+      await pool.query(`UPDATE flows SET data = jsonb_set(data, '{status}', '"refused"') WHERE id = $1`, [flE]);
+      const dfE = await seedDf({ orgId, createdBy: adminId, status: 'transmis_flux', nrUnic: 'DF-E', flowId: flE });
+      E = await seedAlop({ orgId, createdBy: adminId, status: 'angajare', titlu: 'ALOP E', dfId: dfE, dfFlowId: flE });
+    }
+
+    beforeEach(seedBadgeFixtures);
+
+    // `alop_instances.id` e UUID (string) — sortare LEXICOGRAFICĂ, nu numerică:
+    // un comparator `x - y` întoarce NaN și lasă ordinea neschimbată (fals negativ mascat).
+    const ids = res => res.body.alop.map(a => a.id).sort();
+
+    it('1. ?status=angajare — A și E (flux refuzat ≠ activ), NU B', async () => {
+      const res = await request(app).get('/api/alop?status=angajare').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(ids(res)).toEqual([A, E].sort());
+      expect(ids(res)).not.toContain(B);
+    });
+
+    it('2. ?status=angajare_flux — B, NU A', async () => {
+      const res = await request(app).get('/api/alop?status=angajare_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(ids(res)).toEqual([B]);
+      expect(ids(res)).not.toContain(A);
+    });
+
+    it('3. ?status=revizie_flux — C (revizia suprascrie ORICE fază), NU B', async () => {
+      const res = await request(app).get('/api/alop?status=revizie_flux').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(ids(res)).toEqual([C]);
+      expect(ids(res)).not.toContain(B);
+    });
+
+    it('4. ?status=lichidare — D, NU C', async () => {
+      const res = await request(app).get('/api/alop?status=lichidare').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(ids(res)).toEqual([D]);
+      expect(ids(res)).not.toContain(C);
+    });
+
+    it('5. ?status=completed — niciunul dintre A-E', async () => {
+      const res = await request(app).get('/api/alop?status=completed').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(res.body.alop).toEqual([]);
+      expect(res.body.total).toBe(0);
+    });
+
+    it('6. total (COUNT fără JOIN) === rows.length pentru FIECARE filtru derivat', async () => {
+      for (const st of ['angajare', 'angajare_flux', 'revizie_flux', 'lichidare', 'completed']) {
+        const res = await request(app).get('/api/alop?status=' + st).set('Cookie', cookie());
+        expect(res.status).toBe(200);
+        expect({ st, total: res.body.total }).toEqual({ st, total: res.body.alop.length });
+      }
+    });
+
+    it('7. invariant — fiecare rând întors la ?status=X are badge_status === X', async () => {
+      for (const st of ['angajare', 'angajare_flux', 'revizie_flux', 'lichidare']) {
+        const res = await request(app).get('/api/alop?status=' + st).set('Cookie', cookie());
+        expect(res.status).toBe(200);
+        expect(res.body.alop.length).toBeGreaterThan(0);
+        for (const row of res.body.alop) expect(row.badge_status).toBe(st);
+      }
+    });
+
+    it('8. fără ?status — toate cinci, fiecare cu badge_status derivat corect', async () => {
+      const res = await request(app).get('/api/alop').set('Cookie', cookie());
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(5);
+      const byId = Object.fromEntries(res.body.alop.map(a => [a.id, a.badge_status]));
+      expect(byId[A]).toBe('angajare');
+      expect(byId[B]).toBe('angajare_flux');
+      expect(byId[C]).toBe('revizie_flux');
+      expect(byId[D]).toBe('lichidare');
+      expect(byId[E]).toBe('angajare');
+    });
+
+    it('9. GET /api/alop/:id expune ACELAȘI badge_status ca lista', async () => {
+      for (const [id, expected] of [[A, 'angajare'], [B, 'angajare_flux'], [C, 'revizie_flux'], [D, 'lichidare'], [E, 'angajare']]) {
+        const res = await request(app).get('/api/alop/' + id).set('Cookie', cookie());
+        expect(res.status).toBe(200);
+        expect(res.body.alop.badge_status).toBe(expected);
+      }
+    });
+  });
+
+  // ── #133a — modul export ?all=1 ──────────────────────────────────────────────
+  it('10. ALOP ?all=1 întoarce toate dosarele filtrate, iar ?all=1&status=angajare_flux respectă filtrul derivat (#132b)', async () => {
+    for (let i = 0; i < 25; i++) {
+      await seedAlop({ orgId, createdBy: adminId, status: 'draft', titlu: 'ALOP export ' + i });
+    }
+    const flowIdX = await seedFlow({ orgId, completed: false });
+    const dfX = await seedDf({ orgId, createdBy: adminId, status: 'completed', flowId: flowIdX, nrUnic: 'DF-2026-EXP1' });
+    const alopFlux = await seedAlop({ orgId, createdBy: adminId, status: 'angajare', dfId: dfX, titlu: 'ALOP pe flux' });
+
+    const resAll = await request(app).get('/api/alop?all=1').set('Cookie', cookie());
+    expect(resAll.status).toBe(200);
+    expect(resAll.body.alop.length).toBe(resAll.body.total);
+    expect(resAll.body.total).toBeGreaterThan(20);
+
+    const resFlux = await request(app).get('/api/alop?all=1&status=angajare_flux').set('Cookie', cookie());
+    expect(resFlux.status).toBe(200);
+    expect(resFlux.body.alop.map(a => a.id)).toContain(alopFlux);
+    expect(resFlux.body.alop.every(a => a.badge_status === 'angajare_flux')).toBe(true);
+  });
+
+  it('11. ALOP ?limit=999999 (fără all) întoarce cel mult 100 de rânduri — gaura plafonată la Etapa 2', async () => {
+    for (let i = 0; i < 15; i++) {
+      await seedAlop({ orgId, createdBy: adminId, status: 'draft', titlu: 'ALOP plafon ' + i });
+    }
+    const res = await request(app).get('/api/alop?limit=999999').set('Cookie', cookie());
+    expect(res.status).toBe(200);
+    expect(res.body.alop.length).toBeLessThanOrEqual(100);
   });
 });

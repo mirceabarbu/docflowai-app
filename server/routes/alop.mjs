@@ -31,9 +31,46 @@ import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
+import { dfAprobatExistsSql } from '../services/df-aprobat-sql.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
 import * as _opmeMatcher from '../services/opme-matcher.mjs';
+
+// ── #132b — sursă UNICĂ pentru starea AFIȘATĂ a unui dosar ALOP ──────────────
+// Înainte, badge-ul se calcula pe client (alop.js) iar filtrul pe `a.status` brut,
+// deci „Pe flux — semnare" și „Revizie pe flux" se vedeau dar nu se puteau filtra.
+//
+// ⚠️ Scris EXCLUSIV pe `a.*` + subinterogări CORELATE, deliberat.
+// Interogarea de COUNT din GET /api/alop nu are NICIUN join (regula #121):
+// orice referință la aliasul `df` ar rupe-o. Prin corelare, aceeași expresie
+// merge identic în SELECT, în WHERE-ul listei și în WHERE-ul COUNT-ului.
+//
+// ⚠️ Ordinea ramurilor CASE = ordinea de precedență din vechiul cod client:
+// „revizie pe flux" suprascria „pe flux — semnare", care suprascria statusul brut.
+// Nu reordona ramurile.
+const SQL_ALOP_DF_FLOW = `COALESCE((SELECT dfx.flow_id FROM formulare_df dfx WHERE dfx.id = a.df_id), a.df_flow_id)`;
+
+const SQL_ALOP_FLUX_DF_ACTIV = `EXISTS (
+  SELECT 1 FROM flows fx
+   WHERE fx.id::text = ${SQL_ALOP_DF_FLOW}
+     AND fx.deleted_at IS NULL
+     AND (fx.data->>'completed') IS DISTINCT FROM 'true'
+     AND (fx.data->>'status')    IS DISTINCT FROM 'cancelled'
+     AND (fx.data->>'status')    IS DISTINCT FROM 'refused')`;
+
+// #134d — gărzile lipsă (deleted_at/cancelled/refused) aliniate cu SQL_ALOP_FLUX_DF_ACTIV;
+// vezi server/services/df-aprobat-sql.mjs pentru justificarea fiecărei gărzi.
+const SQL_ALOP_DF_APROBAT = dfAprobatExistsSql(SQL_ALOP_DF_FLOW);
+
+const SQL_ALOP_DF_ARE_REVIZIE = `COALESCE((SELECT dfx.revizie_nr FROM formulare_df dfx WHERE dfx.id = a.df_id), 0) > 0`;
+
+const SQL_ALOP_BADGE = `CASE
+    WHEN ${SQL_ALOP_DF_ARE_REVIZIE} AND ${SQL_ALOP_FLUX_DF_ACTIV} AND NOT (${SQL_ALOP_DF_APROBAT})
+      THEN 'revizie_flux'
+    WHEN a.status = 'angajare' AND ${SQL_ALOP_FLUX_DF_ACTIV}
+      THEN 'angajare_flux'
+    ELSE a.status
+  END`;
 
 const router = Router();
 
@@ -41,6 +78,9 @@ const router = Router();
 let _wsPush;
 export function injectWsPush(fn) { _wsPush = fn; }
 const _csrf  = csrfMiddleware;
+
+// #133a — plafon dur pentru modul de export (?all=1). Vezi EXPORT_MAX_ROWS din shared.mjs.
+const ALOP_EXPORT_MAX_ROWS = 5000;
 
 // FEATURE buget multi-anual (v3.9.558): fragment SQL care sumează banda `rows_plati`
 // corespunzătoare ANULUI DE EXERCIȚIU CURENT, ancorată pe `df.an_referinta`.
@@ -319,15 +359,27 @@ router.get('/api/alop', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { status, q, creat, comp, from, to, page = 1, limit = 20 } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
+    const { status, q, creat, comp, from, to, page = 1, limit = 20, all } = req.query;
+    // #133a — modul EXPORT (vezi shared.mjs). Filtrul derivat SQL_ALOP_BADGE de la #132b
+    // se aplică IDENTIC, deci exportul respectă exact ce vede utilizatorul în listă.
+    const isExport = all === '1';
+    // ⚠️ Gaură latentă reparată aici: `limit` intra NEPLAFONAT în `LIMIT $n`
+    // (spre deosebire de /api/formulare/list, care avea deja Math.min(…, 100)).
+    // Un `?limit=999999` întorcea toată organizația într-un singur răspuns.
+    const lim    = isExport ? ALOP_EXPORT_MAX_ROWS : Math.min(Number(limit) || 20, 100);
+    const offset = isExport ? 0 : (Math.max(Number(page) || 1, 1) - 1) * lim;
 
     const params = [isPlatformAdmin(actor) ? null : actor.orgId];
     let where = '($1::int IS NULL OR a.org_id = $1) AND a.cancelled_at IS NULL';
     where += await buildAlopVisibilityWhere(actor, params);
     if (status) {
+      // #132b — filtrul e inversa EXACTĂ a badge-ului afișat: aceeași expresie, o
+      // singură sursă de adevăr. Acceptă atât stările brute (draft/lichidare/…)
+      // cât și cele DERIVATE ('angajare_flux', 'revizie_flux').
+      // Costul: expresia se evaluează și în COUNT — acceptabil la volumul actual
+      // (~120 dosare/org) și corelată strict pe `a`, deci COUNT-ul rămâne fără join.
       params.push(status);
-      where += ` AND a.status = $${params.length}`;
+      where += ` AND (${SQL_ALOP_BADGE}) = $${params.length}`;
     }
     // #121: filtre listă ALOP (oglindesc DF/ORD). Toate pe a.* (valabile și în COUNT, care n-are JOIN),
     // iar „creat de" printr-un EXISTS corelat pe users — NU adăuga un JOIN în cele două query-uri.
@@ -406,7 +458,9 @@ router.get('/api/alop', async (req, res) => {
         EXISTS (
           SELECT 1 FROM opme_lines ol WHERE ol.matched_alop_id = a.id
         ) AS has_opme_lines,
-        (a.status NOT IN ('completed','cancelled') AND a.df_id IS NULL AND a.ord_id IS NULL) AS can_delete
+        (a.status NOT IN ('completed','cancelled') AND a.df_id IS NULL AND a.ord_id IS NULL) AS can_delete,
+        -- #132b — starea AFIȘATĂ, derivată server-side. Clientul nu mai recalculează nimic.
+        ${SQL_ALOP_BADGE} AS badge_status
       FROM alop_instances a
       LEFT JOIN users        u  ON u.id  = a.created_by
       LEFT JOIN formulare_df df ON df.id = a.df_id
@@ -414,7 +468,7 @@ router.get('/api/alop', async (req, res) => {
       WHERE ${where}
       ORDER BY a.updated_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-    `, [...params, Number(limit), offset]);
+    `, [...params, lim, offset]);
 
     const { rows: cnt } = await pool.query(
       `SELECT COUNT(*)::int AS count FROM alop_instances a WHERE ${where}`,
@@ -425,7 +479,7 @@ router.get('/api/alop', async (req, res) => {
       alop:  rows,
       total: cnt[0].count,
       page:  Number(page),
-      pages: Math.ceil(cnt[0].count / Number(limit)),
+      pages: Math.ceil(cnt[0].count / lim),
     });
   } catch (e) {
     logger.error({ err: e }, 'alop list error');
@@ -680,6 +734,9 @@ router.get('/api/alop/:id', async (req, res) => {
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS ord_aprobat,
+        -- #132b — aceeași expresie ca în listă: cardul de detaliu și rândul din listă
+        -- nu mai pot să se contrazică.
+        ${SQL_ALOP_BADGE} AS badge_status,
         ul.nume AS lichidare_by_name,
         up.nume AS plata_by_name,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
