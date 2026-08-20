@@ -16,6 +16,7 @@ import { hasTestDb, migrate, truncateAll, pool,
          seedOrgUser, seedAlop, seedDf, seedFlow, makeAuthCookie } from '../helpers/db-real.mjs';
 import { buildApp } from './helpers/app.mjs';
 import { dfAprobatExistsSql } from '../../services/df-aprobat-sql.mjs';
+import { sqlDosarAreFluxActiv, sqlDosarAreAprobat } from '../../services/alop-dosar-sql.mjs';
 
 const d = describe.skipIf(!hasTestDb());
 
@@ -136,24 +137,29 @@ d('#134d — DF aprobat: gărzi flux soft-șters/anulat/refuzat (alop.mjs)', () 
     expect(resAll.body.total).toBe(resAll.body.alop.length);
   });
 
-  it('8. anti-drift textual — SQL_ALOP_DF_APROBAT e cablat pe helper-ul cu gărzi (nu mai poate diverge silențios)', () => {
+  it('8. anti-drift — definiția aprobării rămâne cablată pe helper-ul cu gărzi (nu poate diverge silențios)', () => {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const alopSrc = fs.readFileSync(path.join(__dirname, '../../routes/alop.mjs'), 'utf8');
+    const alopSrc   = fs.readFileSync(path.join(__dirname, '../../routes/alop.mjs'), 'utf8');
+    const dosarSrc  = fs.readFileSync(path.join(__dirname, '../../services/alop-dosar-sql.mjs'), 'utf8');
     const helperSrc = fs.readFileSync(path.join(__dirname, '../../services/df-aprobat-sql.mjs'), 'utf8');
 
-    // alop.mjs NU mai definește gărzile inline pentru DF_APROBAT — le importă din helper.
-    expect(alopSrc).toMatch(/import\s*\{\s*dfAprobatExistsSql\s*\}\s*from\s*['"]\.\.\/services\/df-aprobat-sql\.mjs['"]/);
-    expect(alopSrc).toMatch(/const SQL_ALOP_DF_APROBAT\s*=\s*dfAprobatExistsSql\(/);
+    // ⚠️ #134e a adăugat UN nivel de indirecție: alop.mjs nu mai importă direct helper-ul de
+    // aprobare, ci fragmentele de DOSAR din alop-dosar-sql.mjs, care la rândul lor refolosesc
+    // df-aprobat-sql.mjs. INTENȚIA testului (#134d) e neschimbată — nicăieri pe lanț nu se
+    // rescriu gărzile inline — doar locul unde trăiește textul s-a mutat cu un fișier.
+    expect(alopSrc).toMatch(/from\s*['"]\.\.\/services\/alop-dosar-sql\.mjs['"]/);
+    expect(alopSrc).toMatch(/const SQL_ALOP_DF_APROBAT\s*=\s*sqlDosarAreAprobat\(/);
+    expect(dosarSrc).toMatch(/from\s*['"]\.\/df-aprobat-sql\.mjs['"]/);
 
-    // SQL_ALOP_FLUX_DF_ACTIV (alop.mjs) și dfAprobatExistsSql (helper) conțin AMBELE
-    // cele trei gărzi de excludere — sursa unde divergența dovedită la #134d s-ar
-    // putea strecura din nou.
-    const activBlock = alopSrc.slice(
-      alopSrc.indexOf('const SQL_ALOP_FLUX_DF_ACTIV'),
-      alopSrc.indexOf('const SQL_ALOP_DF_APROBAT')
-    );
+    // alop.mjs NU redefinește gărzile pe cont propriu — singura lor sursă rămâne helper-ul.
+    expect(alopSrc).not.toMatch(/const SQL_ALOP_DF_APROBAT\s*=\s*`/);
+
+    // Cele trei gărzi de excludere trăiesc ȘI în fragmentul de flux activ, ȘI în definiția
+    // aprobării — sursa unde divergența dovedită la #134d s-ar putea strecura din nou.
+    // Verificate pe SQL-ul CHIAR GENERAT, nu pe o felie de text sursă (mai robust la refactor).
     for (const guard of ['deleted_at IS NULL', "DISTINCT FROM 'cancelled'", "DISTINCT FROM 'refused'"]) {
-      expect(activBlock, `SQL_ALOP_FLUX_DF_ACTIV trebuie să conțină "${guard}"`).toContain(guard);
+      expect(sqlDosarAreFluxActiv('a'), `sqlDosarAreFluxActiv trebuie să conțină "${guard}"`).toContain(guard);
+      expect(sqlDosarAreAprobat('a'),   `sqlDosarAreAprobat trebuie să conțină "${guard}"`).toContain(guard);
       expect(helperSrc, `dfAprobatExistsSql trebuie să conțină "${guard}"`).toContain(guard);
     }
   });

@@ -32,14 +32,25 @@ export function computeAlopCapabilities(alop, actor, opts = {}) {
   caps.can_refresh = !caps.is_completed && !caps.is_cancelled;
   caps.can_start_noua_ordonantare = caps.is_completed && parseFloat(alop.ramas || 0) > 0;
 
+  // ⛔ #134e — GARDA ANTI-REVIZII-PARALELE, NU O ȘTERGE.
+  // Până la #134e, `df_aprobat` însemna „revizia POINTATĂ e aprobată": cât timp
+  // pointerul `alop.df_id` stătea pe revizia în draft, ieșea `false` și ASTA ascundea
+  // butonul „Revizuiește DF". Începând cu #134e, `df_aprobat` e o proprietate a
+  // DOSARULUI (R0 aprobat ⇒ true pe viață), deci acea protecție implicită a DISPĂRUT.
+  // Singurul lucru care mai împiedică deschiderea unei a doua revizii peste una în
+  // lucru e `!alop.df_revizie_in_lucru` de mai jos — coloană care, tot la #134e, a
+  // trecut de la un EXISTS pe parentaj (cod MORT din 2026-05-03, întotdeauna false)
+  // la derivarea pe dosar din services/alop-dosar-sql.mjs. Test: V7 din
+  // server/tests/db/alop-dosar-derivari.test.mjs (pică roșu fără această clauză).
+  //
   // FIX 6: „Revizuiește DF" disponibil permanent în toate fazele post-angajare,
   // INCLUSIV pentru ALOP completat (ciclu închis). Owner-gated; fals la cancelled
   // și în angajare (acolo accesul la DF e prin df_action). Setat ÎNAINTE de return-ul
   // devreme ca să fie true și pentru ALOP completat (care iese la linia de mai jos).
   caps.can_revise_df = caps.is_owner && !caps.is_cancelled && !!alop.df_id
     && !['draft', 'angajare'].includes(status)
-    && alop.df_aprobat === true          // doar dacă DF-ul curent e APROBAT
-    && !alop.df_revizie_in_lucru;        // și nu există deja o revizie în lucru
+    && alop.df_aprobat === true          // doar dacă DOSARUL are o revizie APROBATĂ (#134e)
+    && !alop.df_revizie_in_lucru;        // ⛔ GARDA ANTI-REVIZII-PARALELE — vezi mai sus
 
   // #130: membrul compartimentului CAB are DEJA drept de editare pe orice ALOP al organizației
   // (canEditAlop → role 'cab_dept', din #ALOP-CAB v3.9.690). `computeAlopCapabilities` nu aflase

@@ -660,7 +660,10 @@ function renderAlopDetail(a,container){
      active:a.status==='angajare',
      sub:(!a.df_id)?'Fără DF'
         :(a.status==='angajare'&&a.df_flow_active)?`🔄 DF pe fluxul de semnare${_dfRevTxt}`
-        :(a.df_revizie_nr>0 && a.df_flow_active && !a.df_aprobat)?`🔄 Revizia ${a.df_revizie_nr} pe flux — în curs · ultima aprobată: Revizia ${a.df_revizie_nr-1}`
+        // #134e — revizia „în lucru" se derivă pe DOSAR (df_revizie_lucru_nr), nu pe pointerul
+        // df_id. Se aprinde ACUM și pentru o revizie în DRAFT, nu doar pentru una pe flux.
+        :(a.df_revizie_lucru_nr>0 && a.df_flow_active)?`🔄 Revizia ${a.df_revizie_lucru_nr} pe flux — în curs · în vigoare rămâne Revizia ${a.df_revizie_lucru_nr-1}`
+        :(a.df_revizie_lucru_nr>0)?`🔄 Revizia ${a.df_revizie_lucru_nr} în lucru — în vigoare rămâne Revizia ${a.df_revizie_lucru_nr-1}`
         :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?`✅ DF aprobat${_dfRevTxt}`
         :(a.status==='angajare'&&!a.df_flow_active)?`📝 DF în lucru${_dfRevTxt}`
         :`DF: ${a.df_nr||a.df_id.slice(0,8)}${_dfRevTxt}`},
@@ -813,7 +816,7 @@ function renderAlopDetail(a,container){
             const _parts = [_est, _df, _bug].filter(Boolean);
             return `<div style="font-size:.85rem;margin-top:4px;display:flex;align-items:center;flex-wrap:wrap">${_parts.join(_sepHtml)}</div>`;
           })()}
-          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">DF activ: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}</div>`:''}
+          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">DF în vigoare: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}${a.df_revizie_lucru_nr!=null?`<span style="color:#fbbf24;font-weight:600" title="Revizie derivată pe dosar (#134e). Până la mutarea pointerului (#134f), poate coincide cu revizia în vigoare.">· Revizie în lucru: R${a.df_revizie_lucru_nr}</span>`:''}</div>`:''}
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">

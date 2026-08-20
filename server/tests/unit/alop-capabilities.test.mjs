@@ -106,6 +106,61 @@ describe('computeAlopCapabilities — can_revise_df (FIX 6 + prompt 64: gated de
     expect(C({ status: 'plata', df_id: 'd', ord_id: 'o', df_aprobat: true, df_revizie_in_lucru: true }).can_revise_df).toBe(false));
 });
 
+/**
+ * #134e — cazurile scrise la #64 devin în sfârșit REPREZENTATIVE pentru producție.
+ *
+ * Până acum `df_revizie_in_lucru` venea dintr-un EXISTS pe parentaj care era cod MORT
+ * din 2026-05-03 (pointerul `alop.df_id` se muta pe revizia nouă, deci nicio revizie nu
+ * mai era „copil" al DF-ului pointat) ⇒ coloana ieșea ÎNTOTDEAUNA false, iar cazurile de
+ * mai jos testau o ramură pe care serverul n-o alimenta niciodată.
+ *
+ * Ce ținea locul gărzii era un efect colateral: `df_aprobat` însemna „revizia POINTATĂ e
+ * aprobată", deci cât timp pointerul stătea pe draft ieșea false și butonul dispărea.
+ * #134e mută `df_aprobat` pe DOSAR (R0 aprobat ⇒ true pe viață) ⇒ efectul colateral a
+ * dispărut și SINGURA protecție rămasă e `!df_revizie_in_lucru`.
+ *
+ * ⛔ Nu slăbi niciunul dintre cazurile de mai jos: perechea (df_aprobat, df_revizie_in_lucru)
+ *    e acum ortogonală, iar cele patru combinații sunt toate atinse.
+ */
+describe('#134e — garda anti-revizii-paralele, acum alimentată real de server', () => {
+  const BAZA = { status: 'plata', df_id: 'd', ord_id: 'o' };
+
+  it('dosar aprobat + revizie în lucru → can_revise_df=false (D2 din testele DB)', () =>
+    expect(C({ ...BAZA, df_aprobat: true, df_revizie_in_lucru: true }).can_revise_df).toBe(false));
+
+  it('dosar aprobat + fără revizie în lucru → can_revise_df=true (D1 din testele DB)', () =>
+    expect(C({ ...BAZA, df_aprobat: true, df_revizie_in_lucru: false }).can_revise_df).toBe(true));
+
+  it('dosar neaprobat + revizie în lucru → false (ambele gărzi trag în aceeași direcție)', () =>
+    expect(C({ ...BAZA, df_aprobat: false, df_revizie_in_lucru: true }).can_revise_df).toBe(false));
+
+  it('dosar neaprobat + fără revizie în lucru → false (df_aprobat rămâne condiție necesară)', () =>
+    expect(C({ ...BAZA, df_aprobat: false, df_revizie_in_lucru: false }).can_revise_df).toBe(false));
+
+  it('în angajare, revizie în lucru → df_action=in_lucru_disabled (ramura redevine accesibilă)', () => {
+    const c = C({ status: 'angajare', df_id: 'd', df_aprobat: true, df_revizie_in_lucru: true });
+    expect(c.df_action).toBe('in_lucru_disabled');
+    expect(c.can_revise_df).toBe(false); // în angajare accesul la DF e prin df_action, nu prin buton
+  });
+
+  it('in_lucru_disabled bate TOATE celelalte ramuri de df_action (primul if)', () => {
+    for (const extra of [{ df_status: 'neaprobat' }, { df_status: 'aprobat' },
+                         { df_flow_id: 'f-1' }, { df_status: 'de_revizuit' }]) {
+      expect(C({ status: 'angajare', df_id: 'd', df_revizie_in_lucru: true, ...extra }).df_action)
+        .toBe('in_lucru_disabled');
+    }
+  });
+
+  it('revizie în lucru NU blochează celelalte capabilities (doar revizuirea DF)', () => {
+    const c = C({ status: 'plata', df_id: 'd', ord_id: 'o', df_aprobat: true, df_revizie_in_lucru: true });
+    expect(c.phase_action).toBe('confirma_plata');
+    expect(c.can_refresh).toBe(true);
+  });
+
+  it('df_revizie_in_lucru absent (undefined) → se comportă ca false (retrocompatibil)', () =>
+    expect(C({ ...BAZA, df_aprobat: true }).can_revise_df).toBe(true));
+});
+
 describe('computeAlopCapabilities — can_delete (detaliu, owner-gated)', () => {
   it('fără df/ord → can_delete', () =>
     expect(C({ status: 'draft', df_id: null, ord_id: null }).can_delete).toBe(true));
