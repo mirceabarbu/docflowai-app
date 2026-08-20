@@ -218,4 +218,33 @@ d('GET /api/alop — filtre listă (#121)', () => {
       }
     });
   });
+
+  // ── #133a — modul export ?all=1 ──────────────────────────────────────────────
+  it('10. ALOP ?all=1 întoarce toate dosarele filtrate, iar ?all=1&status=angajare_flux respectă filtrul derivat (#132b)', async () => {
+    for (let i = 0; i < 25; i++) {
+      await seedAlop({ orgId, createdBy: adminId, status: 'draft', titlu: 'ALOP export ' + i });
+    }
+    const flowIdX = await seedFlow({ orgId, completed: false });
+    const dfX = await seedDf({ orgId, createdBy: adminId, status: 'completed', flowId: flowIdX, nrUnic: 'DF-2026-EXP1' });
+    const alopFlux = await seedAlop({ orgId, createdBy: adminId, status: 'angajare', dfId: dfX, titlu: 'ALOP pe flux' });
+
+    const resAll = await request(app).get('/api/alop?all=1').set('Cookie', cookie());
+    expect(resAll.status).toBe(200);
+    expect(resAll.body.alop.length).toBe(resAll.body.total);
+    expect(resAll.body.total).toBeGreaterThan(20);
+
+    const resFlux = await request(app).get('/api/alop?all=1&status=angajare_flux').set('Cookie', cookie());
+    expect(resFlux.status).toBe(200);
+    expect(resFlux.body.alop.map(a => a.id)).toContain(alopFlux);
+    expect(resFlux.body.alop.every(a => a.badge_status === 'angajare_flux')).toBe(true);
+  });
+
+  it('11. ALOP ?limit=999999 (fără all) întoarce cel mult 100 de rânduri — gaura plafonată la Etapa 2', async () => {
+    for (let i = 0; i < 15; i++) {
+      await seedAlop({ orgId, createdBy: adminId, status: 'draft', titlu: 'ALOP plafon ' + i });
+    }
+    const res = await request(app).get('/api/alop?limit=999999').set('Cookie', cookie());
+    expect(res.status).toBe(200);
+    expect(res.body.alop.length).toBeLessThanOrEqual(100);
+  });
 });

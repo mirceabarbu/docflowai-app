@@ -174,6 +174,9 @@
       <span class="lst-count-n" id="lst-count-n"></span><span class="lst-count-w" id="lst-count-w"></span>
     </div>
     <button id="btn-lst-nou" class="df-action-btn primary" style="display:none !important" onclick="newDocFromList()"><svg class="df-ic"><use href="/icons.svg?v=3.9.693#ico-plus"/></svg>Document nou</button>
+    <button id="btn-lst-export" type="button" class="df-action-btn" onclick="exportLista()" title="Exportă în Excel lista filtrată">
+      <svg class="df-ico"><use href="/icons.svg?v=3.9.693#ico-download"/></svg> Export Excel
+    </button>
   </div>
   <div class="lst-filters">
     <div class="lst-filter-row">
@@ -1518,7 +1521,8 @@
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.693" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.703" defer></script>
-<script src="/js/formular/list.js?v=3.9.782" defer></script>
+<script src="/js/shared/xlsx-export.js?v=3.9.784" defer></script>
+<script src="/js/formular/list.js?v=3.9.784" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
 <script src="/js/formular/doc.js?v=3.9.780" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>

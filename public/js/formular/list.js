@@ -690,21 +690,11 @@ function _setLstStatusOpts(type){
   sel.dataset.lstType=type;
   sel.value=opts.some(function(o){return o[0]===prev;})?prev:'all';
 }
-async function loadList(){
-  // #130 — încărcarea inițială nu trece prin switchListTab, deci comutarea clasei se repetă aici.
-  document.querySelector('.lst-table-wrap')?.classList.toggle('lst-tip-ord',_lstState.type==='ord');
-  // #132a — din același motiv, opțiunile de Status se sincronizează AICI (nu în switchListTab):
-  // e singurul punct prin care trec toate căile de încărcare a listei DF/ORD.
-  _setLstStatusOpts(_lstState.type);
-  const tb=document.getElementById('lst-tbody');
-  const em=document.getElementById('lst-empty');
-  const ld=document.getElementById('lst-loading');
-  const pg=document.getElementById('lst-pagination');
-  if(tb)tb.innerHTML='';
-  if(em)em.style.display='none';
-  if(ld)ld.style.display='';
-  if(pg)pg.style.display='none';
-  _setLstCount(null);   // ascuns cât se încarcă — nu lăsăm o cifră veche peste o listă nouă
+// #133a — construcția query string-ului listei DF/ORD, PARTAJATĂ între loadList (paginat)
+// și exportLista (?all=1, fără page/limit) — o singură sursă pentru filtre, ca să nu se
+// poată desincroniza.
+function _lstQuery(opts){
+  opts=opts||{};
   const p=[];
   const status=(document.getElementById('flt-status')?.value)||'all';
   const from=(document.getElementById('flt-from')?.value)||'';
@@ -721,10 +711,31 @@ async function loadList(){
   if(init)p.push('init='+encodeURIComponent(init));
   if(p2)p.push('p2='+encodeURIComponent(p2));
   if(nr)p.push('nr='+encodeURIComponent(nr.trim()));
-  p.push('page='+_lstState.page);
-  p.push('limit='+_lstState.limit);
+  if(opts.all){
+    p.push('all=1');
+  }else{
+    p.push('page='+_lstState.page);
+    p.push('limit='+_lstState.limit);
+  }
+  return p.join('&');
+}
+async function loadList(){
+  // #130 — încărcarea inițială nu trece prin switchListTab, deci comutarea clasei se repetă aici.
+  document.querySelector('.lst-table-wrap')?.classList.toggle('lst-tip-ord',_lstState.type==='ord');
+  // #132a — din același motiv, opțiunile de Status se sincronizează AICI (nu în switchListTab):
+  // e singurul punct prin care trec toate căile de încărcare a listei DF/ORD.
+  _setLstStatusOpts(_lstState.type);
+  const tb=document.getElementById('lst-tbody');
+  const em=document.getElementById('lst-empty');
+  const ld=document.getElementById('lst-loading');
+  const pg=document.getElementById('lst-pagination');
+  if(tb)tb.innerHTML='';
+  if(em)em.style.display='none';
+  if(ld)ld.style.display='';
+  if(pg)pg.style.display='none';
+  _setLstCount(null);   // ascuns cât se încarcă — nu lăsăm o cifră veche peste o listă nouă
   try{
-    const r=await fetch('/api/formulare/list?'+p.join('&'),{credentials:'include'});
+    const r=await fetch('/api/formulare/list?'+_lstQuery(),{credentials:'include'});
     if(ld)ld.style.display='none';
     if(!r.ok){if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}_setLstCount(null);return;}
     const j=await r.json();
@@ -735,16 +746,24 @@ async function loadList(){
     else{_renderLstTable(rows,_lstState.type);_renderLstPagin(total,_lstState.page,_lstState.limit);}
   }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}_setLstCount(null);}
 }
+// #133a — etichetă în clar (FĂRĂ emoji), sursă unică pentru _stBadge (emoji + culoare)
+// ȘI pentru exportLista (Excel-ul primește textul curat, nu cheia tehnică nici emoji-ul).
+const _ST_LABELS={draft:'Draft',pending_p2:'La Responsabil CAB',completed:'Completat',
+  generat_pdf:'PDF generat',transmis_flux:'Trimis flux',
+  aprobat:'Aprobat',respins:'Respins',anulat:'Anulat',returnat:'Returnat',
+  neaprobat:'Neaprobat',de_revizuit:'De revizuit'};
 function _stBadge(status){
-  const map={draft:'📝 Draft',pending_p2:'📤 La Responsabil CAB',completed:'✅ Completat',
-    generat_pdf:'📄 PDF generat',transmis_flux:'🔄 Trimis flux',
-    aprobat:'🟢 Aprobat',respins:'❌ Respins',anulat:'🚫 Anulat',returnat:'↩ Returnat',
-    neaprobat:'❌ Neaprobat',de_revizuit:'🔄 De revizuit'};
+  const emoji={draft:'📝',pending_p2:'📤',completed:'✅',
+    generat_pdf:'📄',transmis_flux:'🔄',
+    aprobat:'🟢',respins:'❌',anulat:'🚫',returnat:'↩',
+    neaprobat:'❌',de_revizuit:'🔄'};
   const cls={draft:'st-draft',pending_p2:'st-transmis_p2',completed:'st-completat',
     generat_pdf:'st-generat_pdf',transmis_flux:'st-transmis_flux',
     aprobat:'st-aprobat',respins:'st-respins',anulat:'st-anulat',returnat:'st-returnat',
     neaprobat:'st-neaprobat',de_revizuit:'st-de-revizuit'};
-  return`<span class="stbadge ${cls[status]||'st-draft'}">${esc(map[status]||status)}</span>`;
+  const label=_ST_LABELS[status]||status;
+  const txt=(emoji[status]?emoji[status]+' ':'')+label;
+  return`<span class="stbadge ${cls[status]||'st-draft'}">${esc(txt)}</span>`;
 }
 function _fmtDate(iso){
   if(!iso)return '—';
@@ -881,6 +900,76 @@ function resetFilters(){
   _lstState.page=1;
   loadList();
 }
+// #133a — export Excel pe lista FILTRATĂ (nu doar pagina curentă): reia _lstQuery({all:true}),
+// care trece prin exact aceleași `conds`/autorizare de pe server ca loadList (?all=1, vezi
+// shared.mjs). ⛔ NU construi din DOM/ultimul răspuns memorat — ar exporta o singură pagină.
+async function exportLista(){
+  const type=_lstState.type;
+  if(type!=='df'&&type!=='ord'){
+    alert('Exportul este disponibil doar pentru listele DF și ORD.');
+    return;
+  }
+  if(typeof window.DFXlsx==='undefined'){
+    console.error('DFXlsx indisponibil — modulul de export nu s-a încărcat');
+    alert('Modulul de export nu s-a încărcat. Reîncărcați pagina.');
+    return;
+  }
+  const btn=document.getElementById('btn-lst-export');
+  const orig=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.textContent='⏳ Se pregătește…';}
+  try{
+    const r=await fetch('/api/formulare/list?'+_lstQuery({all:true}),{credentials:'include'});
+    const j=await r.json();
+    if(!r.ok||!j.ok){alert('Eroare la pregătirea exportului.');return;}
+    const rows=j.rows||[];
+    const total=j.total||0;
+    if(!rows.length){alert('Nu există documente pentru filtrele curente');return;}
+
+    const fmtDt=iso=>iso?new Date(iso).toLocaleString('ro-RO'):'';
+    const respCab=row=>row.p2_compartiment||row.p2||'';
+    const stLabel=row=>_ST_LABELS[row.badge_status]||row.badge_status||'';
+
+    let aoa,numericCols,sheet,filename;
+    if(type==='df'){
+      aoa=[['Nr.','Titlu','Revizie','Inițiator','Compartiment','Responsabil CAB','Status','Creat la','Actualizat la','Actualizat de']];
+      rows.forEach(row=>{
+        aoa.push([
+          row.nr||'', row.titlu||'', 'R'+(row.revizie_nr||0),
+          row.initiator||'', row.initiator_comp||'', respCab(row),
+          stLabel(row), fmtDt(row.created_at), fmtDt(row.updated_at), row.updated_by_nume||'',
+        ]);
+      });
+      numericCols=[];
+      sheet='Documente de Fundamentare';
+      filename='DF_';
+    }else{
+      aoa=[['Nr.','Furnizor','Inițiator','Compartiment','Responsabil CAB','Valoare ORD','Plată','Status','Creat la','Actualizat la','Actualizat de']];
+      rows.forEach(row=>{
+        aoa.push([
+          row.nr||'', row.titlu||'', row.initiator||'', row.initiator_comp||'', respCab(row),
+          Number(row.ord_valoare)||0,
+          row.plata_suma==null?'—':Number(row.plata_suma),
+          stLabel(row), fmtDt(row.created_at), fmtDt(row.updated_at), row.updated_by_nume||'',
+        ]);
+      });
+      numericCols=[5,6];
+      sheet='Ordonanțări de Plată';
+      filename='ORD_';
+    }
+
+    await window.DFXlsx.save(aoa,{sheet,filename,numericCols});
+
+    if(rows.length<total){
+      alert('S-au exportat primele '+rows.length+' din '+total+' documente (plafon de siguranță). Restrângeți filtrele pentru un export complet.');
+    }
+  }catch(e){
+    alert('Export eșuat: '+(e.message||e));
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML=orig;}
+  }
+}
+window.exportLista=exportLista;
+
 function _populateCompartimente(){
   const sel=document.getElementById('flt-comp');
   if(!sel)return;

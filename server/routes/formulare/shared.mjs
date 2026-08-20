@@ -29,6 +29,10 @@ try { PDFLibFormular = await import('pdf-lib'); } catch (e) { logger.warn('⚠�
 const router = Router();
 const _csrf  = csrfMiddleware;
 
+// #133a — plafon dur pentru modul de export (?all=1). Peste el, răspunsul rămâne
+// valid dar TRUNCHIAT: clientul compară `rows.length` cu `total` și avertizează.
+const EXPORT_MAX_ROWS = 5000;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CAPTURI DE ECRAN (DF și ORD)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -465,9 +469,15 @@ router.get('/api/formulare/list', async (req, res) => {
   const isPlatform   = isPlatformAdmin(actor);
   const isOrgManager = isAdminOrOrgAdmin(actor);
 
-  const { type = 'df', status, from, to, comp, init, p2, nr, page = '1', limit = '20' } = req.query;
-  const lim  = Math.min(parseInt(limit) || 20, 100);
-  const pg   = Math.max(parseInt(page)  || 1,  1);
+  const { type = 'df', status, from, to, comp, init, p2, nr, page = '1', limit = '20', all } = req.query;
+  // #133a — modul EXPORT: aceeași interogare, aceleași `conds`, aceeași autorizare;
+  // doar paginarea se dezactivează. Deliberat NU e un endpoint separat: filtrele
+  // (inclusiv cele derivate din #132a) trebuie să rămână o singură sursă de adevăr —
+  // un al doilea query s-ar desincroniza tăcut la prima schimbare de filtru.
+  // Plafonul e o poartă de siguranță, nu o limită de produs (volum real azi: ~180 doc/org).
+  const isExport = all === '1';
+  const lim  = isExport ? EXPORT_MAX_ROWS : Math.min(parseInt(limit) || 20, 100);
+  const pg   = isExport ? 1 : Math.max(parseInt(page) || 1, 1);
 
   try {
     if (type === 'df') {

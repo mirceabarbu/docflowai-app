@@ -79,6 +79,9 @@ let _wsPush;
 export function injectWsPush(fn) { _wsPush = fn; }
 const _csrf  = csrfMiddleware;
 
+// #133a — plafon dur pentru modul de export (?all=1). Vezi EXPORT_MAX_ROWS din shared.mjs.
+const ALOP_EXPORT_MAX_ROWS = 5000;
+
 // FEATURE buget multi-anual (v3.9.558): fragment SQL care sumează banda `rows_plati`
 // corespunzătoare ANULUI DE EXERCIȚIU CURENT, ancorată pe `df.an_referinta`.
 //   offset = an_exercitiu_curent − an_referinta  (NULL an_referinta → 0 ⇒ banda `ancrt`)
@@ -356,8 +359,15 @@ router.get('/api/alop', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   try {
-    const { status, q, creat, comp, from, to, page = 1, limit = 20 } = req.query;
-    const offset = (Number(page) - 1) * Number(limit);
+    const { status, q, creat, comp, from, to, page = 1, limit = 20, all } = req.query;
+    // #133a — modul EXPORT (vezi shared.mjs). Filtrul derivat SQL_ALOP_BADGE de la #132b
+    // se aplică IDENTIC, deci exportul respectă exact ce vede utilizatorul în listă.
+    const isExport = all === '1';
+    // ⚠️ Gaură latentă reparată aici: `limit` intra NEPLAFONAT în `LIMIT $n`
+    // (spre deosebire de /api/formulare/list, care avea deja Math.min(…, 100)).
+    // Un `?limit=999999` întorcea toată organizația într-un singur răspuns.
+    const lim    = isExport ? ALOP_EXPORT_MAX_ROWS : Math.min(Number(limit) || 20, 100);
+    const offset = isExport ? 0 : (Math.max(Number(page) || 1, 1) - 1) * lim;
 
     const params = [isPlatformAdmin(actor) ? null : actor.orgId];
     let where = '($1::int IS NULL OR a.org_id = $1) AND a.cancelled_at IS NULL';
@@ -458,7 +468,7 @@ router.get('/api/alop', async (req, res) => {
       WHERE ${where}
       ORDER BY a.updated_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-    `, [...params, Number(limit), offset]);
+    `, [...params, lim, offset]);
 
     const { rows: cnt } = await pool.query(
       `SELECT COUNT(*)::int AS count FROM alop_instances a WHERE ${where}`,
@@ -469,7 +479,7 @@ router.get('/api/alop', async (req, res) => {
       alop:  rows,
       total: cnt[0].count,
       page:  Number(page),
-      pages: Math.ceil(cnt[0].count / Number(limit)),
+      pages: Math.ceil(cnt[0].count / lim),
     });
   } catch (e) {
     logger.error({ err: e }, 'alop list error');
