@@ -75,22 +75,36 @@ const ROLE_LABEL = {
 // prin SQL_ALOP_BADGE). Derivările client („Pe flux — semnare", „Revizie pe flux")
 // au fost ȘTERSE: erau al doilea adevăr, invizibil pentru filtre.
 // `a.status` rămâne fallback doar pentru un răspuns vechi din cache-ul browserului.
+// #133b — etichete în clar per badge_status, sursă unică pentru _alopStatusBadge
+// ȘI pentru exportAlop (Excel-ul primește textul curat, nu cheia tehnică).
+const _ALOP_ST_LABELS={
+  draft:         'Draft',
+  angajare:      'DF în lucru',
+  angajare_flux: 'Pe flux — semnare',
+  revizie_flux:  'Revizie pe flux',
+  lichidare:     'Lichidare',
+  ordonantare:   'Ordonanțare',
+  plata:         'Plată',
+  completed:     'Finalizat',
+  cancelled:     'Anulat',
+};
 function _alopStatusBadge(a){
   const m={
-    'draft':         {icon:'ico-edit-pencil',     text:'Draft',             color:'#64748b'},
-    'angajare':      {icon:'ico-clock',           text:'DF în lucru',       color:'#f97316'},
-    'angajare_flux': {icon:'ico-pen-tool',        text:'Pe flux — semnare', color:'#6366f1'},
-    'revizie_flux':  {icon:'ico-pen-tool',        text:'Revizie pe flux',   color:'#6366f1'},
-    'lichidare':     {icon:'ico-check-square',    text:'Lichidare',         color:'#f59e0b'},
-    'ordonantare':   {icon:'ico-file-signature',  text:'Ordonanțare',       color:'#8b5cf6'},
-    'plata':         {icon:'ico-send',            text:'Plată',             color:'#f97316'},
-    'completed':     {icon:'ico-check-circle',    text:'Finalizat',         color:'#10b981'},
-    'cancelled':     {icon:'ico-x-circle',        text:'Anulat',            color:'#ef4444'},
+    'draft':         {icon:'ico-edit-pencil',     color:'#64748b'},
+    'angajare':      {icon:'ico-clock',           color:'#f97316'},
+    'angajare_flux': {icon:'ico-pen-tool',        color:'#6366f1'},
+    'revizie_flux':  {icon:'ico-pen-tool',        color:'#6366f1'},
+    'lichidare':     {icon:'ico-check-square',    color:'#f59e0b'},
+    'ordonantare':   {icon:'ico-file-signature',  color:'#8b5cf6'},
+    'plata':         {icon:'ico-send',            color:'#f97316'},
+    'completed':     {icon:'ico-check-circle',    color:'#10b981'},
+    'cancelled':     {icon:'ico-x-circle',        color:'#ef4444'},
   };
   const status=(a&&(a.badge_status||a.status))||'';
-  const s=m[status]||{icon:'ico-clock',text:status,color:'#64748b'};
+  const s=m[status]||{icon:'ico-clock',color:'#64748b'};
+  const text=_ALOP_ST_LABELS[status]||status;
   const _ico=`<svg width="11" height="11" style="vertical-align:-1px;margin-right:4px;flex-shrink:0;"><use href="/icons.svg?v=3.9.475#${s.icon}"/></svg>`;
-  return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(s.text)}</span>`;
+  return`<span style="display:inline-flex;align-items:center;background:${s.color}22;color:${s.color};padding:2px 10px;border-radius:10px;font-size:11px;font-weight:600">${_ico}${esc(text)}</span>`;
 }
 function _alopFazaLabel(status){
   const m={'draft':'—','angajare':'Faza 1: Angajare','lichidare':'Faza 2: Lichidare',
@@ -205,6 +219,32 @@ function _populateAlopCompartimente(){
   sel.value=cur;
 }
 
+// #133b — construcția query string-ului listei ALOP, PARTAJATĂ între loadAlop (paginat)
+// și exportAlop (?all=1, fără page/limit) — o singură sursă pentru filtre, ca să nu se
+// poată desincroniza. Mirror _lstQuery din list.js (#133a).
+function _alopQuery(opts){
+  opts=opts||{};
+  const qs=new URLSearchParams();
+  const _q     =(document.getElementById('flt-a-q')?.value||'').trim();
+  const _creat =(document.getElementById('flt-a-creat')?.value||'').trim();
+  const _comp  =document.getElementById('flt-a-comp')?.value||'';
+  const _fstat =document.getElementById('flt-a-status')?.value||'';
+  const _from  =document.getElementById('flt-a-from')?.value||'';
+  const _to    =document.getElementById('flt-a-to')?.value||'';
+  if(_q)     qs.set('q',_q);
+  if(_creat) qs.set('creat',_creat);
+  if(_comp)  qs.set('comp',_comp);
+  if(_fstat) qs.set('status',_fstat);
+  if(_from)  qs.set('from',_from);
+  if(_to)    qs.set('to',_to);
+  if(opts.all){
+    qs.set('all','1');
+  }else{
+    qs.set('page',_alopState.page);
+    qs.set('limit',_alopState.limit);
+  }
+  return qs;
+}
 async function loadAlop(){
   _updateAlopSablonBtnVisibility();
   _updateOpmeBtnVisibility();
@@ -215,21 +255,7 @@ async function loadAlop(){
   tb.innerHTML='<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--df-text-3)">Se încarcă...</td></tr>';
   try{
     _populateAlopCompartimente();
-    const qs=new URLSearchParams();
-    const _q     =(document.getElementById('flt-a-q')?.value||'').trim();
-    const _creat =(document.getElementById('flt-a-creat')?.value||'').trim();
-    const _comp  =document.getElementById('flt-a-comp')?.value||'';
-    const _fstat =document.getElementById('flt-a-status')?.value||'';
-    const _from  =document.getElementById('flt-a-from')?.value||'';
-    const _to    =document.getElementById('flt-a-to')?.value||'';
-    if(_q)     qs.set('q',_q);
-    if(_creat) qs.set('creat',_creat);
-    if(_comp)  qs.set('comp',_comp);
-    if(_fstat) qs.set('status',_fstat);
-    if(_from)  qs.set('from',_from);
-    if(_to)    qs.set('to',_to);
-    qs.set('page',_alopState.page);
-    qs.set('limit',_alopState.limit);
+    const qs=_alopQuery();
     const r=await fetch(`/api/alop?${qs.toString()}`,{credentials:'include'});
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
@@ -297,6 +323,55 @@ function _renderAlopPagin(total,page,limit){
     pg.style.display='none';
   }
 }
+
+// #133b — export Excel pe lista ALOP FILTRATĂ (nu doar pagina curentă): reia
+// _alopQuery({all:true}), care trece prin exact aceleași filtre/autorizare de pe server
+// ca loadAlop (?all=1). ⛔ NU construi din DOM/ultimul răspuns memorat.
+async function exportAlop(){
+  if(typeof window.DFXlsx==='undefined'){
+    console.error('DFXlsx indisponibil — modulul de export nu s-a încărcat');
+    alert('Modulul de export nu s-a încărcat. Reîncărcați pagina.');
+    return;
+  }
+  const btn=document.getElementById('btn-alop-export');
+  const orig=btn?btn.innerHTML:'';
+  if(btn){btn.disabled=true;btn.textContent='⏳ Se pregătește…';}
+  try{
+    const qs=_alopQuery({all:true});
+    const r=await fetch(`/api/alop?${qs.toString()}`,{credentials:'include'});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error||'server_error');
+    const alop=j.alop||[];
+    const total=j.total||0;
+    if(!alop.length){alert('Nu există dosare ALOP pentru filtrele curente');return;}
+
+    const fmtDt=iso=>iso?new Date(iso).toLocaleDateString('ro-RO'):'';
+
+    const aoa=[['Titlu','Compartiment','Creat de','Status','Fază','Valoare totală','Valoare DF','Valoare ORD (toate ciclurile)','Total plătit','Creat la','Actualizat la']];
+    alop.forEach(a=>{
+      const status=(a&&(a.badge_status||a.status))||'';
+      aoa.push([
+        a.titlu||'', a.compartiment||'', a.creator_name||a.creator_email||'',
+        _ALOP_ST_LABELS[status]||status, _alopFazaLabel(a.status),
+        Number(a.valoare_totala)||0, Number(a.df_valoare)||0,
+        Number(a.total_ord_valoare||a.ord_valoare||0), Number(a.total_platit||a.op_valoare||0),
+        fmtDt(a.created_at), fmtDt(a.updated_at),
+      ]);
+    });
+    const numericCols=[5,6,7,8];
+
+    await window.DFXlsx.save(aoa,{sheet:'ALOP',filename:'ALOP_',numericCols});
+
+    if(alop.length<total){
+      alert('S-au exportat primele '+alop.length+' din '+total+' dosare (plafon de siguranță). Restrângeți filtrele pentru un export complet.');
+    }
+  }catch(e){
+    alert('Export eșuat: '+(e.message||e));
+  }finally{
+    if(btn){btn.disabled=false;btn.innerHTML=orig;}
+  }
+}
+window.exportAlop=exportAlop;
 
 // ── Wizard modal ──────────────────────────────────────────────────────────────
 

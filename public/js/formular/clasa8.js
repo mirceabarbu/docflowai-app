@@ -6,9 +6,9 @@
 //   - clasa8CloseImport
 //
 // Local state: _state (items, totals, filters, loading, debounceTimer, error, initialized)
-// Dependențe: window.df.esc (cu fallback inline)
+// Dependențe: window.df.esc (cu fallback inline), window.DFXlsx (public/js/shared/xlsx-export.js)
 //
-// SheetJS este încărcat LAZY la export/import (CDN cdnjs.cloudflare.com).
+// SheetJS este încărcat LAZY la export/import prin încărcătorul partajat window.DFXlsx.load().
 
 (function () {
   'use strict';
@@ -163,30 +163,18 @@
     _fetch();
   }
 
-  // ── Export XLSX (lazy load SheetJS de pe cdnjs) ─────────────────────────────
-  const SHEETJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-  let _sheetJsLoading = null;
-
-  function _loadSheetJs() {
-    if (typeof window.XLSX !== 'undefined') return Promise.resolve();
-    if (_sheetJsLoading) return _sheetJsLoading;
-    _sheetJsLoading = new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = SHEETJS_CDN;
-      s.async = true;
-      s.onload  = () => resolve();
-      s.onerror = () => { _sheetJsLoading = null; reject(new Error('SheetJS load failed (CDN inaccesibil?)')); };
-      document.head.appendChild(s);
-    });
-    return _sheetJsLoading;
-  }
-
+  // ── Export XLSX (încărcător partajat DFXlsx, #133b — fostul loader local ȘTERS) ────
   async function _exportXLSX() {
+    if (typeof window.DFXlsx === 'undefined') {
+      console.error('DFXlsx indisponibil — modulul de export nu s-a încărcat');
+      alert('Modulul de export nu s-a încărcat. Reîncărcați pagina.');
+      return;
+    }
     const btn = document.getElementById('clasa8-btn-export');
     const orig = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Pregătire export…'; }
     try {
-      await _loadSheetJs();
+      await window.DFXlsx.load();
       if (typeof window.XLSX === 'undefined') throw new Error('XLSX indisponibil după load');
 
       const aoa = [
@@ -383,7 +371,7 @@
     _parsedRows = [];
 
     try {
-      await _loadSheetJs();
+      await window.DFXlsx.load();
       let aoa;
       if (file.name.endsWith('.csv')) {
         const text = await file.text();
