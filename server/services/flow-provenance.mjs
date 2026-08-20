@@ -46,6 +46,13 @@ const KINDS = {
     alopFlowCol: 'df_flow_id',
     table: 'formulare_df',
     eticheta: 'Documentul de Fundamentare',
+    // #134f — `alop.df_id` e acum „revizia ÎN VIGOARE" (ultima aprobată), deci fluxul
+    // lansat pentru R(n+1) revendică o ALTĂ revizie decât cea pointată. Calea de
+    // proveniență (b) trebuie să se execute ȘI când `df_id` e non-NULL.
+    // ⛔ Doar pentru `df`: ORD-ul nu are revizii, iar ORD-urile ciclurilor ARHIVATE poartă
+    // același `source_alop_id` — relaxarea acolo ar permite ca fluxul unui ORD vechi să
+    // fie legat ca flux ORD curent.
+    provenientaFaraDirect: true,
   },
   ord: {
     metaKey: 'ordId',
@@ -65,9 +72,17 @@ const OK = { ok: true };
  *
  * Două căi acceptate:
  *  (a) directă — `meta.dfId` === `alop.df_id`;
- *  (b) cloud „Fără DF" — `alop.df_id` e NULL, iar documentul revendicat de flux poartă
- *      `source_alop_id = alop.id` (oglindește `selfHealAlopDfLinkByAlop`, alop-link.mjs).
- *      Fără ea, am rupe recuperarea de pe calea de semnare cloud (incident 04.08, DF 417).
+ *  (b) proveniență — documentul revendicat de flux APARȚINE DOSARULUI ALOP-ului, adică
+ *      poartă `source_alop_id = alop.id` (oglindește `selfHealAlopDfLinkByAlop`,
+ *      alop-link.mjs). Acoperă două situații:
+ *        • ALOP încă fără document legat (`df_id` NULL) — calea cloud „Fără DF"
+ *          (incident 04.08, DF 417); disponibilă pentru AMBELE tipuri;
+ *        • #134f — `df_id` non-NULL, dar fluxul revendică o ALTĂ REVIZIE a aceluiași
+ *          dosar (pointerul stă pe revizia în vigoare cât timp R(n+1) e în lucru).
+ *          Disponibilă DOAR pentru tipurile cu `provenientaFaraDirect` (azi: `df`).
+ *      ⛔ Predicatul rămâne apartenența la dosar (`source_alop_id` + `org_id` +
+ *      `deleted_at IS NULL`). NICIUN fallback pe `nr_unic_inreg`: numărul e partajat
+ *      între dosare (docs/incidents/DF-NR-DUPLICAT.md) ⇒ ar fi o poartă mai slabă.
  *
  * @returns {Promise<boolean>} — fail-closed: false la orice date insuficiente.
  */
@@ -76,9 +91,10 @@ async function claimsAlopDocument(pool, { cfg, alop, orgId, metaDocId }) {
 
   if (alopDocId != null && metaDocId != null && String(metaDocId) === String(alopDocId)) return true;
 
-  // Cazul cloud: ALOP încă fără document legat, dar documentul revendicat de flux
-  // s-a născut din acest ALOP (source_alop_id).
-  if (alopDocId == null && metaDocId != null && alop?.id != null) {
+  // Calea (b) — apartenența la dosar. Când ALOP-ul are deja un document legat, ea se
+  // deschide DOAR pentru tipurile marcate `provenientaFaraDirect` (vezi KINDS).
+  const provenientaPermisa = alopDocId == null || cfg.provenientaFaraDirect === true;
+  if (provenientaPermisa && metaDocId != null && alop?.id != null) {
     const { rows } = await pool.query(
       `SELECT 1 FROM ${cfg.table}
         WHERE id::text = $1 AND source_alop_id = $2 AND org_id = $3 AND deleted_at IS NULL

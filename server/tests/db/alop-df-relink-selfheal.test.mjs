@@ -31,22 +31,40 @@ d('Linking DF↔ALOP — invariant relink-pe-completed + self-heal', () => {
   const p1 = () => makeAuthCookie({ userId: 1, role: 'user', orgId: 1 });
 
   // ── INVARIANT: revizia RELEAGĂ ALOP-ul completed (protejează noua-lichidare) ────
-  it('revizuieste pe DF cu ALOP completed → ALOP relink la revizia nouă, df_flow_id/df_completed_at resetate, status neatins', async () => {
+  // #134f — invariantul de business RĂMÂNE (un ALOP `completed` chiar se releagă la revizia
+  // nouă), dar MOMENTUL s-a mutat: nu la CREAREA reviziei, ci la APROBAREA ei, prin
+  // selfHealAlopDfLink — singurul care mai mută pointerul. Aserția veche (relink imediat +
+  // df_flow_id/df_completed_at resetate) cimenta exact semantica pe care lotul o schimbă.
+  it('revizuieste pe DF cu ALOP completed → pointerul se mută la APROBAREA reviziei, status neatins', async () => {
     const flowId = await seedFlowApproved();
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', flowId, nrUnic: 'DF-INV-1', rowsVal: [{ valt_actualiz: '1000' }] });
     const alopId = await seedAlop({
       orgId: 1, createdBy: 1, status: 'completed', dfId, dfFlowId: flowId,
       dfCompletedAt: new Date(), plataSumaEfectiva: 1000, cicluCurent: 1,
     });
+    await pool.query(`UPDATE formulare_df SET source_alop_id=$2 WHERE id=$1`, [dfId, alopId]);
 
     const res = await request(app).post(`/api/formulare-df/${dfId}/revizuieste`).set('Cookie', p1()).send({ motiv: 'valoare mărită' });
     expect(res.status).toBe(200);
     const revId = res.body.df.id;
 
+    // Cât timp R1 e în lucru, dosarul rămâne pe revizia ÎN VIGOARE (R0), cu dovada aprobării.
+    const inLucru = await getAlop(alopId);
+    expect(inLucru.df_id).toBe(dfId);
+    expect(inLucru.df_flow_id).toBe(flowId);
+    expect(inLucru.df_completed_at).not.toBeNull();
+    expect(inLucru.status).toBe('completed');
+
+    // 🔒 Aprobarea lui R1 releagă ALOP-ul CHIAR DACĂ e `completed` (doar `cancelled_at`
+    // exclude) — mecanismul care permite ciclul următor. NU adăuga filtre pe completed.
+    const revFlow = await seedFlowApproved();
+    await pool.query(`UPDATE formulare_df SET flow_id=$2 WHERE id=$1`, [revId, revFlow]);
+    await selfHealAlopDfLink(pool, revFlow);
+
     const a = await getAlop(alopId);
     expect(a.df_id).toBe(revId);            // relink la R1 — și pe ALOP completed
-    expect(a.df_flow_id).toBeNull();
-    expect(a.df_completed_at).toBeNull();
+    expect(a.df_flow_id).toBe(revFlow);
+    expect(a.df_completed_at).not.toBeNull();
     expect(a.status).toBe('completed');     // relink-ul de revizie NU atinge status-ul
   });
 
@@ -61,8 +79,9 @@ d('Linking DF↔ALOP — invariant relink-pe-completed + self-heal', () => {
       orgId: 1, createdBy: 1, status: 'completed', dfId, dfFlowId: flowId,
       dfCompletedAt: new Date(), plataSumaEfectiva: 1000, cicluCurent: 1,
     });
+    await pool.query(`UPDATE formulare_df SET source_alop_id=$2 WHERE id=$1`, [dfId, alopId]);
 
-    // Revizuire → ALOP relink la R1; creditele bugetare col.10 ale reviziei cresc la 1500 (aprobat)
+    // Revizuire; creditele bugetare col.10 ale reviziei cresc la 1500.
     const rev = await request(app).post(`/api/formulare-df/${dfId}/revizuieste`).set('Cookie', p1()).send({ motiv: 'suplimentare' });
     expect(rev.status).toBe(200);
     const revId = rev.body.df.id;
@@ -71,6 +90,9 @@ d('Linking DF↔ALOP — invariant relink-pe-completed + self-heal', () => {
       `UPDATE formulare_df SET rows_val=$2::jsonb, rows_plati=$3::jsonb, rows_ctrl=$4::jsonb, status='aprobat', flow_id=$5 WHERE id=$1`,
       [revId, JSON.stringify([{ valt_actualiz: '1500' }]), JSON.stringify([{ plati_estim_ancrt: '1500' }]), JSON.stringify([{ sum_rezv_crdt_bug_act: '1500' }]), revFlowId]
     );
+    // #134f — pointerul se mută abia ACUM, la aprobarea reviziei. Înainte de asta,
+    // noua-lichidare ar fi citit (corect) tot col.10 al lui R0.
+    await selfHealAlopDfLink(pool, revFlowId);
 
     const res = await request(app).post(`/api/alop/${alopId}/noua-lichidare`).set('Cookie', p1()).send({});
     expect(res.status).toBe(200);

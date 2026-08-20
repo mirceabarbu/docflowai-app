@@ -107,14 +107,35 @@ d('DF↔ALOP — reziliența legăturii pe calea de semnare cloud', () => {
     expect(a.df_completed_at).toBeNull();
   });
 
-  it('/revizuieste cu legătura INTACTĂ → calea normală (fără fallback), ALOP mutat pe revizie', async () => {
+  // #134f — testul ASERTA mutarea EAGER a pointerului la crearea reviziei. `alop.df_id`
+  // înseamnă de acum „revizia ÎN VIGOARE" (ultima aprobată): cu legătura INTACTĂ,
+  // /revizuieste nu mai atinge pointerul (nici eager, nici prin fallback — acela e gardat
+  // pe `df_id IS NULL`), iar mutarea se face la APROBAREA reviziei.
+  it('/revizuieste cu legătura INTACTĂ → pointerul rămâne pe revizia în vigoare; se mută la aprobare', async () => {
     const flowId = await seedFlowApproved();
     const r0 = await seedDf({ orgId: 1, createdBy: 1, status: 'completed', flowId, nrUnic: 'DF-FB-2' });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId: r0, dfFlowId: flowId });
+    await pool.query(`UPDATE formulare_df SET source_alop_id=$2 WHERE id=$1`, [r0, alopId]);
 
     const res = await request(app).post(`/api/formulare-df/${r0}/revizuieste`).set('Cookie', p1()).send({});
     expect(res.status).toBe(200);
-    expect((await getAlop(alopId)).df_id).toBe(res.body.df.id);
+    const revId = res.body.df.id;
+
+    // R1 e în draft ⇒ dosarul citește în continuare R0, cu fluxul lui intact.
+    // (`df_completed_at` nu e sedat în acest fixture — vezi alop-df-relink-selfheal.test.mjs
+    // pentru cazul în care dovada aprobării chiar există și trebuie păstrată.)
+    const dupaRevizie = await getAlop(alopId);
+    expect(dupaRevizie.df_id).toBe(r0);
+    expect(dupaRevizie.df_flow_id).toBe(flowId);
+
+    // Aprobarea fluxului lui R1 mută pointerul — mecanismul UNIC (alop-link.mjs).
+    const revFlow = await seedFlowApproved();
+    await pool.query(`UPDATE formulare_df SET flow_id=$2 WHERE id=$1`, [revId, revFlow]);
+    await finalizeDfOnFlowCompleted(pool, revFlow);
+
+    const dupaAprobare = await getAlop(alopId);
+    expect(dupaAprobare.df_id).toBe(revId);
+    expect(dupaAprobare.df_flow_id).toBe(revFlow);
   });
 
   // ── 3. Fallback-ul NU fură un ALOP legat între timp de alt document ─────────

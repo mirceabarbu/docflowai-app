@@ -692,12 +692,15 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
       `, [nou.id, req.params.id]);
       capturiCopiate = capCount;
 
-      // Actualizează linkul ALOP → df_id la noua revizie
-      const { rowCount: relinkCount } = await client.query(
-        `UPDATE alop_instances SET df_id=$1, df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW(), updated_by=$3
-         WHERE df_id=$2 AND cancelled_at IS NULL`,
-        [nou.id, req.params.id, actor.userId]
-      );
+      // #134f — POINTERUL NU SE MAI MUTA AICI.
+      // alop_instances.df_id inseamna de acum "revizia IN VIGOARE" = ultima aprobata.
+      // Cat timp R(n+1) e in lucru sau pe flux, dosarul citeste in continuare cifrele
+      // lui R(n). Mutarea se face EXCLUSIV la aprobare, prin selfHealAlopDfLink
+      // (alop-link.mjs), apelat din signing.mjs si crud.mjs — care stie deja sa treaca
+      // de la o revizie la alta a aceluiasi dosar.
+      // Vechiul UPDATE punea si df_flow_id=NULL / df_completed_at=NULL, stergand dovada
+      // aprobarii lui R(n); acum ele raman, fiindca R(n) chiar este cel in vigoare.
+      const relinkCount = 0;
       // Fallback: legătura era deja ruptă (df_id NULL după ștergerea unei revizii
       // sau după un refuz) — reataşează prin proveniență, ca self-heal-ul.
       relinkFallback = 0;
@@ -710,8 +713,11 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
         );
         relinkFallback = rowCount;
         if (rowCount === 0) {
-          logger.warn({ dfNou: nou.id, parent: req.params.id, sourceAlopId: nou.source_alop_id },
-            'revizuieste: ALOP nerelegat (df_id ocupat de alt document sau ALOP anulat)');
+          // #134f — sub noua semantica, `df_id` NEATINS e cazul NORMAL: pointerul sta pe
+          // revizia in vigoare (R(n) aprobat) si se muta abia la aprobarea lui R(n+1).
+          // Nu mai e o anomalie, deci nu mai e `warn` — ar fi zgomot pe fiecare revizie.
+          logger.info({ dfNou: nou.id, parent: req.params.id, sourceAlopId: nou.source_alop_id },
+            'revizuieste: pointerul ALOP ramane pe revizia in vigoare (mutarea se face la aprobare)');
         }
       }
 

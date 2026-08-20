@@ -102,3 +102,69 @@ describe('flow-provenance — checkFlowLinkable, refuz precoce', () => {
     expect(r.body.error).toBe('flow_alt_org');
   });
 });
+
+// ── #134f — calea (b) de proveniență cu pointerul DEJA ocupat ────────────────
+// `alop.df_id` e acum „revizia ÎN VIGOARE", deci fluxul lui R(n+1) revendică un ALT
+// document decât cel pointat. Calea (b) trebuie să se deschidă — dar NUMAI pentru `df`.
+// (Aici pool-ul e un dublu: verificăm CE se interoghează, nu conținutul bazei — acoperirea
+// pe date reale e în server/tests/db/alop-revizie-in-vigoare.test.mjs, F6/F7/F9/F10.)
+describe('flow-provenance — #134f: proveniență cu df_id non-NULL', () => {
+  const ALOP = { id: 'alop-1', df_id: 'df-vechi', ord_id: 'ord-curent' };
+
+  // Pool fals: primul query = metadatele fluxului; al doilea (dacă apare) = calea (b).
+  function fakePool({ metaDocId, provenientaOk }) {
+    const queries = [];
+    return {
+      queries,
+      query: async (sql) => {
+        queries.push(sql);
+        if (/FROM flows/.test(sql)) {
+          return { rows: [{ id: 'flow-1', same_org: true, live: true, meta_doc_id: metaDocId }] };
+        }
+        // calea (b): SELECT 1 FROM formulare_{df,ord} ... source_alop_id = $2
+        expect(sql).toContain('source_alop_id');
+        expect(sql).not.toContain('nr_unic_inreg');   // ⛔ fără fallback pe număr
+        return { rows: provenientaOk ? [{ '?column?': 1 }] : [] };
+      },
+    };
+  }
+
+  it('7. df: fluxul unei ALTE revizii din același dosar e ACCEPTAT deși df_id e ocupat', async () => {
+    const pool = fakePool({ metaDocId: 'df-revizie-noua', provenientaOk: true });
+    const r = await checkFlowLinkable(pool, {
+      flowId: 'flow-1', kind: 'df', alop: ALOP, orgId: 1,
+    });
+    expect(r.ok).toBe(true);
+    expect(pool.queries.length).toBe(2);              // calea (b) chiar s-a executat
+  });
+
+  it('8. df: un document care NU aparține dosarului rămâne REFUZAT (poarta nu s-a lărgit)', async () => {
+    const pool = fakePool({ metaDocId: 'df-alt-dosar', provenientaOk: false });
+    const r = await checkFlowLinkable(pool, {
+      flowId: 'flow-1', kind: 'df', alop: ALOP, orgId: 1,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.body.error).toBe('flux_alt_document');
+  });
+
+  it('9. ord: relaxarea NU se aplică — calea (b) nici măcar nu se interoghează', async () => {
+    // Un ORD arhivat dintr-un ciclu anterior poartă tot source_alop_id = alop.id;
+    // dacă am ridica garda, fluxul lui ar putea deveni fluxul ORD curent.
+    const pool = fakePool({ metaDocId: 'ord-arhivat', provenientaOk: true });
+    const r = await checkFlowLinkable(pool, {
+      flowId: 'flow-1', kind: 'ord', alop: ALOP, orgId: 1,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.body.error).toBe('flux_alt_document');
+    expect(pool.queries.length).toBe(1);              // doar interogarea fluxului
+  });
+
+  it('10. ord: calea (b) rămâne DISPONIBILĂ când ord_id e NULL (cazul cloud „Fără ORD")', async () => {
+    const pool = fakePool({ metaDocId: 'ord-nou', provenientaOk: true });
+    const r = await checkFlowLinkable(pool, {
+      flowId: 'flow-1', kind: 'ord', alop: { id: 'alop-1', df_id: 'df-x', ord_id: null }, orgId: 1,
+    });
+    expect(r.ok).toBe(true);
+    expect(pool.queries.length).toBe(2);
+  });
+});

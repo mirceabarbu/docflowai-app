@@ -64,15 +64,20 @@ const SQL_ALOP_DF_APROBAT = sqlDosarAreAprobat('a');
 const SQL_ALOP_REVIZIE_LUCRU_ID = sqlRevizieInLucruId('a');
 const SQL_ALOP_REVIZIE_LUCRU_NR = sqlRevizieInLucruNr('a');
 
-const SQL_ALOP_DF_ARE_REVIZIE = `COALESCE((SELECT dfx.revizie_nr FROM formulare_df dfx WHERE dfx.id = a.df_id), 0) > 0`;
-
+// ⚠️ #134f — prima condiție a ramurii „revizie_flux" era `SQL_ALOP_DF_ARE_REVIZIE`, adică
+// „revizia POINTATĂ de a.df_id are revizie_nr > 0". Sub noua semantică (`df_id` = revizia ÎN
+// VIGOARE) pointerul stă pe R0 cât timp R1 e pe flux ⇒ condiția devine falsă și badge-ul s-ar
+// stinge exact în cazul pentru care există. A fost ȘTEARSĂ: a treia condiție o acoperă integral
+// — „există o revizie în lucru" (SQL_ALOP_REVIZIE_LUCRU_ID) impune deja `revizie_nr > 0`.
+// Constanta n-a mai rămas cu niciun consumator, deci a dispărut odată cu ea.
+//
 // ⚠️ #134e — a treia condiție a ramurii „revizie_flux" era `NOT (SQL_ALOP_DF_APROBAT)`,
 // adică „revizia POINTATĂ nu e încă aprobată". Odată ce `df_aprobat` devine o proprietate
 // a DOSARULUI (R0 aprobat ⇒ true pe viață), acea negație ar fi stins badge-ul exact în
 // cazul pentru care există. Înlocuită cu proprietatea echivalentă la nivel de dosar:
 // „există o revizie neaprobată" — structura și ORDINEA ramurilor rămân neatinse.
 const SQL_ALOP_BADGE = `CASE
-    WHEN ${SQL_ALOP_DF_ARE_REVIZIE} AND ${SQL_ALOP_FLUX_DF_ACTIV} AND (${SQL_ALOP_REVIZIE_LUCRU_ID}) IS NOT NULL
+    WHEN ${SQL_ALOP_FLUX_DF_ACTIV} AND (${SQL_ALOP_REVIZIE_LUCRU_ID}) IS NOT NULL
       THEN 'revizie_flux'
     WHEN a.status = 'angajare' AND ${SQL_ALOP_FLUX_DF_ACTIV}
       THEN 'angajare_flux'
