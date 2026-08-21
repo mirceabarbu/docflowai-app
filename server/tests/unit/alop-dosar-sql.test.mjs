@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   sqlFdInDosar, sqlDosarAreFluxActiv, sqlDosarAreAprobat,
   sqlRevizieInLucruId, sqlRevizieInLucruNr,
+  sqlRevizieInVigoareId, sqlRevizieInVigoareNr,
 } from '../../services/alop-dosar-sql.mjs';
 import { dfAprobatSql } from '../../services/df-aprobat-sql.mjs';
 
@@ -20,6 +21,8 @@ const TOATE = () => ({
   sqlDosarAreAprobat: sqlDosarAreAprobat(),
   sqlRevizieInLucruId: sqlRevizieInLucruId(),
   sqlRevizieInLucruNr: sqlRevizieInLucruNr(),
+  sqlRevizieInVigoareId: sqlRevizieInVigoareId(),
+  sqlRevizieInVigoareNr: sqlRevizieInVigoareNr(),
 });
 
 describe('#134e — alop-dosar-sql: fragmente corelate pe DOSAR', () => {
@@ -37,7 +40,8 @@ describe('#134e — alop-dosar-sql: fragmente corelate pe DOSAR', () => {
     expect(fd).not.toContain('fd.');
 
     for (const f of [sqlDosarAreFluxActiv('zz'), sqlDosarAreAprobat('zz'),
-                     sqlRevizieInLucruId('zz'), sqlRevizieInLucruNr('zz')]) {
+                     sqlRevizieInLucruId('zz'), sqlRevizieInLucruNr('zz'),
+                     sqlRevizieInVigoareId('zz'), sqlRevizieInVigoareNr('zz')]) {
       expect(f).toContain('zz.');
       // niciun fragment nu mai poate referi aliasul implicit `a` când i se dă altul
       expect(f).not.toMatch(/\ba\.(id|org_id|df_id|df_flow_id)\b/);
@@ -117,5 +121,10 @@ describe('#134e — alop-dosar-sql: fragmente corelate pe DOSAR', () => {
     expect(frag).toContain("(ffa.data->>'status')    IS DISTINCT FROM 'cancelled'");
     expect(frag).toContain("(ffa.data->>'status')    IS DISTINCT FROM 'refused'");
     expect(frag).toContain('ffa.deleted_at IS NULL');
+  });
+
+  it('12. #135 — „revizie în vigoare" e complementara EXACTĂ a „revizie în lucru"', () => {
+    expect(sqlRevizieInVigoareNr()).toContain('EXISTS (');
+    expect(sqlRevizieInLucruNr()).toContain('NOT EXISTS (');
   });
 });

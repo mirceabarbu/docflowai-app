@@ -195,6 +195,37 @@ d('#134e — ALOP: derivări de stare pe DOSAR, nu pe pointerul df_id', () => {
     expect(a.capabilities.can_revise_df).toBe(false);
   });
 
+  it('V10 #135 — D1: fără revizii, vigoare=0, lucru=null (nu se pot contrazice)', async () => {
+    for (const a of [await rand(D1), await detaliu(D1)]) {
+      expect(a.df_revizie_vigoare_nr).toBe(0);
+      expect(a.df_revizie_lucru_nr).toBeNull();
+    }
+  });
+
+  it('V11 #135 — D2: R0 aprobat + R1 draft (pointer pe R1) → vigoare=0, lucru=1', async () => {
+    for (const a of [await rand(D2), await detaliu(D2)]) {
+      expect(a.df_revizie_vigoare_nr).toBe(0);
+      expect(a.df_revizie_lucru_nr).toBe(1);
+    }
+  });
+
+  it('V12 #135 — D3: R0 aprobat + R1 pe flux activ (pointer pe R1) → vigoare=0, lucru=1', async () => {
+    for (const a of [await rand(D3), await detaliu(D3)]) {
+      expect(a.df_revizie_vigoare_nr).toBe(0);
+      expect(a.df_revizie_lucru_nr).toBe(1);
+    }
+  });
+
+  it('V13 #135 — POARTA CENTRALĂ: vigoare și lucru nu pot fi simultan același număr, pentru niciun dosar', async () => {
+    for (const id of [D1, D2, D3, D4]) {
+      const a = await rand(id);
+      const contrazice = a.df_revizie_vigoare_nr !== null
+        && a.df_revizie_lucru_nr !== null
+        && a.df_revizie_vigoare_nr === a.df_revizie_lucru_nr;
+      expect(contrazice, `dosar ${id}: vigoare=${a.df_revizie_vigoare_nr} lucru=${a.df_revizie_lucru_nr}`).toBe(false);
+    }
+  });
+
   it('V9 — non-regresie financiară: df_valoare și df_buget_an_curent sunt NESCHIMBATE (lotul nu atinge banii)', async () => {
     for (const id of [D1, D2, D3, D4]) {
       const r = await rand(id);

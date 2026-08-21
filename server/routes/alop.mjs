@@ -34,6 +34,7 @@ import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import {
   sqlDosarAreFluxActiv, sqlDosarAreAprobat,
   sqlRevizieInLucruId, sqlRevizieInLucruNr,
+  sqlRevizieInVigoareNr,
 } from '../services/alop-dosar-sql.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
@@ -63,6 +64,10 @@ const SQL_ALOP_DF_APROBAT = sqlDosarAreAprobat('a');
 // #134e — revizia în lucru a dosarului (derivată, fără coloană nouă).
 const SQL_ALOP_REVIZIE_LUCRU_ID = sqlRevizieInLucruId('a');
 const SQL_ALOP_REVIZIE_LUCRU_NR = sqlRevizieInLucruNr('a');
+// #135 — revizia ÎN VIGOARE, derivată pe DOSAR. Expusă ca să nu mai fie nevoie
+// ca frontend-ul să deducă „în vigoare" din pointer (df.revizie_nr) — singura
+// sursă din care se putea naște contradicția „în vigoare Rn / în lucru Rn".
+const SQL_ALOP_REVIZIE_VIGOARE_NR = sqlRevizieInVigoareNr('a');
 
 // ⚠️ #134f — prima condiție a ramurii „revizie_flux" era `SQL_ALOP_DF_ARE_REVIZIE`, adică
 // „revizia POINTATĂ de a.df_id are revizie_nr > 0". Sub noua semantică (`df_id` = revizia ÎN
@@ -436,6 +441,7 @@ router.get('/api/alop', async (req, res) => {
         ${SQL_ALOP_DF_APROBAT}    AS df_aprobat,
         ${SQL_ALOP_REVIZIE_LUCRU_ID} AS df_revizie_lucru_id,
         ${SQL_ALOP_REVIZIE_LUCRU_NR} AS df_revizie_lucru_nr,
+        ${SQL_ALOP_REVIZIE_VIGOARE_NR} AS df_revizie_vigoare_nr,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
         ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
@@ -735,6 +741,7 @@ router.get('/api/alop/:id', async (req, res) => {
         ${SQL_ALOP_FLUX_DF_ACTIV} AS df_flow_active,
         ${SQL_ALOP_REVIZIE_LUCRU_ID} AS df_revizie_lucru_id,
         ${SQL_ALOP_REVIZIE_LUCRU_NR} AS df_revizie_lucru_nr,
+        ${SQL_ALOP_REVIZIE_VIGOARE_NR} AS df_revizie_vigoare_nr,
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS ord_aprobat,
