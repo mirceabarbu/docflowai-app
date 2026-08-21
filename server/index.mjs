@@ -524,6 +524,7 @@ import outreachRouter from './routes/admin/outreach.mjs';
 import entitlementsAdminRouter from './routes/admin/entitlements.mjs';
 import { getAllModulesForUser as _getAllModulesForUser } from './services/entitlements.mjs';
 import { transmitFlowTo, resolveRecipientEmails, alreadyHasAccessEmails } from './services/flow-transmit.mjs';
+import { insertNotificationOnce } from './services/notify-dedup.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
@@ -1491,10 +1492,23 @@ async function notify({ userEmail, flowId, type, title, message, waParams = {}, 
   const displayTitle = urgent ? `🚨 [URGENT] ${title}` : title;
 
   if (needsInApp) {
-    const r = await pool.query(
-      'INSERT INTO notifications (user_email,flow_id,type,title,message,urgent) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-      [email, flowId || null, type, displayTitle, message, !!urgent]
-    );
+    // #137 — poarta ATOMICĂ. Verificarea de mai sus (fereastră) e fast-path și
+    // prinde doar cursele secvențiale; două polluri concurente de semnare în masă
+    // treceau amândouă de ea. Aici lacătul consultativ serializează pe
+    // (email, flowId, type) și al doilea apelant vede rândul primului.
+    // LIMITARE ASUMATĂ: dacă notif_inapp=false nu se inserează niciun rând ⇒ nu
+    // există după ce să se deduplice — emailul se poate încă dubla. Implicit
+    // notif_inapp e TRUE, cazul e marginal; nu se repară în acest lot (#137).
+    const ins = await insertNotificationOnce(pool, {
+      email, flowId: flowId || null, type,
+      title: displayTitle, message, urgent: !!urgent,
+      dedupWindow: dedupWin || null,
+    });
+    if (!ins.inserted) {
+      logger.info({ email, flowId, type }, 'notify: duplicat suprimat (poarta atomică #137)');
+      return;
+    }
+    const r = { rows: [{ id: ins.id }] };
     wsPush(email, { event: 'notification', data: { id: r.rows[0]?.id, flow_id: flowId || null, flowId: flowId || null, type, title: displayTitle, message, read: false, created_at: new Date().toISOString(), urgent: !!urgent } });
     const { rows: cntRows } = await pool.query('SELECT COUNT(*) FROM notifications WHERE user_email=$1 AND read=FALSE', [email]);
     wsPush(email, { event: 'unread_count', count: parseInt(cntRows[0].count) });
