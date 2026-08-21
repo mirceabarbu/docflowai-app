@@ -125,11 +125,28 @@ router.get('/admin/alop/stats', async (req, res) => {
              FROM alop_status_log`
         );
         const g = gr[0] || {};
+        // #138 — `enforcing` = poarta e în modul BLOCARE (migrarea 109: RAISE EXCEPTION).
+        // Derivat din STAREA REALĂ a bazei (corpul funcției), NU dintr-un flag hardcodat:
+        // dacă cineva re-rulează vreodată 094/103 și readuce funcția în modul observare
+        // (v. planul de retragere din 109), cardul spune ADEVĂRUL în loc să mintă liniștitor.
+        // Fail-safe: eroare sau funcție lipsă ⇒ false (mai bine „observare" decât o
+        // protecție inexistentă pretinsă). Rulează doar pentru role='admin'.
+        let _enforcing = false;
+        try {
+          const { rows: er } = await pool.query(
+            `SELECT position('RAISE EXCEPTION' IN pg_get_functiondef(p.oid)) > 0 AS enforcing
+               FROM pg_proc p
+               JOIN pg_namespace n ON n.oid = p.pronamespace
+              WHERE p.proname = 'alop_status_guard' AND n.nspname = 'public'`
+          );
+          _enforcing = er[0]?.enforcing === true;
+        } catch(e) { logger.warn({ err: e }, '/admin/alop/stats gate enforcing probe failed (non-fatal)'); }
         payload.gate = {
           total_transitions: g.total_transitions || 0,
           violations:        g.violations || 0,
           observing_since:   g.observing_since || null,
           days_observed:     g.observing_since ? (g.days_observed || 0) : null,
+          enforcing:         _enforcing,
         };
       } catch(e) { logger.warn({ err: e }, '/admin/alop/stats gate query failed (non-fatal)'); }
     }

@@ -162,7 +162,20 @@
             const _tot  = Number(a.gate.total_transitions) || 0;
             const _days = (a.gate.days_observed == null) ? null : Number(a.gate.days_observed);
             let _color, _valTxt, _subTxt;
-            if (_viol > 0) {
+            // #138 — poarta ACTIVĂ (migrarea 109, RAISE EXCEPTION). Ramura asta e PRIMA
+            // și scurtcircuitează restul: odată poarta activă, `violations` NU mai poate
+            // CREȘTE (excepția abortează tranzacția, deci nici INSERT-ul de violare, nici
+            // trigger-ul de audit nu mai rulează) ⇒ contorul e strict ISTORIC. Fără ea,
+            // rândul de violare din 23.07 ar fi ținut cardul pe „⚠️ NU activa poarta" pe
+            // veci, DUPĂ activare — un indicator care minte nu mai e indicator, e zgomot.
+            if (a.gate.enforcing === true) {
+              _color  = 'var(--df-success)';
+              _valTxt = '🔒';
+              _subTxt = _viol > 0
+                ? 'Poartă ACTIVĂ · ' + _viol.toLocaleString('ro-RO') +
+                  (_viol === 1 ? ' violare istorică' : ' violări istorice') + ' (înainte de activare)'
+                : 'Poartă ACTIVĂ — tranzițiile invalide sunt blocate';
+            } else if (_viol > 0) {
               _color  = 'var(--df-danger)';
               _valTxt = '⚠️ ' + _viol.toLocaleString('ro-RO');
               _subTxt = (_viol === 1 ? '1 violare' : _viol.toLocaleString('ro-RO') + ' violări') + ' — NU activa poarta';

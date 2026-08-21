@@ -117,6 +117,23 @@ d('GET /admin/alop/stats — 4 KPI ALOP (prompt 66)', () => {
     expect(res.status).toBe(403);
   });
 
+  // #138 — `gate.enforcing` e sondat din STAREA REALĂ a bazei (pg_get_functiondef), nu
+  // hardcodat. Testul leagă migrarea 109 de payload-ul rutei: dacă poarta s-ar întoarce
+  // în modul observare, câmpul devine false — cardul spune adevărul, nu minte liniștitor.
+  // Expus DOAR pentru role='admin' (org_admin nu ia decizia de flip, vezi flows.mjs:118).
+  it('gate.enforcing = true pentru admin (poarta e în modul blocare, migrarea 109)', async () => {
+    const res = await request(app).get('/admin/alop/stats').set('Cookie', cookieAdmin());
+    expect(res.status).toBe(200);
+    expect(res.body.gate).toBeTruthy();
+    expect(res.body.gate.enforcing).toBe(true);
+  });
+
+  it('gate (deci și enforcing) NU e expus pentru org_admin', async () => {
+    const res = await request(app).get('/admin/alop/stats').set('Cookie', cookieOrgAdmin1());
+    expect(res.status).toBe(200);
+    expect(res.body.gate).toBeUndefined();
+  });
+
   it('fără date → toate 0', async () => {
     const res = await request(app).get('/admin/alop/stats').set('Cookie', cookieOrgAdmin1());
     expect(res.status).toBe(200);

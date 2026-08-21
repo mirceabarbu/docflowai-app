@@ -2,26 +2,38 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## ⏳ ÎN AȘTEPTARE — activarea porții ALOP
+## ✅ Poarta ALOP este ACTIVĂ (blocare) — din v3.9.795, 21.08.2026
 
-Trigger-ul `alop_status_guard` rulează în **mod observare** (RAISE WARNING) din 13.07.2026.
-Nu blochează nimic — doar înregistrează în `alop_status_log`. (Migrațiile inline 093/094 din
-`server/db/index.mjs`.)
+Trigger-ul `alop_status_guard` **blochează** tranzițiile de stare care nu sunt în matrice:
+`RAISE EXCEPTION` cu `ERRCODE='check_violation'` (migrarea inline **109**). Fereastra de
+observare deschisă la 13.07.2026 (093/094) s-a închis cu 284 de tranziții în 29 de zile și
+**zero violări noi** — singura violare istorică (23.07, reparația admin-cancel) fusese deja
+legalizată retroactiv de migrarea **103**.
 
-**De verificat după 21.07.2026** (sau când cardul „Poartă ALOP" din dashboard-ul admin
-devine VERDE):
+**Matricea trăiește DOAR în SQL** (109, identică caracter cu caracter cu 103); codul e
+specificația. ⛔ Nu adăuga tranziții „ca să fie" — fiecare adăugire slăbește poarta.
+`completed→lichidare` (ciclul noua-lichidare), `draft→lichidare` (salt) și `plata→ordonantare`
+(admin-cancel #113) sunt CORECTE și acoperite de teste ⭐.
 
-    SELECT COUNT(*) AS total,
-           COUNT(*) FILTER (WHERE violation) AS violari,
-           MIN(changed_at)::date AS din
-    FROM alop_status_log;
+**Consecințe de reținut:**
+- `alop_status_log.violations` NU mai poate CREȘTE — excepția abortează tranzacția, deci nici
+  INSERT-ul de violare, nici trigger-ul de audit (093, AFTER UPDATE) nu rulează. Contorul e
+  strict **istoric**. Cardul „Poartă ALOP" din dashboard citește `gate.enforcing`
+  (`server/routes/admin/flows.mjs`, sondat din `pg_get_functiondef` — starea REALĂ a bazei,
+  nu un flag) și afișează 🔒 „Poartă ACTIVĂ", nu „NU activa poarta".
+- Trigger-ul (BEFORE UPDATE) rulează ÎNAINTEA CHECK-ului `alop_status_valid`: un `UPDATE` la
+  un status inexistent dă acum eroarea porții, nu a CHECK-ului. CHECK-ul rămâne poarta pe
+  `INSERT`, pe care trigger-ul nu-l acoperă.
+- O cale legitimă ratată de recon se manifestă ca **eroare vizibilă**, nu ca rezultat greșit.
 
-- `violari = 0` și fereastră > 7 zile ⇒ **flip**: migrare nouă, `RAISE WARNING` →
-  `RAISE EXCEPTION` + `RETURN NULL` în `alop_status_guard()`.
-- `violari > 0` ⇒ **NU flipa.** Analizează tranziția, adaug-o în matrice dacă e legitimă
-  (recon-ul #91 a ratat-o), repornește fereastra.
+↩️ **Retragere fără deploy** (cât o interogare): re-rulează în consola Railway corpul funcției
+din 103 (`CREATE OR REPLACE FUNCTION alop_status_guard` cu `RAISE WARNING` + `INSERT`) —
+poarta revine instantaneu în observare, cu trigger-ul intact, iar cardul raportează singur
+`enforcing:false`.
 
-⛔ NU șterge această secțiune până nu e făcut flipul.
+Teste: `server/tests/db/alop-gate-enforcing.test.mjs` (inclusiv asserția pe
+`pg_get_functiondef`, care prinde capcana de ordonare a migrărilor din `migrateForTests`) +
+`server/tests/db/alop-state-gate.test.mjs`.
 
 ## Project Overview
 
@@ -1232,6 +1244,10 @@ Schema ALOP este împărțită între un fișier SQL inițial și migrații inli
 | server/db/index.mjs                       | 086_alop_ord_cicluri_an_exercitiu | an de exercițiu per ciclu arhivat    |
 | server/db/index.mjs                       | 088_flow_recipients    | user XOR compartiment (repartizare), CHECK + unicitate parțială |
 | server/db/index.mjs                       | 089_flow_recipient_acks | confirmare luare la cunoștință PER-PERSOANĂ |
+| server/db/index.mjs                       | 093_alop_state_gate    | alop_status_log + trigger de audit (AFTER UPDATE) |
+| server/db/index.mjs                       | 094_alop_state_guard   | poarta de stări, mod OBSERVARE (RAISE WARNING) |
+| server/db/index.mjs                       | 103_alop_matrix_admin_cancel | + `plata→ordonantare` în matrice (admin-cancel #113) |
+| server/db/index.mjs                       | 109_alop_state_gate_enforce | FLIP: poarta BLOCHEAZĂ (RAISE EXCEPTION) — matrice identică cu 103 |
 
 Pentru orice nouă migrație ALOP/formulare, urmează regula stabilită:
 ALTER inline în db/index.mjs cu pattern `id: 'NNN_descriere'` și SQL idempotent.
