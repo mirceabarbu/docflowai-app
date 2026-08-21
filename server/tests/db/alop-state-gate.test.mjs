@@ -1,13 +1,15 @@
 /**
- * #95 — Poarta de stări ALOP în Postgres (FAZA 1, MOD OBSERVARE).
- * Exercită trigger-ele REALE pe Postgres real (migrațiile inline 093/094):
- *   - CHECK `alop_status_valid` pe status
- *   - trigger de audit `trg_alop_status_audit` (AFTER UPDATE) → alop_status_log
- *   - trigger de validare `trg_alop_status_guard` (BEFORE UPDATE, observare) → violation=TRUE
+ * #95 — Poarta de stări ALOP în Postgres. ⚠️ ACTUALIZAT LA #138: poarta a fost FLIPATĂ din
+ * modul observare în modul BLOCARE (migrarea 109, RAISE EXCEPTION). Asserțiile care descriau
+ * faza 1 („tranziția invalidă REUȘEȘTE și doar se loghează") au fost înlocuite deliberat.
  *
- * ⛔ NU redeclara matricea în JS. Testele lovesc trigger-ul real; matricea trăiește DOAR în SQL
- * (migrarea 094). Faza 1 NU blochează — testul-cheie (#3) dovedește că o tranziție invalidă
- * REUȘEȘTE și doar se loghează.
+ * Exercită trigger-ele REALE pe Postgres real (migrațiile inline 093/094/103/109):
+ *   - CHECK `alop_status_valid` pe status (poarta pe INSERT)
+ *   - trigger de audit `trg_alop_status_audit` (AFTER UPDATE) → alop_status_log
+ *   - trigger de validare `trg_alop_status_guard` (BEFORE UPDATE, BLOCANT) → RAISE EXCEPTION
+ *
+ * ⛔ NU redeclara matricea în JS. Testele lovesc trigger-ul real; matricea trăiește DOAR în SQL.
+ * Acoperirea dedicată a modului blocare: `server/tests/db/alop-gate-enforcing.test.mjs`.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { hasTestDb, migrate, truncateAll, pool, seedOrgUser, seedAlop, getAlop } from '../helpers/db-real.mjs';
@@ -39,13 +41,25 @@ d('#95 — poarta de stări ALOP (trigger real pe Postgres)', () => {
   beforeEach(async () => { await truncateAll(); await clearLog(); await seedOrgUser({ role: 'user' }); });
   afterAll(() => pool.end());
 
-  // 1 — CHECK constraint
-  it('CHECK: UPDATE la status inexistent → eroare de constrângere', async () => {
+  // 1 — status inexistent: respins pe AMBELE căi, dar de gărzi DIFERITE.
+  // ⚠️ Schimbare de ordine adusă de #138 (migrarea 109): trigger-ul BEFORE UPDATE rulează
+  // ÎNAINTEA evaluării CHECK-urilor. Cât timp guard-ul doar avertiza (faza 1), UPDATE-ul
+  // ajungea la CHECK `alop_status_valid`; acum guard-ul aruncă primul, deci mesajul e al lui.
+  // NU e o slăbire — respingerea rămâne, doar sursa erorii diferă. CHECK-ul rămâne poarta
+  // pentru INSERT, pe care trigger-ul (BEFORE UPDATE) nu-l acoperă deloc — asertat mai jos.
+  it('UPDATE la status inexistent → respins de poartă (guard, înaintea CHECK-ului)', async () => {
     const id = await seedAlop({ orgId: 1, createdBy: 1, status: 'draft' });
     await expect(
       pool.query("UPDATE alop_instances SET status='inexistent' WHERE id=$1", [id])
-    ).rejects.toThrow(/alop_status_valid|check constraint/i);
+    ).rejects.toThrow(/ALOP transition violation: draft -> inexistent/);
     expect((await getAlop(id)).status).toBe('draft');
+  });
+  it('CHECK alop_status_valid rămâne poarta pe INSERT (trigger-ul e doar BEFORE UPDATE)', async () => {
+    await expect(
+      pool.query(
+        `INSERT INTO alop_instances (org_id, created_by, status, titlu) VALUES (1, 1, 'inexistent', 'X')`
+      )
+    ).rejects.toThrow(/alop_status_valid|check constraint/i);
   });
 
   // 2 — fiecare tranziție validă → reușește + exact 1 rând violation=FALSE
@@ -61,26 +75,24 @@ d('#95 — poarta de stări ALOP (trigger real pe Postgres)', () => {
     expect(rows[0].changed_by).toBe(1);
   });
 
-  // 3 — TESTUL-CHEIE: tranziție invalidă REUȘEȘTE (faza 1 nu blochează) + violation=TRUE
-  it('tranziție invalidă draft → completed: REUȘEȘTE + 1 rând violation=TRUE (+1 audit)', async () => {
+  // 3 — TESTUL-CHEIE, ACTUALIZAT LA #138: după flipul porții (migrarea 109) o tranziție
+  // invalidă NU mai „reușește + se loghează" — ARUNCĂ, iar tranzacția se abortează, deci
+  // nici rândul de violare (guard, BEFORE) nici cel de audit (093, AFTER) nu se mai scriu.
+  // Vechea asserție (observare: REUȘEȘTE + violation=TRUE) descria faza 1 și a fost înlocuită
+  // deliberat, nu „reparată". Acoperire extinsă: server/tests/db/alop-gate-enforcing.test.mjs.
+  it('#138: tranziție invalidă draft → completed ARUNCĂ, rândul rămâne draft, log gol', async () => {
     const id = await seedAlop({ orgId: 1, createdBy: 1, status: 'draft' });
-    await pool.query('UPDATE alop_instances SET status=$1, updated_by=1 WHERE id=$2', ['completed', id]);
-    // Faza 1 NU blochează — tranziția s-a aplicat.
-    expect((await getAlop(id)).status).toBe('completed');
-    const rows = await logFor(id);
-    // Dublă înregistrare intenționată: guard (violation=TRUE, BEFORE) + audit (violation=FALSE, AFTER).
-    const viol = rows.filter(r => r.violation === true);
-    const audit = rows.filter(r => r.violation === false);
-    expect(viol.length).toBe(1);
-    expect(audit.length).toBe(1);
-    expect(viol[0].from_status).toBe('draft');
-    expect(viol[0].to_status).toBe('completed');
+    await expect(
+      pool.query('UPDATE alop_instances SET status=$1, updated_by=1 WHERE id=$2', ['completed', id])
+    ).rejects.toThrow(/ALOP transition violation: draft -> completed/);
+    expect((await getAlop(id)).status).toBe('draft');
+    expect(await logFor(id)).toEqual([]);
   });
 
-  // 3b — #113a: plata → ordonantare NU mai e violare (adăugată în matrice de migrația 103),
-  // dar plata → draft (tranziție inventată) ÎNCĂ e violare. Dovedește că 103 a extins matricea
-  // EXACT cu o singură intrare, fără să slăbească restul porții.
-  it('#113a: plata → ordonantare NU scrie violation; plata → draft ÎNCĂ scrie violation', async () => {
+  // 3b — #113a: plata → ordonantare e în matrice (migrația 103) ⇒ TRECE; plata → draft
+  // (tranziție inventată) e respinsă. Dovedește că 103 a extins matricea EXACT cu o singură
+  // intrare, iar 109 (#138) a transformat restul porții din avertisment în blocaj real.
+  it('#113a: plata → ordonantare TRECE; plata → draft e RESPINSĂ (poartă activă)', async () => {
     const idOk = await seedAlop({ orgId: 1, createdBy: 1, status: 'plata' });
     await pool.query('UPDATE alop_instances SET status=$1, updated_by=1 WHERE id=$2', ['ordonantare', idOk]);
     expect((await getAlop(idOk)).status).toBe('ordonantare');
@@ -90,9 +102,10 @@ d('#95 — poarta de stări ALOP (trigger real pe Postgres)', () => {
     expect(okRows.filter(r => r.violation === false).length).toBe(1);
 
     const idBad = await seedAlop({ orgId: 1, createdBy: 1, status: 'plata' });
-    await pool.query('UPDATE alop_instances SET status=$1, updated_by=1 WHERE id=$2', ['draft', idBad]);
-    const badRows = await logFor(idBad);
-    expect(badRows.filter(r => r.violation === true).length).toBe(1);
+    await expect(
+      pool.query('UPDATE alop_instances SET status=$1, updated_by=1 WHERE id=$2', ['draft', idBad])
+    ).rejects.toThrow(/ALOP transition violation/);
+    expect((await getAlop(idBad)).status).toBe('plata');
   });
 
   // 4 — self-loop → zero rânduri

@@ -2522,6 +2522,75 @@ export const MIGRATIONS = [
       ALTER TABLE formulare_df  ADD COLUMN IF NOT EXISTS p2_compartiment TEXT;
       ALTER TABLE formulare_ord ADD COLUMN IF NOT EXISTS p2_compartiment TEXT;
     `
+  },
+  {
+    // v3.9.795 (#138): FLIPUL PORȚII ALOP — modul observare → modul BLOCARE.
+    // Fereastra de observare deschisă la 13.07.2026 (093/094) s-a închis: pe producție,
+    // 284 de tranziții în 29 de zile cu ZERO violări noi (singura violare istorică, din
+    // 23.07, e reparația admin-cancel legalizată retroactiv de 103). Matricea din recon
+    // s-a dovedit completă ⇒ tranziția invalidă devine EROARE, nu corupere tăcută.
+    //
+    // ⛔ MATRICEA E LITERAL IDENTICĂ CU CEA DIN 103 — copiată caracter cu caracter.
+    // NU adăuga, NU „corecta", NU reordona nicio tranziție: fiecare adăugire slăbește
+    // poarta. `completed→lichidare` (ciclul noua-lichidare) și `draft→lichidare` (salt)
+    // sunt CORECTE și conforme; `plata→ordonantare` e calea admin-cancel (#113, 103).
+    // Codul e specificația (docs/audits/ALOP-STATE-MATRIX.md).
+    //
+    // ⛔ INSERT INTO alop_status_log DISPARE din ramura de violare — nu e o scăpare:
+    // RAISE EXCEPTION abortează tranzacția, deci INSERT-ul ar fi oricum anulat (la fel
+    // și trigger-ul de audit 093, AFTER UPDATE). A-l lăsa ar sugera fals că violările
+    // continuă să fie înregistrate. Contorul din alop_status_log devine strict ISTORIC:
+    // odată poarta activă, `violations` NU mai poate crește (de aceea cardul din
+    // admin/audit.js citește `gate.enforcing` și spune altceva — vezi flows.mjs:118).
+    //
+    // ⛔ Fără DROP/CREATE TRIGGER: CREATE OR REPLACE FUNCTION păstrează legătura cu
+    // trg_alop_status_guard (094). alop_instances NU se atinge — zero UPDATE/INSERT/ALTER.
+    //
+    // ⚠️ ORDINE OBLIGATORIE FAȚĂ DE 094 ȘI 103 (aceeași capcană documentată la 103):
+    // în migrateForTests, migrările al căror SQL conține tokenul `alop_instances` sunt
+    // deferred în faza 3 (după 014_alop.sql). 094 și 103 sunt deferred. Dacă 109 NU ar fi
+    // la fel deferred, ar rula în faza 1, iar re-rularea lui 094 din faza 3 ar face
+    // CREATE OR REPLACE înapoi la funcția cu RAISE WARNING — flipul ar dispărea TĂCUT în
+    // teste, dar ar fi activ în producție. De aceea SQL-ul de mai jos conține INTENȚIONAT
+    // tokenul `alop_instances` (în comentariul de închidere), forțând același deferral;
+    // 109 fiind ULTIMA în MIGRATIONS, CREATE OR REPLACE-ul ei aterizează după 094 și 103.
+    // ⛔ NU șterge acel token din SQL. Test de plasă: server/tests/db/alop-gate-enforcing.test.mjs
+    // (cazul 7 asertează pe pg_get_functiondef că funcția conține RAISE EXCEPTION).
+    //
+    // ↩️ RETRAGERE (fără deploy): re-rulează în consola Railway corpul funcției din 103
+    // (RAISE WARNING + INSERT) — poarta revine instantaneu în observare, trigger-ul intact.
+    id: '109_alop_state_gate_enforce',
+    sql: `
+      CREATE OR REPLACE FUNCTION alop_status_guard() RETURNS TRIGGER AS $fn$
+      DECLARE
+        allowed TEXT[];
+      BEGIN
+        IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+          RETURN NEW;
+        END IF;
+
+        allowed := CASE OLD.status
+          WHEN 'draft'       THEN ARRAY['angajare','lichidare','cancelled']
+          WHEN 'angajare'    THEN ARRAY['lichidare','plata','cancelled']
+          WHEN 'lichidare'   THEN ARRAY['ordonantare','cancelled']
+          WHEN 'ordonantare' THEN ARRAY['plata','cancelled']
+          WHEN 'plata'       THEN ARRAY['completed','cancelled','ordonantare']
+          WHEN 'completed'   THEN ARRAY['lichidare']
+          WHEN 'cancelled'   THEN ARRAY[]::TEXT[]
+          ELSE ARRAY[]::TEXT[]
+        END;
+
+        IF NOT (NEW.status = ANY(allowed)) THEN
+          RAISE EXCEPTION 'ALOP transition violation: % -> % (alop_id=%)',
+            OLD.status, NEW.status, NEW.id
+            USING ERRCODE = 'check_violation';
+        END IF;
+
+        RETURN NEW;
+      END $fn$ LANGUAGE plpgsql;
+      -- ⛔ Fără DROP/CREATE TRIGGER: trigger-ul trg_alop_status_guard (094) rămâne legat de
+      -- această funcție (CREATE OR REPLACE păstrează legătura). alop_instances neatins.
+    `
   }
 ];
 
