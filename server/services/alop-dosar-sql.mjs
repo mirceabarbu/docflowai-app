@@ -136,3 +136,35 @@ export const sqlRevizieInLucruId = (a = 'a') => revizieInLucru('fdrl.id', a);
 
 /** Numarul (revizie_nr) reviziei in lucru a dosarului, sau NULL. */
 export const sqlRevizieInLucruNr = (a = 'a') => revizieInLucru('fdrl.revizie_nr', a);
+
+/**
+ * Subinterogare interna: revizia IN VIGOARE a dosarului = revizia cu revizie_nr
+ * MAXIM care ESTE aprobata. Complementara exacta a lui revizieInLucru.
+ *
+ * ⚠️ DECIZII EXPLICITE (nu sunt scapari):
+ *  1. FARA conditia revizie_nr > 0 — un R0 aprobat ESTE documentul in vigoare.
+ *  2. Se deriva pe DOSAR, deci ramane corecta chiar daca a.df_id a ramas pe o
+ *     revizie neaprobata (pointer scris inainte de #134f).
+ *  3. Poate intoarce NULL desi df_aprobat e true: ramura de compatibilitate din
+ *     sqlDosarAreAprobat (aprobare prin a.df_flow_id, cand DF-ul pointat n-are
+ *     flow_id propriu) nu produce un revizie_nr. Consumatorul cade inapoi pe
+ *     pointer in acel caz — vezi ETAPA C.
+ */
+const revizieInVigoare = (col, a) => `(
+    SELECT ${col} FROM formulare_df fdrv
+     WHERE ${sqlFdInDosar('fdrv', a)}
+       AND EXISTS (
+         SELECT 1 FROM flows frv
+          WHERE frv.id::text = fdrv.flow_id
+            AND ${dfAprobatSql('fdrv', 'frv')}
+       )
+     ORDER BY COALESCE(fdrv.revizie_nr, 0) DESC, fdrv.created_at DESC
+     LIMIT 1
+  )`;
+
+/** Id-ul reviziei in vigoare a dosarului, sau NULL. */
+export const sqlRevizieInVigoareId = (a = 'a') => revizieInVigoare('fdrv.id', a);
+
+/** Numarul (revizie_nr) reviziei in vigoare a dosarului, sau NULL. */
+export const sqlRevizieInVigoareNr = (a = 'a') =>
+  revizieInVigoare('COALESCE(fdrv.revizie_nr, 0)', a);

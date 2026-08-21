@@ -653,17 +653,31 @@ function renderAlopDetail(a,container){
   const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
   const fmtV=v=>v>0?new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v)+' RON':'—';
 
-  const _dfRevTxt=a.df_id?(()=>{const _n=a.df_revizie_nr||0;const _a=a.df_este_revizie_an_urmator?' · an următor':'';return _n>0?` · Revizia ${_n}${_a}`:` · Revizia 0${_a}`;})():'';
+  // #135 — starea reviziilor se citește din DERIVĂRILE PE DOSAR, nu din pointer.
+  // `vigoare` = ultima revizie aprobată a dosarului; `lucru` se afișează DOAR dacă
+  // e un alt număr decât cea în vigoare (altfel cardul s-ar contrazice singur);
+  // `incoerent` = pointerul ALOP→DF nu arată spre revizia în vigoare, deci cifrele
+  // financiare din antet provin din alt document decât cel afișat ca fiind în vigoare.
+  const _revStare=(()=>{
+    if(!a.df_id) return {vigoare:null,lucru:null,incoerent:false};
+    const _ptr=a.df_revizie_nr||0;
+    const _vig=(a.df_revizie_vigoare_nr!=null)?a.df_revizie_vigoare_nr:(a.df_aprobat?_ptr:null);
+    const _luc=(a.df_revizie_lucru_nr!=null)?a.df_revizie_lucru_nr:null;
+    return {vigoare:_vig,lucru:(_luc!=null&&_luc!==_vig)?_luc:null,incoerent:(_vig!=null&&_ptr!==_vig)};
+  })();
+  const _dfRevTxt=a.df_id?(()=>{const _n=(_revStare.vigoare!=null)?_revStare.vigoare:(a.df_revizie_nr||0);const _a=a.df_este_revizie_an_urmator?' · an următor':'';return _n>0?` · Revizia ${_n}${_a}`:` · Revizia 0${_a}`;})():'';
   const phases=[
     {label:'Angajare',   icon:'📋',color:'#3b82f6',
      done:!!a.df_completed_at||isCompleted,
      active:a.status==='angajare',
      sub:(!a.df_id)?'Fără DF'
         :(a.status==='angajare'&&a.df_flow_active)?`🔄 DF pe fluxul de semnare${_dfRevTxt}`
-        // #134e — revizia „în lucru" se derivă pe DOSAR (df_revizie_lucru_nr), nu pe pointerul
-        // df_id. Se aprinde ACUM și pentru o revizie în DRAFT, nu doar pentru una pe flux.
-        :(a.df_revizie_lucru_nr>0 && a.df_flow_active)?`🔄 Revizia ${a.df_revizie_lucru_nr} pe flux — în curs · în vigoare rămâne Revizia ${a.df_revizie_lucru_nr-1}`
-        :(a.df_revizie_lucru_nr>0)?`🔄 Revizia ${a.df_revizie_lucru_nr} în lucru — în vigoare rămâne Revizia ${a.df_revizie_lucru_nr-1}`
+        // #134e — revizia „în lucru" se derivă pe DOSAR, nu pe pointerul df_id.
+        // #135 — revizia în vigoare se ia din derivare, nu prin scădere aritmetică:
+        // un dosar poate sări numere de revizie, iar cu pointerul stricat scăderea
+        // dădea o cifră care nu corespundea niciunui document real.
+        :(_revStare.lucru>0 && a.df_flow_active)?`🔄 Revizia ${_revStare.lucru} pe flux — în curs · ${_revStare.vigoare!=null?`în vigoare rămâne Revizia ${_revStare.vigoare}`:'nicio revizie aprobată încă'}`
+        :(_revStare.lucru>0)?`🔄 Revizia ${_revStare.lucru} în lucru — ${_revStare.vigoare!=null?`în vigoare rămâne Revizia ${_revStare.vigoare}`:'nicio revizie aprobată încă'}`
         :(['lichidare','ordonantare','plata','completed'].includes(a.status)||isCompleted)?`✅ DF aprobat${_dfRevTxt}`
         :(a.status==='angajare'&&!a.df_flow_active)?`📝 DF în lucru${_dfRevTxt}`
         :`DF: ${a.df_nr||a.df_id.slice(0,8)}${_dfRevTxt}`},
@@ -797,7 +811,7 @@ function renderAlopDetail(a,container){
               ? `<span style="color:#10b981;font-weight:600" title="Valoare estimată la creare ALOP">${fmtRON(_vEst)}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">estimat</span></span>`
               : '';
             const _df = _hasDf
-              ? `<span style="color:#b0a0ff;font-weight:600" title="Valoare din DF activ (cea mai recentă revizie)">${fmtRON(_vDf)}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">DF actual</span></span>`
+              ? `<span style="color:#b0a0ff;font-weight:600" title="Valoare din DF-ul în vigoare (revizia aprobată a dosarului)">${fmtRON(_vDf)}<span style="color:var(--df-text-3);font-weight:400;font-size:.78rem;margin-left:4px">DF actual</span></span>`
               : '';
             // var. B: bugetul exercițiului curent ca linie secundară în header, lângă
             // „estimat"/„DF actual". Aici NU e cifra dominantă → DF legacy/neancorat
@@ -816,7 +830,7 @@ function renderAlopDetail(a,container){
             const _parts = [_est, _df, _bug].filter(Boolean);
             return `<div style="font-size:.85rem;margin-top:4px;display:flex;align-items:center;flex-wrap:wrap">${_parts.join(_sepHtml)}</div>`;
           })()}
-          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">DF în vigoare: <span class="df-revizie-badge${(a.df_revizie_nr||0)>0?' revizie-activa':''}">R${a.df_revizie_nr||0}</span>${(a.df_revizie_nr||0)>0?`<span>Revizia ${a.df_revizie_nr}</span>`:`<span>Revizia inițială</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}${a.df_revizie_lucru_nr!=null?`<span style="color:#fbbf24;font-weight:600" title="Revizie derivată pe dosar (#134e). Până la mutarea pointerului (#134f), poate coincide cu revizia în vigoare.">· Revizie în lucru: R${a.df_revizie_lucru_nr}</span>`:''}</div>`:''}
+          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${_revStare.vigoare!=null?`DF în vigoare: <span class="df-revizie-badge${_revStare.vigoare>0?' revizie-activa':''}">R${_revStare.vigoare}</span>${_revStare.vigoare>0?`<span>Revizia ${_revStare.vigoare}</span>`:`<span>Revizia inițială</span>`}`:`<span style="color:#fbbf24;font-weight:600">Fără revizie aprobată</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}${_revStare.lucru!=null?`<span style="color:#fbbf24;font-weight:600" title="Revizie derivată pe dosarul ALOP: există o revizie neaprobată cu număr mai mare decât cea în vigoare.">· Revizie în lucru: R${_revStare.lucru}</span>`:''}${_revStare.incoerent?`<span style="color:#f87171;font-weight:600" title="Legătura ALOP→DF indică R${a.df_revizie_nr||0}, care nu este revizia în vigoare. Cifrele DF din antet provin din R${a.df_revizie_nr||0} și trebuie verificate.">⚠ legătură DF de verificat</span>`:''}</div>`:''}
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
