@@ -173,3 +173,48 @@ export async function selfHealAlopDfLinkByAlop(pool, alopId) {
     return null;
   }
 }
+
+/**
+ * backfillAlopFlowPointers — completează DOAR pointerii de flux rămași NULL pe un
+ * ALOP al cărui `df_id` e deja corect setat.
+ *
+ * De ce există, deși avem deja două mecanisme de vindecare:
+ *  - `selfHealAlopDfLinkByAlop` e gardat pe `df_id IS NULL` — aici df_id EXISTĂ;
+ *  - back-fill-ul din alop.mjs (lazy auto-tranziție) rulează doar în
+ *    `draft`/`angajare` — rândurile afectate sunt deja în lichidare/ordonantare/
+ *    completed.
+ * Amândouă se recunosc ca „nu e cazul meu" și trec pe lângă. Măsurat: 3 rânduri
+ * în producție, 21.08.2026.
+ *
+ * ⚠️ GARANȚII, în ordinea importanței:
+ *  1. NU mută `df_id` — sursa adevărului rămâne pointerul existent.
+ *  2. NU atinge `status` — poarta ALOP e în mod BLOCARE de la #138; o tranziție
+ *     invalidă ARUNCĂ. Acest UPDATE nu are ce căuta lângă coloana aia.
+ *  3. Scrie numai peste NULL (`COALESCE`), deci nu suprascrie nimic ales manual.
+ *  4. Idempotentă: a doua rulare atinge 0 rânduri.
+ *  5. Non-fatală: o eroare NU strică afișarea dosarului.
+ */
+export async function backfillAlopFlowPointers(pool, alopId) {
+  if (!pool || !alopId) return null;
+  try {
+    const { rows } = await pool.query(`
+      UPDATE alop_instances a
+         SET df_flow_id      = COALESCE(a.df_flow_id, d.flow_id),
+             df_completed_at = COALESCE(a.df_completed_at, (f.data->>'completedAt')::timestamptz, NOW()),
+             updated_at      = NOW()
+        FROM formulare_df d
+        JOIN flows f ON f.id = d.flow_id
+       WHERE a.id = $1
+         AND a.cancelled_at IS NULL
+         AND a.df_id = d.id
+         AND d.deleted_at IS NULL
+         AND (a.df_flow_id IS NULL OR a.df_completed_at IS NULL)
+         AND ${dfAprobatSql('d', 'f')}
+      RETURNING a.id, a.df_flow_id, a.df_completed_at
+    `, [alopId]);
+    return rows[0] || null;
+  } catch (e) {
+    logger.error({ err: e, alopId }, '[ALOP] backfill pointeri flux failed (non-fatal)');
+    return null;
+  }
+}
