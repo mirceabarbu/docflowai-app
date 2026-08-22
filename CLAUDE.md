@@ -37,7 +37,7 @@ Teste: `server/tests/db/alop-gate-enforcing.test.mjs` (inclusiv asserția pe
 
 ## Project Overview
 
-**DocFlowAI** (v3.9.x) is a multi-tenant SaaS platform for managing qualified electronic signatures (QES) on PDF documents, targeting Romanian public administration. Compliant with eIDAS, Law 455/2001, Law 214/2024, OUG 38/2020, HG 1259/2001.
+**DocFlowAI** (v3.9.x) is a multi-tenant SaaS platform for managing qualified electronic signatures (QES) on PDF documents, targeting Romanian public administration. Compliant with the eIDAS Regulation (EU) 910/2014, as amended, and Law 214/2024 (which replaced the earlier national e-signature legislation); ALOP workflow per OMF 1140/2025.
 
 ## Commands
 

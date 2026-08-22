@@ -83,7 +83,7 @@
           <input type="checkbox" id="dfem-include-report" checked />
           <span class="dfem-check-text">
             Atașează Raportul de Conformitate
-            <span class="dfem-hint">— certifică semnăturile calificate (eIDAS / Legea 455/2001)</span>
+            <span class="dfem-hint">— raport de verificare tehnică a semnăturilor (eIDAS 910/2014 / Legea nr. 214/2024)</span>
           </span>
         </label>
       </div>

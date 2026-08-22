@@ -169,7 +169,7 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
     }
 
     if (allQES) {
-      parts.push(`Cei ${sigCount} semnatar${sigCount > 1 ? 'i' : ''} au utilizat certificate electronice calificate (QES), conforme cu Regulamentul eIDAS (UE) 910/2014, Legea 455/2001 si Legea 214/2024, emise de furnizori QTSP acreditati.`);
+      parts.push(`Pentru cele ${sigCount} semnatur${sigCount > 1 ? 'i' : 'a'} s-a constatat ca emitentul certificatului este recunoscut dupa denumire ca prestator de servicii de incredere si/sau ca extensia QcStatements este prezenta in certificat — indicii de certificat calificat in sensul Regulamentului eIDAS (UE) 910/2014, cu modificarile ulterioare, si al Legii nr. 214/2024. Aceasta constatare se bazeaza exclusiv pe metadatele certificatelor: ea NU include validarea lantului de certificare pana la o ancora de incredere dintr-o Lista de Incredere (Trusted List) si NU substituie o verificare efectuata la un prestator de servicii de incredere calificat.`);
     } else if (L6_ok === false) {
       parts.push(`Certificatele analizate NU au putut fi confirmate ca QES — QTSP-ul emitent nu a fost recunoscut in lista furnizorilor acreditati sau lipseste extensia QcStatements. Semnatura poate fi valabila tehnic, dar nu este calificata in sensul eIDAS.`);
     } else {
@@ -384,7 +384,7 @@ async function _generateReportPdf(report) {
   drawKV('Nume document', report.document.name);
   drawKV('Flow ID', report.flowId);
   drawKV('Status', report.document.status);
-  drawKV('Cadru legal', 'eIDAS Reg. 910/2014 · Legea 455/2001 · Legea 214/2024 · OUG 38/2020');
+  drawKV('Cadru legal', 'eIDAS Reg. (UE) 910/2014, cu modificarile ulterioare · Legea nr. 214/2024');
   drawKV('Tip flux', report.document.flowType === 'ancore' ? 'Ancore existente (PDF extern)' : 'Tabel generat');
   drawKV('Institutie', report.document.institutie);
   drawKV('Compartiment', report.document.compartiment);
@@ -679,6 +679,6 @@ async function _generateReportPdf(report) {
 function _drawFooter(page, pageNum, fontR, COL, PAGE_W, MARGIN) {
   const y = 24;
   page.drawLine({ start: { x: MARGIN, y: y + 10 }, end: { x: PAGE_W - MARGIN, y: y + 10 }, thickness: 0.4, color: COL.border });
-  page.drawText(`DocFlowAI Signing Trust Report · Pagina ${pageNum} · Generat automat · eIDAS 910/2014 · Legea 455/2001 · Legea 214/2024`,
+  page.drawText(`DocFlowAI Signing Trust Report · Pagina ${pageNum} · Generat automat · eIDAS (UE) 910/2014, cu modificarile ulterioare · Legea nr. 214/2024`,
     { x: MARGIN, y, size: 7, font: fontR, color: COL.muted });
 }
