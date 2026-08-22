@@ -26,7 +26,7 @@ import { loadActorCompAndCab, isCabDept, canEditAlop, canDestroyOnly, loadOrgCab
 import { sendNotif } from '../services/formular-shared.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { isPlatformAdmin } from '../services/authz-scope.mjs';
-import { selfHealAlopDfLinkByAlop } from '../services/alop-link.mjs';
+import { selfHealAlopDfLinkByAlop, backfillAlopFlowPointers } from '../services/alop-link.mjs';
 import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
@@ -856,6 +856,18 @@ router.get('/api/alop/:id', async (req, res) => {
         }
       } catch (autoErr) {
         logger.warn({ err: autoErr }, '[ALOP] lazy tranziție lichidare failed (non-fatal)');
+      }
+    }
+
+    // #139 — back-fill al pointerilor de flux, pentru ORICE status. Blocul lazy de
+    // mai sus îi completează doar în draft/angajare, iar selfHealAlopDfLinkByAlop
+    // doar când df_id e NULL — un ALOP cu df_id corect dar df_flow_id NULL cădea
+    // între ele. Nu mută df_id, nu atinge status.
+    if (alop.df_id && (!alop.df_flow_id || !alop.df_completed_at)) {
+      const filled = await backfillAlopFlowPointers(pool, req.params.id);
+      if (filled) {
+        alop.df_flow_id      = filled.df_flow_id;
+        alop.df_completed_at = filled.df_completed_at;
       }
     }
 
