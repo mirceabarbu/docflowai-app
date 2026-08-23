@@ -345,6 +345,83 @@ async function _lookupByCif(target){
 }
 window._lookupByCif=_lookupByCif;
 
+// ── #141: IBAN lookup → validare mod-97 + bancă/trezorerie (oglinda _lookupByCif) ─────────
+function _normBankName(s){
+  return String(s==null?'':s).toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+function _renderIbanStatusBadge(html,target){
+  const box=_bRole(_blocOf(target),'iban-status');
+  if(box)box.innerHTML=html;
+}
+async function _lookupByIban(target){
+  const bloc=_blocOf(target);
+  const ibanEl=_bFld(bloc,'iban_beneficiar');
+  if(!ibanEl)return;
+  const esc=window.esc||(s=>String(s==null?'':s));
+  const red   = 'background:rgba(239,68,68,.15);color:#ff8080;padding:3px 12px;border-radius:10px;font-size:.78rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;';
+  const amber = 'background:rgba(251,191,36,.15);color:#fbbf24;padding:3px 12px;border-radius:10px;font-size:.78rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;';
+  const green = 'color:#5eead4;font-size:.76rem;font-weight:600;';
+  const grey  = 'color:var(--df-text-3);font-size:.76rem;font-weight:600;';
+
+  let iban=(ibanEl.value||'').toUpperCase().replace(/\s+/g,'');
+  ibanEl.value=iban;
+  if(!iban){_renderIbanStatusBadge('',bloc);return;}
+  if(!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban)){
+    _renderIbanStatusBadge(`<span style="${red}">⛔ format IBAN invalid</span>`,bloc);
+    return;
+  }
+
+  const spin=_bRole(bloc,'ibanb-spin');
+  const showSpin=v=>{if(spin)spin.style.display=v?'inline-block':'none';};
+  showSpin(true);
+  try{
+    const r=await fetch('/api/verify/iban?iban='+encodeURIComponent(iban),{credentials:'include'});
+    const j=await r.json();
+
+    // Garda de cursă: recitește câmpul blocului, ignoră dacă s-a schimbat între timp.
+    const cur=_bFld(bloc,'iban_beneficiar');
+    if(!cur || (cur.value||'').toUpperCase().replace(/\s+/g,'')!==iban) return;
+
+    if(!j||j.ok===false){
+      _renderIbanStatusBadge(`<span style="${grey}">verificare indisponibilă</span>`,bloc);
+      return;
+    }
+    const d=j.data||{};
+    if(d.valid===false){
+      _renderIbanStatusBadge(`<span style="${red}">⛔ IBAN invalid — cifra de control nu corespunde. Verifică înainte de plată.</span>`,bloc);
+      return;
+    }
+    if(d.country&&d.country!=='RO'){
+      _renderIbanStatusBadge(`<span style="${green}">✓ IBAN valid (${esc(d.country)}) — verificare locală limitată la cifra de control</span>`,bloc);
+      return;
+    }
+    const bankaEl=_bFld(bloc,'banca_beneficiar');
+    const bankName=d.bankName||'';
+    const declared=(bankaEl&&bankaEl.value||'').trim();
+    if(!declared){
+      if(bankaEl&&bankName)bankaEl.value=bankName;
+      let extra='';
+      if(d.isTreasury&&(d.treasuryCity||d.treasuryCounty)){
+        extra=' · '+[d.treasuryCity,d.treasuryCounty].filter(Boolean).map(esc).join(', ');
+      }
+      _renderIbanStatusBadge(`<span style="${green}">✓ IBAN valid · ${esc(bankName)}${extra}</span>`,bloc);
+    } else if(_normBankName(declared)===_normBankName(bankName)){
+      _renderIbanStatusBadge(`<span style="${green}">✓ IBAN valid · ${esc(bankName)}</span>`,bloc);
+    } else {
+      _renderIbanStatusBadge(`<span style="${amber}">⚠ IBAN valid · derivat din IBAN: ${esc(bankName)} — banca declarată diferă</span>`,bloc);
+    }
+  }catch(_){
+    const cur=_bFld(bloc,'iban_beneficiar');
+    if(!cur || (cur.value||'').toUpperCase().replace(/\s+/g,'')!==iban) return;
+    _renderIbanStatusBadge(`<span style="${grey}">verificare indisponibilă</span>`,bloc);
+  }finally{
+    showSpin(false);
+  }
+}
+window._lookupByIban=_lookupByIban;
+
 // ── #128j — DELEGARE: un singur set de handlere pe #ord-blocuri ───────────────
 // Orice bloc — existent, adăugat de utilizator, restaurat din draft sau recreat de
 // renderOrdBlocuri — e acoperit AUTOMAT, fără nicio cablare la creare. De aceea nu există
@@ -359,6 +436,7 @@ window._lookupByCif=_lookupByCif;
   host.addEventListener('focusout',e=>{
     const t=e.target;
     if(t&&t.matches&&t.matches('[data-fld="cif_beneficiar"]'))_lookupByCif(t);
+    if(t&&t.matches&&t.matches('[data-fld="iban_beneficiar"]'))_lookupByIban(t);
   });
   // #128m — atașamente per furnizor: butonul „Atașează fișiere" și input-ul de fișier ale
   // blocurilor 2+ n-au handler inline (n-au nici id). Delegarea acoperă automat blocurile

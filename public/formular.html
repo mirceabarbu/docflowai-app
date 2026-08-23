@@ -893,7 +893,7 @@
         <input id="o-cifb" class="di" maxlength="12" autocomplete="off" data-fld="cif_beneficiar"/>
       </div>
       <div>
-        <div class="dl req">IBAN beneficiar</div>
+        <div class="dl req">IBAN beneficiar <span id="o-ibanb-spin" data-role="ibanb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
         <input id="o-iban" class="di" maxlength="24" placeholder="RO49AAAA..." data-fld="iban_beneficiar"/>
       </div>
       <div>
@@ -901,6 +901,7 @@
         <input id="o-banca" class="di" maxlength="100" data-fld="banca_beneficiar"/>
       </div>
     </div>
+    <div id="o-iban-status" style="margin-top:6px;min-height:0;" aria-live="polite" data-role="iban-status"></div>
     <div class="df-row df-row-2">
       <div>
         <div class="dl">Informații privind plata</div>
@@ -1513,7 +1514,7 @@
 </div>
 
 <script src="/notif-widget.js?v=3.9.708"></script>
-<script src="/js/formular/core.js?v=3.9.775" defer></script>
+<script src="/js/formular/core.js?v=3.9.798" defer></script>
 <script src="/js/formular/verif.js?v=3.9.693" defer></script>
 <script src="/js/shared/pagin.js?v=3.9.722" defer></script>
 <script src="/js/shared/xlsx-export.js?v=3.9.789" defer></script>
@@ -1523,7 +1524,7 @@
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.785" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.703" defer></script>
-<script src="/js/formular/list.js?v=3.9.784" defer></script>
+<script src="/js/formular/list.js?v=3.9.798" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.693" defer></script>
 <script src="/js/formular/doc.js?v=3.9.780" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>

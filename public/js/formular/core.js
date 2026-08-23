@@ -619,7 +619,7 @@ function _sablonBloc(idx){
         <input class="di" maxlength="12" autocomplete="off" data-fld="cif_beneficiar"/>
       </div>
       <div>
-        <div class="dl req">IBAN beneficiar</div>
+        <div class="dl req">IBAN beneficiar <span data-role="ibanb-spin" style="display:none;color:var(--df-text-3);font-size:.78rem;margin-left:6px">⏳</span></div>
         <input class="di" maxlength="24" placeholder="RO49AAAA..." data-fld="iban_beneficiar"/>
       </div>
       <div>
@@ -627,6 +627,7 @@ function _sablonBloc(idx){
         <input class="di" maxlength="100" data-fld="banca_beneficiar"/>
       </div>
     </div>
+    <div style="margin-top:6px;min-height:0;" aria-live="polite" data-role="iban-status"></div>
     <div class="df-row df-row-2">
       <div>
         <div class="dl">Informații privind plata</div>
