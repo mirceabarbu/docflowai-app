@@ -176,3 +176,33 @@ export function computeDocCapabilities(doc, actor, ft, actorComp = '', opts = {}
   caps.can_reset = true;
   return caps;
 }
+
+/**
+ * #143b — restrânge `can_delete` din listele DF/ORD la mulțimea care poate CHIAR șterge.
+ *
+ * Interogarea de listă întoarce doar partea de STATUS (fără flux legat / fără ORD copil);
+ * partea de PROPRIETATE se aplică aici, ca să oglindească EXACT `canDestroyOnly`:
+ * creator + admin/org_admin + coleg de compartiment al creatorului (#143).
+ * Fără ea, colegul vedea rândul fără buton de ștergere, deși serverul îi accepta cererea.
+ *
+ * Coloanele consumate sunt deja proiectate de ambele interogări de listă:
+ *   isP1           = (created_by = actorul)   → creatorul nominal
+ *   initiator_comp = u1.compartiment          → compartimentul CURENT al creatorului
+ * DF/ORD nu au coloană proprie de compartiment, deci a doua sursă din
+ * `isCreatorCompColleague` (compartimentul creatorului) e singura aplicabilă, iar
+ * comparația e identică: TRIM pe ambele părți, șirul gol nu se potrivește cu nimic.
+ *
+ * Modifică tabloul în-place și îl întoarce (pentru înlănțuire).
+ */
+export function narrowCanDeleteRows(rows, opts = {}) {
+  const isOrgManager = opts.isOrgManager === true;
+  const ac = String(opts.actorComp || '').trim();
+  for (const r of rows) {
+    r.can_delete = r.can_delete === true && (
+         isOrgManager
+      || r.isP1 === true
+      || (!!ac && String(r.initiator_comp || '').trim() === ac)
+    );
+  }
+  return rows;
+}

@@ -294,7 +294,18 @@ router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df
         [srcAlopId, actor.orgId]
       );
       if (dup.length) {
-        dup[0].capabilities = computeDocCapabilities(dup[0], actor, 'notafd');
+        // #143b — cheia de dedup e `source_alop_id` FĂRĂ `created_by` (spre deosebire de ORD),
+        // deci documentul întors poate aparține unui COLEG de compartiment: cazul tipic e doi
+        // oameni din același serviciu care apasă „Completează DF" pe același dosar. Fără rolul
+        // de authz, al doilea primea documentul cu drepturi de simplu vizitator ⇒ formular fără
+        // butoane. Se folosește EXACT lanțul din GET /api/formulare-df/:id, ca să nu apară o a
+        // doua definiție a rolului.
+        // ⛔ Rezultatul NU devine o poartă: dacă `canViewFormular` refuză, documentul se întoarce
+        // ca și până acum (comportament neschimbat), doar capabilities rămân goale.
+        const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+        const view = await canViewFormular(pool, actor, dup[0], actorComp, { cabComp });
+        dup[0].capabilities = computeDocCapabilities(dup[0], actor, 'notafd', actorComp,
+          { authzRole: view.allowed ? (view.role || '') : '' });
         return res.json({ ok: true, document: dup[0] });
       }
     }
@@ -330,7 +341,12 @@ router.post('/api/formulare-df', _csrf, requireModule('alop'), requireModule('df
           [srcAlopId, actor.orgId]
         );
         if (won.length) {
-          won[0].capabilities = computeDocCapabilities(won[0], actor, 'notafd');
+          // #143b — identic cu ramura `dup` de mai sus: câștigătorul cursei poate fi documentul
+          // unui coleg de compartiment.
+          const { actorComp: aC2, cabComp: cC2 } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+          const view2 = await canViewFormular(pool, actor, won[0], aC2, { cabComp: cC2 });
+          won[0].capabilities = computeDocCapabilities(won[0], actor, 'notafd', aC2,
+            { authzRole: view2.allowed ? (view2.role || '') : '' });
           return res.json({ ok: true, document: won[0] });
         }
       }

@@ -22,6 +22,7 @@ import { isPlatformAdmin } from '../../services/authz-scope.mjs';
 import { loadActorCompAndCab, isCabDept, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
 import { requireDb } from './_helpers.mjs';
 import { dosarKeyExpr } from '../../services/df-dosar-key.mjs';
+import { narrowCanDeleteRows } from '../../services/formular-capabilities.mjs';
 
 let PDFLibFormular = null;
 try { PDFLibFormular = await import('pdf-lib'); } catch (e) { logger.warn('⚠️ pdf-lib indisponibil pentru export audit formular PDF'); }
@@ -468,6 +469,10 @@ router.get('/api/formulare/list', async (req, res) => {
   // #105d: două predicate — scopare pe org (doar platform-admin sare) vs. vizibilitate în-org (pe rol)
   const isPlatform   = isPlatformAdmin(actor);
   const isOrgManager = isAdminOrOrgAdmin(actor);
+  // #143b — compartimentul actorului, ridicat la nivel de handler: îl încarcă oricum
+  // ramura de vizibilitate de mai jos, iar `narrowCanDeleteRows` are nevoie de el după
+  // query. Rămâne '' pentru admin/org_admin (care oricum trec pe `isOrgManager`).
+  let lstActorComp = '';
 
   const { type = 'df', status, from, to, comp, init, p2, nr, page = '1', limit = '20', all } = req.query;
   // #133a — modul EXPORT: aceeași interogare, aceleași `conds`, aceeași autorizare;
@@ -491,6 +496,7 @@ router.get('/api/formulare/list', async (req, res) => {
           // FEAT ALOP-CAB: membrul CAB al org-ului vede TOT org-ul (doar scoparea fd.org_id de mai
           // sus, fără filtru de compartiment/inițiator). #105d: org-scope=isPlatform, vizibilitate în-org=isOrgManager.
           const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+          lstActorComp = actorComp;   // #143b — înainte de orice return timpuriu pe ramura CAB
           if (!isCabDept(actorComp, cabComp)) {
             const u1 = params.push(actor.userId);
             const u2 = params.push(actor.userId);
@@ -643,9 +649,13 @@ router.get('/api/formulare/list', async (req, res) => {
           COALESCE(u2.nume, u2.email, NULLIF(TRIM(fd.p2_compartiment),'')) AS p2,
           NULLIF(TRIM(fd.p2_compartiment),'') AS p2_compartiment,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
+          -- #143b — DOAR partea de stare. Proprietatea (creator / coleg de compartiment /
+          -- admin) se aplica in JS imediat dupa query, prin helperul din
+          -- services/formular-capabilities.mjs: expresia ar avea nevoie de un parametru nou
+          -- pentru compartiment, iar ordinea din 'params' e legata de push-urile de mai sus.
+          -- Acelasi tipar ca la lista ALOP (#143, alop.mjs).
           (
-            ${isOrgManager ? 'TRUE' : `fd.created_by = $${params.push(actor.userId)}`}
-            AND fd.flow_id IS NULL
+            fd.flow_id IS NULL
             AND NOT EXISTS (
               SELECT 1 FROM formulare_ord fo_chk
               WHERE fo_chk.df_id = fd.id AND fo_chk.deleted_at IS NULL
@@ -663,6 +673,7 @@ router.get('/api/formulare/list', async (req, res) => {
         LIMIT $${limIdx} OFFSET $${offIdx}`;
 
       const { rows } = await pool.query(sql, params);
+      narrowCanDeleteRows(rows, { isOrgManager, actorComp: lstActorComp });
       const total = rows.length ? parseInt(rows[0].total) : 0;
       res.json({ ok: true, rows: rows.map(r => { const { total: _, ...rest } = r; return rest; }), total });
 
@@ -677,6 +688,7 @@ router.get('/api/formulare/list', async (req, res) => {
           // FEAT ALOP-CAB: membrul CAB al org-ului vede TOT org-ul (doar scoparea fo.org_id de mai
           // sus, fără filtru de compartiment/inițiator). #105d: org-scope=isPlatform, vizibilitate în-org=isOrgManager.
           const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+          lstActorComp = actorComp;   // #143b — vezi comentariul din ramura DF
           if (!isCabDept(actorComp, cabComp)) {
             const u1 = params.push(actor.userId);
             const u2 = params.push(actor.userId);
@@ -807,10 +819,8 @@ router.get('/api/formulare/list', async (req, res) => {
           COALESCE(u2.nume, u2.email, NULLIF(TRIM(fo.p2_compartiment),'')) AS p2,
           NULLIF(TRIM(fo.p2_compartiment),'') AS p2_compartiment,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
-          (
-            ${isOrgManager ? 'TRUE' : `fo.created_by = $${params.push(actor.userId)}`}
-            AND fo.flow_id IS NULL
-          ) AS can_delete,
+          -- #143b — vezi comentariul din ramura DF: aici ramane doar starea.
+          (fo.flow_id IS NULL) AS can_delete,
           (fo.created_by = $${params.push(actor.userId)}) AS "isP1",
           COUNT(*) OVER() AS total
         FROM formulare_ord fo
@@ -823,6 +833,7 @@ router.get('/api/formulare/list', async (req, res) => {
         LIMIT $${limIdx} OFFSET $${offIdx}`;
 
       const { rows } = await pool.query(sql, params);
+      narrowCanDeleteRows(rows, { isOrgManager, actorComp: lstActorComp });
       const total = rows.length ? parseInt(rows[0].total) : 0;
       res.json({ ok: true, rows: rows.map(r => { const { total: _, ...rest } = r; return rest; }), total });
     }
