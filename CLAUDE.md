@@ -925,6 +925,51 @@ Test: `server/tests/db/opme-match-iban.test.mjs`.
 
 ---
 
+## Proprietarul unui dosar e COMPARTIMENTUL, nu persoana (din v3.9.800, #143)
+
+Un ALOP/DF/ORD creat de X aparține echipei lui X: orice membru al aceluiași compartiment
+are ACELEAȘI drepturi ca X. Granița rămâne **compartimentul**, NU organizația — un
+utilizator din alt compartiment (fără rol CAB/admin) nu capătă nimic.
+
+**Definiția trăiește într-un singur loc:** `server/services/authz-formular.mjs` →
+`isCreatorCompColleague(pool, doc, actorComp)`. Două surse, în ordine: compartimentul
+DECLARAT pe document (`doc.compartiment` — ALOP îl are pe rând), apoi compartimentul
+CURENT al creatorului (lookup în `users`). Fail-safe: `actorComp` gol ⇒ false.
+⛔ NU o rescrie inline — `canEditAlop` și `canDestroyOnly` o apelează pe ea.
+
+**Ce a fost reparat (rupturi buton↔poartă, nu găuri de securitate):**
+- `canEditAlop` accepta de mult rolul `comp` pe TOATE mutațiile, dar
+  `computeAlopCapabilities` gata drepturile pe `created_by` ⇒ colegul trecea de server,
+  însă ieșea devreme (`!is_owner && !is_cab`) și `df_action`/`phase_action` rămâneau null
+  ⇒ **niciun buton**. Acum `is_owner` include compartimentul (flag separat `is_owner_comp`),
+  alimentat de `creator_compartiment` (proiectat din JOIN-ul `users u` deja existent) +
+  `opts.actorComp`. Funcția rămâne **PURĂ** — zero query-uri în plus.
+- `deriveDocRole` (`formular-capabilities.mjs`) dădea `'view'` colegului pe DF/ORD, deși
+  `canEditFormular` îi dă rol `comp`. Fiind pură, primește rolul gata calculat prin
+  `opts.authzRole` de la ruta care a făcut oricum authz-ul. ⚠️ Transmite-l ORIUNDE îl ai,
+  **inclusiv pe răspunsurile de MUTAȚIE** — `doc.js` își reîmprospătează caps din ele, iar
+  fără el butoanele colegului ar dispărea după prima acțiune (vezi „Prospețime caps").
+- `can_delete` din **lista** ALOP era status-only ⇒ butonul se randa pentru oricine vedea
+  rândul și dădea 403 la clic. Acum e owner-aware, aplicat în JS după SELECT (expresia ar
+  cere parametri noi, iar `params` e împărțit cu query-ul de COUNT).
+
+**Schimbare REALĂ de autorizare (decizie owner):** `canDestroyOnly` a devenit **async** cu
+semnătura `(pool, actor, doc, actorComp?)` și acceptă acum și colegul de compartiment —
+simetric pe ALOP `/cancel`, `DELETE /api/formulare-{df,ord}/:id` și `stergeFormular`.
+Lookup-ul de compartiment e **leneș** (doar pe ramura în care contează), deci numărul de
+query-uri pe căile creator/admin rămâne neschimbat. Codul de refuz rămâne
+`forbidden_destroy_creator_only` (compat. clienți + teste).
+
+⛔ **NEATINSE, intenționat:** `confirma-plata` rămâne rezervat compartimentului CAB
+(separare de atribuții), filtrele de vizibilitate din listă/detaliu, și `cab_dept` (care
+NU capătă drept de ștergere — de aceea `can_delete` e gatat pe `is_owner`, nu pe
+`is_owner || is_cab`).
+
+Teste: `server/tests/db/alop-drepturi-compartiment.test.mjs` (capabilities coleg vs.
+străin, ștergere, listă, DF).
+
+---
+
 ## Cache busting — când modifici JS/CSS
 
 Două niveluri de cache există:

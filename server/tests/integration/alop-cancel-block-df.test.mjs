@@ -35,7 +35,11 @@ vi.mock('../../middleware/logger.mjs', () => ({
 }));
 
 vi.mock('../../services/authz-formular.mjs', () => ({
-  canDestroyOnly: vi.fn((actor, doc) => {
+  // #143 — semnătura e (pool, actor, doc, actorComp?) și ASYNC: ștergerea acceptă acum
+  // și colegul de compartiment al creatorului. Mock-ul păstrează DOAR ramurile
+  // creator/admin (fixture-urile de aici n-au compartiment), ca aserțiile vechi să
+  // rămână valabile.
+  canDestroyOnly: vi.fn(async (_pool, actor, doc) => {
     if (['admin','org_admin'].includes(actor.role)) return { allowed: true, role: 'admin' };
     if (doc.created_by === actor.userId) return { allowed: true, role: 'creator' };
     return { allowed: false, reason: 'forbidden_destroy_creator_only' };

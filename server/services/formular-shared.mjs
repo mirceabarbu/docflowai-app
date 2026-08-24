@@ -422,10 +422,12 @@ export async function submitFormular({ type, id, actor, body }) {
     if (!existing.length) return { status: 404, body: { error: 'not_found' } };
     const doc = existing[0];
     let actorComp = '';
+    let authzRole = '';   // #143 — propagat în capabilities (rolul 'comp' = coleg de compartiment)
     {
       actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: false });
       if (!authz.allowed) return { status: 403, body: { error: authz.reason } };
+      authzRole = authz.role || '';
     }
     if (!cfg.submitStatuses.includes(doc.status))
       return { status: 409, body: { error: 'document_not_draft', status: doc.status } };
@@ -492,7 +494,7 @@ export async function submitFormular({ type, id, actor, body }) {
         actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
         fromStatus: doc.status, toStatus: 'pending_p2',
         meta: { assigned_comp: compTrim, membri: membri.length } });
-      updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
+      updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp, { authzRole });
       return { status: 200, body: { ok: true, document: updated[0], assigned_comp: compTrim } };
     }
 
@@ -519,7 +521,7 @@ export async function submitFormular({ type, id, actor, body }) {
     await recordFormularAudit({ orgId: actor.orgId, formType: type, formId: id,
       actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
       fromStatus: doc.status, toStatus: 'pending_p2', meta: { assigned_to } });
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp, { authzRole });
     return { status: 200, body: { ok: true, document: updated[0], assigned_to: p2 } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} submit error`);
@@ -538,9 +540,11 @@ export async function completeFormular({ type, id, actor, body }) {
     if (!existing.length) return { status: 404, body: { error: 'not_found' } };
     const doc = existing[0];
     let actorComp = '';   // #131a — necesar la computeDocCapabilities de la finalul funcției
+    let authzRole = '';   // #143 — idem, pentru drepturile moștenite prin compartiment
     {
       actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+      authzRole = authz.allowed ? (authz.role || '') : '';
       // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
       // Verificarea directă assigned_to acoperă cazul în care actorul e simultan
       // creator ȘI assigned_to (helper-ul prioritizează rolul 'creator').
@@ -655,7 +659,7 @@ export async function completeFormular({ type, id, actor, body }) {
         actorId: actor.userId, actorEmail: actor.email, eventType: 'legat_alop',
         meta: { alop_id: linkedAlopId } });
     }
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp, { authzRole });
     return { status: 200, body: { ok: true, document: updated[0] } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} complete error`);
@@ -676,9 +680,11 @@ export async function returnFormular({ type, id, actor, body }) {
     if (!rows.length) return { status: 404, body: { error: 'not_found' } };
     const doc = rows[0];
     let actorComp = '';   // #131a — necesar la computeDocCapabilities de la finalul funcției
+    let authzRole = '';   // #143 — idem, pentru drepturile moștenite prin compartiment
     {
       actorComp = await loadActorComp(pool, actor.userId);
       const authz = await canEditFormular(pool, actor, doc, actorComp, { assignedCounts: true });
+      authzRole = authz.allowed ? (authz.role || '') : '';
       // P2-side: admin / assigned (direct sau ca rol) / p2_comp.
       const isP2Side = authz.allowed
         && (['admin','assigned','p2_comp'].includes(authz.role) || doc.assigned_to === actor.userId);
@@ -697,7 +703,7 @@ export async function returnFormular({ type, id, actor, body }) {
       actorId: actor.userId, actorEmail: actor.email, eventType: 'returnat',
       fromStatus: doc.status, toStatus: 'returnat', meta: { motiv: motiv.trim() } });
     const out = upd[0];
-    out.capabilities = computeDocCapabilities(out, actor, cfg.capsFt, actorComp);
+    out.capabilities = computeDocCapabilities(out, actor, cfg.capsFt, actorComp, { authzRole });
     return { status: 200, body: { ok: true, document: out } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} returneaza error`);
@@ -867,7 +873,7 @@ export async function stergeFormular({ type, id, actor }) {
     if (!isPlatformAdmin(actor) && doc.org_id !== actor.orgId)
       return { status: 403, body: { error: 'forbidden' } };
     {
-      const authz = canDestroyOnly(actor, doc);
+      const authz = await canDestroyOnly(pool, actor, doc);
       if (!authz.allowed) return { status: 403, body: { error: authz.reason } };
     }
     if (doc.flow_id)

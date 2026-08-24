@@ -11,7 +11,7 @@
 //   'cab_dept'   → membru al compartimentului CAB al ORGANIZAȚIEI (org.cab_compartiment). NOU.
 //                  Vede+editează tot ALOP/DF/ORD din org (opts.cabComp, încărcat o dată/handler).
 //
-// canDestroyOnly  → creator + admin
+// canDestroyOnly  → creator + admin + comp (coleg de compartiment cu creatorul) [#143]
 // canEditFormular → admin + creator + (assigned dacă assignedCounts) + comp + p2_comp
 // canViewFormular → canEditFormular ∪ flow_viewer
 // canEditAlop     → admin + creator + comp + p2_comp (NU semnatari flux)
@@ -76,6 +76,26 @@ async function _isInFlowSigners(pool, flowId, userId) {
     [flowId, userId]
   );
   return rows.length > 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #143 — „proprietarul e COMPARTIMENTUL, nu persoana".
+// Un dosar creat de X aparține echipei lui X: orice coleg din același compartiment
+// are aceleași drepturi ca X. Regula trăiește ÎNTR-UN SINGUR loc (aici) și e folosită
+// identic de canEditAlop, canDestroyOnly și de derivarea de capabilities.
+//
+// Două surse, în ordinea asta (ambele erau deja în canEditAlop):
+//   1. compartimentul DECLARAT pe document (`doc.compartiment` — ALOP îl are pe rând);
+//   2. compartimentul CURENT al creatorului (lookup în users) — fallback pentru
+//      documentele fără compartiment declarat (DF/ORD).
+// Fail-safe: actorComp gol ⇒ false (un user fără compartiment nu moștenește nimic).
+// ─────────────────────────────────────────────────────────────────────────────
+export async function isCreatorCompColleague(pool, doc, actorComp) {
+  const c = String(actorComp || '').trim();
+  if (!c || !doc) return false;
+  const docComp = String(doc.compartiment || '').trim();
+  if (docComp && docComp === c) return true;
+  return _userIsInComp(pool, doc.created_by, c);
 }
 
 export async function canEditFormular(pool, actor, doc, actorComp, opts = {}) {
@@ -165,10 +185,10 @@ export async function canEditAlop(pool, actor, alop, actorComp, opts = {}) {
   if (alop.created_by === actor.userId)
     return { allowed: true, role: 'creator' };
   if (actorComp) {
-    const alopComp = (alop.compartiment || '').trim();
-    if (alopComp && alopComp === actorComp)
-      return { allowed: true, role: 'comp' };
-    if (await _userIsInComp(pool, alop.created_by, actorComp))
+    // #143 — aceeași definiție de „coleg de compartiment" ca la canDestroyOnly și
+    // la capabilities. NU o re-scrie inline: divergența dintre poartă și buton e
+    // exact clasa de bug pe care #143 o repară.
+    if (await isCreatorCompColleague(pool, alop, actorComp))
       return { allowed: true, role: 'comp' };
     if (await isInAlopP2Comp(pool, alop, actorComp))
       return { allowed: true, role: 'p2_comp' };
@@ -179,10 +199,24 @@ export async function canEditAlop(pool, actor, alop, actorComp, opts = {}) {
   return { allowed: false, reason: 'forbidden' };
 }
 
-export function canDestroyOnly(actor, doc) {
+// #143 — ASYNC (era pură/sincronă): ștergerea nu mai e rezervată creatorului, ci
+// COMPARTIMENTULUI lui. Decizie owner. Semnătura a primit `pool` + `actorComp` pe
+// prima poziție; toate call-site-urile (ALOP /cancel, DELETE df/ord, stergeFormular)
+// sunt `await`-uite. Codul de refuz rămâne `forbidden_destroy_creator_only`
+// (compat. clienți + teste) — semantica lui e acum „nici creator, nici coleg de comp".
+export async function canDestroyOnly(pool, actor, doc, actorComp) {
   if (['admin','org_admin'].includes(actor.role))
     return { allowed: true, role: 'admin' };
   if (doc.created_by === actor.userId)
     return { allowed: true, role: 'creator' };
+  // Lookup-ul compartimentului e LENEȘ: se face doar pe ramura în care contează
+  // (nici admin, nici creator). Astfel numărul de query-uri pe căile vechi rămâne
+  // NESCHIMBAT — call-site-urile nu trebuie să încarce actorComp doar de dragul
+  // acestei verificări, iar testele mock poziționale de pe acele căi nu se decalează.
+  const comp = actorComp === undefined
+    ? await loadActorComp(pool, actor.userId)
+    : actorComp;
+  if (await isCreatorCompColleague(pool, doc, comp))
+    return { allowed: true, role: 'comp' };
   return { allowed: false, reason: 'forbidden_destroy_creator_only' };
 }

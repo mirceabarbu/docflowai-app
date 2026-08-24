@@ -193,11 +193,15 @@ router.get('/api/formulare-df/:id', async (req, res) => {
     // #131a — actorComp e scos din bloc: îl consumă și computeDocCapabilities (Responsabil
     // CAB pe COMPARTIMENT ⇒ rolul P2 se derivă din compartiment când assigned_to e NULL).
     const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    let authzRole = '';
     {
       const view = await canViewFormular(pool, actor, doc, actorComp, { cabComp });
       if (!view.allowed) return res.status(403).json({ error: view.reason });
+      // #143 — rolul de authz (poate fi 'comp' = coleg de compartiment al creatorului)
+      // e propagat în capabilities: altfel poarta îl acceptă, dar butoanele nu apar.
+      authzRole = view.role || '';
     }
-    doc.capabilities = computeDocCapabilities(doc, actor, 'notafd', actorComp);
+    doc.capabilities = computeDocCapabilities(doc, actor, 'notafd', actorComp, { authzRole });
     res.json({ ok: true, document: doc });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df get error');
@@ -478,7 +482,7 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
         actorId: actor.userId, actorEmail: actor.email, eventType: 'revizuit',
         fromStatus: 'completed', toStatus: 'draft', meta: { version_nou: doc.version + 1 } });
     }
-    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd', actorComp);
+    updated[0].capabilities = computeDocCapabilities(updated[0], actor, 'notafd', actorComp, { authzRole: authz.role || '' });
     res.json({ ok: true, document: updated[0] });
   } catch (e) {
     logger.error({ err: e }, 'formulare-df update error');
@@ -751,7 +755,7 @@ router.delete('/api/formulare-df/:id', _csrf, async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'not_found' });
     {
-      const authz = canDestroyOnly(actor, rows[0]);
+      const authz = await canDestroyOnly(pool, actor, rows[0]);
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
     if (rows[0].status !== 'draft')

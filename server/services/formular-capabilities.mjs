@@ -15,9 +15,16 @@
  * @param {string} [actorComp] — compartimentul actorului (#131a). Opțional: fără el,
  *   comportamentul e IDENTIC cu cel de dinainte de #131a (retrocompatibilitate).
  */
-export function deriveDocRole(doc, actor, actorComp = '') {
+export function deriveDocRole(doc, actor, actorComp = '', authzRole = '') {
   const uid = actor?.userId;
   if (doc?.created_by === uid) return 'p1';
+  // #143 — proprietarul e COMPARTIMENTUL, nu persoana. `canEditFormular` acordă de mult
+  // rolul 'comp' colegului de compartiment al creatorului (drepturi de P1), dar funcția
+  // asta e PURĂ și n-are cum să afle singură (verificarea cere un lookup în users). Rolul
+  // vine deci gata calculat de la ruta care a făcut oricum authz-ul, prin `opts.authzRole`.
+  // Fără el, comportamentul rămâne IDENTIC cu cel dinainte (retrocompatibil).
+  if (authzRole === 'comp') return 'p1';
+  if (authzRole === 'p2_comp' || authzRole === 'assigned') return 'p2';
   if (doc?.assigned_to === uid) return 'p2';
   // #131a — Responsabil CAB pe COMPARTIMENT: membrul compartimentului atribuit e P2.
   // Verificat DUPĂ p1/p2 nominal, ca un creator care e și în compartiment să rămână p1.
@@ -60,14 +67,18 @@ function emptyCaps() {
  * @param {string} [actorComp] — compartimentul actorului (#131a), pentru documentele
  *   atribuite unui COMPARTIMENT (`assigned_to` NULL, `p2_compartiment` setat). Opțional:
  *   fără el, rezultatul e IDENTIC cu cel de dinainte de #131a.
+ * @param {object} [opts] — `{ authzRole }` (#143): rolul întors de canEditFormular/
+ *   canViewFormular pe ACEEAȘI cerere. Transmite-l ORIUNDE îl ai — inclusiv pe răspunsurile
+ *   de MUTAȚIE, nu doar pe GET: frontend-ul (doc.js) își reîmprospătează caps din ele, iar
+ *   fără el butoanele unui coleg de compartiment ar dispărea imediat după prima acțiune.
  * @returns {object} capabilities
  */
-export function computeDocCapabilities(doc, actor, ft, actorComp = '') {
+export function computeDocCapabilities(doc, actor, ft, actorComp = '', opts = {}) {
   const caps = emptyCaps();
   if (!doc) return caps;
 
   const status   = doc.status;
-  const role     = deriveDocRole(doc, actor, actorComp);
+  const role     = deriveDocRole(doc, actor, actorComp, opts.authzRole || '');
   const docId    = doc.id || null;
   const flowId   = doc.flow_id || null;
   const aprobat  = doc.aprobat === true || status === 'aprobat';
