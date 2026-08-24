@@ -525,6 +525,7 @@ import entitlementsAdminRouter from './routes/admin/entitlements.mjs';
 import { getAllModulesForUser as _getAllModulesForUser } from './services/entitlements.mjs';
 import { transmitFlowTo, resolveRecipientEmails, alreadyHasAccessEmails } from './services/flow-transmit.mjs';
 import { insertNotificationOnce } from './services/notify-dedup.mjs';
+import { needsLargeBody } from './services/body-limit.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
@@ -620,11 +621,32 @@ if (corsOrigins === false) {
 // SEC-02: rawBody capture pentru HMAC real pe /signing-callback
 // Trebuie să ruleze ÎNAINTE de express.json(), altfel body e deja parsat și bytes originali pierduți.
 // Se salvează în req.rawBody DOAR pentru endpoint-ul callback — nu pentru tot traficul.
+// #142 — plafon pe captura rawBody. Fără el, orice client NEAUTENTIFICAT putea
+// trimite un corp nelimitat către /signing-callback, iar noi îl acumulam integral
+// în memorie, înainte de orice gardă, pentru un HMAC care nu se execută niciodată
+// (ruta e cod mort — vezi reconul #136).
+// ⚠️ CUPLAJ: dacă vreun provider implementează cândva handleCallback și callback-ul
+// chiar trebuie să poarte un PDF, ACEST plafon și intrarea '/signing-callback' din
+// LARGE_PDF_PATHS trebuie revizuite ÎMPREUNĂ. Altfel callback-ul va da 413 tăcut.
+const _RAW_BODY_MAX_BYTES = 1 * 1024 * 1024;
 app.use((req, res, next) => {
   if (req.path && req.path.includes('/signing-callback')) {
     const chunks = [];
-    req.on('data', chunk => chunks.push(chunk));
+    let bytesReceived = 0;
+    let aborted = false;
+    req.on('data', chunk => {
+      if (aborted) return;
+      bytesReceived += chunk.length;
+      if (bytesReceived > _RAW_BODY_MAX_BYTES) {
+        aborted = true;
+        res.status(413).json({ error: 'payload_too_large' });
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on('end', () => {
+      if (aborted) return;
       req.rawBody = Buffer.concat(chunks);
       // Re-parse JSON manual ca să nu rupem express.json() downstream
       if (req.headers['content-type']?.includes('application/json') && req.rawBody.length > 0) {
@@ -632,7 +654,11 @@ app.use((req, res, next) => {
       }
       next();
     });
-    req.on('error', next);
+    req.on('error', (err) => {
+      if (aborted) return;
+      aborted = true;
+      next(err);
+    });
   } else {
     next();
   }
@@ -642,22 +668,10 @@ app.use((req, res, next) => {
 // FIX BUG-PDF-01: route-level expressJson({ limit:'50mb' }) NU funcționează dacă
 // app-level parser a respins deja body-ul cu 413 înainte ca ruta să ruleze.
 // Soluție: middleware adaptiv — detectăm path-urile PDF și aplicăm limita corectă.
-const _LARGE_PDF_PATHS = [
-  '/flows',                   // POST/PUT — creare/editare flux cu pdfB64
-  '/reinitiate-review',       // POST — upload document revizuit după review
-  '/upload-signed-pdf',       // POST — upload PDF semnat de semnatar
-  '/signing-callback',        // POST — callback provider cloud signing
-  '/sign',                    // POST — poate conține signedPdfB64
-  '/detect-acroform-fields',  // POST — detectare câmpuri AcroForm/XFA din PDF
-  '/formulare-oficiale',      // POST/PUT/attachments — RN/NF cu form_data JSONB extins + atașamente base64
-  '/formulare-ord',           // PUT — ORD cu img2 base64 (captură 2 ~1-5MB)
-  '/formulare-df',            // PUT — DF (paritate cu ORD, capturi posibile)
-  '/formulare-atasamente',    // POST — upload fișiere generice (max 10MB raw body)
-  '/formulare/generate',      // POST — PDF gen primește captureImageBase64 + _2
-  '/registratura/intrari',    // POST atașament — PDF scanat base64 (cap 15MB pe buf)
-];
 app.use((req, res, next) => {
-  const needsLarge = _LARGE_PDF_PATHS.some(p => (req.path || '').includes(p));
+  // #142 — potrivire pe frontieră de segment (vezi services/body-limit.mjs).
+  // Înainte era `.includes(p)`, care dădea 50 MB rutei publice /api/verify/signature.
+  const needsLarge = needsLargeBody(req.path);
   return express.json({ limit: needsLarge ? '50mb' : '1mb' })(req, res, next);
 });
 

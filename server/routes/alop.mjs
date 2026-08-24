@@ -290,12 +290,16 @@ router.post('/api/alop/sablon', _csrf, async (req, res) => {
 // Mutează `params` (push) și întoarce fragmentul ` AND (...)`. SQL păstrat 1:1
 // cu blocul inline al listei — folosit de AMBELE endpoint-uri (listă + stats)
 // ca să nu mai poată diverge niciodată. Folosește aliasul `a` pe alop_instances.
-async function buildAlopVisibilityWhere(actor, params) {
+// #143 — `out` (opțional) primește compartimentele DEJA încărcate aici, ca apelantul
+// să nu mai facă un SELECT redundant pentru derivarea drepturilor de proprietar-echipă.
+// Pe ramura admin nu se încarcă nimic (și nici nu e nevoie: adminul poate tot).
+async function buildAlopVisibilityWhere(actor, params, out = null) {
   if (actor.role === 'admin' || actor.role === 'org_admin') return '';
   // FEAT ALOP-CAB: membrul CAB al org-ului vede tot ALOP-ul org-ului. `return ''` e sigur fiindcă
   // apelantul are deja `a.org_id=$1` în WHERE-ul principal (liniile 290/318/1589) — restricția
   // cade DOAR în interiorul org-ului. Fail-safe: cab_compartiment gol ⇒ isCabDept false ⇒ nicio relaxare.
   const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+  if (out) { out.actorComp = actorComp; out.cabComp = cabComp; }
   if (isCabDept(actorComp, cabComp)) return '';
   params.push(actor.userId);
   const userIdx = params.length;
@@ -388,7 +392,8 @@ router.get('/api/alop', async (req, res) => {
 
     const params = [isPlatformAdmin(actor) ? null : actor.orgId];
     let where = '($1::int IS NULL OR a.org_id = $1) AND a.cancelled_at IS NULL';
-    where += await buildAlopVisibilityWhere(actor, params);
+    const vis = {};   // #143 — compartimentele actorului, refolosite la can_delete
+    where += await buildAlopVisibilityWhere(actor, params, vis);
     if (status) {
       // #132b — filtrul e inversa EXACTĂ a badge-ului afișat: aceeași expresie, o
       // singură sursă de adevăr. Acceptă atât stările brute (draft/lichidare/…)
@@ -424,12 +429,14 @@ router.get('/api/alop', async (req, res) => {
     const { rows } = await pool.query(`
       SELECT
         a.id, a.status, a.titlu, a.compartiment, a.valoare_totala,
+        a.created_by,
         a.df_id, a.ord_id, a.df_flow_id, a.ord_flow_id,
         a.df_completed_at, a.lichidare_confirmed_at,
         a.ord_completed_at, a.plata_confirmed_at,
         a.created_at, a.updated_at,
         u.nume   AS creator_name,
         u.email  AS creator_email,
+        u.compartiment AS creator_compartiment,
         df.nr_unic_inreg AS df_nr,
         df.status        AS df_status,
         fo.nr_ordonant_pl AS ord_nr,
@@ -471,6 +478,10 @@ router.get('/api/alop', async (req, res) => {
         EXISTS (
           SELECT 1 FROM opme_lines ol WHERE ol.matched_alop_id = a.id
         ) AS has_opme_lines,
+        -- #143 — DOAR partea de STATUS. Partea de proprietate (creator / coleg de
+        -- compartiment / admin) se aplica in JS imediat dupa query: expresia ar avea
+        -- nevoie de parametri noi, iar params e impartit cu query-ul de COUNT de mai
+        -- jos (care n-ar avea unde sa-i lege) — vezi bucla can_delete de sub SELECT.
         (a.status NOT IN ('completed','cancelled') AND a.df_id IS NULL AND a.ord_id IS NULL) AS can_delete,
         -- #132b — starea AFIȘATĂ, derivată server-side. Clientul nu mai recalculează nimic.
         ${SQL_ALOP_BADGE} AS badge_status
@@ -482,6 +493,23 @@ router.get('/api/alop', async (req, res) => {
       ORDER BY a.updated_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
     `, [...params, lim, offset]);
+
+    // #143 — proprietarul e COMPARTIMENTUL, nu persoana: butonul de ștergere apare
+    // pentru creator, admin/org_admin ȘI colegii de compartiment — exact mulțimea pe
+    // care `canDestroyOnly` o acceptă acum pe /cancel. Înainte, `can_delete` era
+    // status-only: butonul se randa pentru oricine vedea rândul și dădea 403 la clic.
+    {
+      const isAdm = actor.role === 'admin' || actor.role === 'org_admin';
+      const ac = String(vis.actorComp || '').trim();
+      for (const r of rows) {
+        r.can_delete = r.can_delete === true && (
+             isAdm
+          || String(r.created_by) === String(actor.userId)
+          || (!!ac && (String(r.compartiment || '').trim() === ac
+                    || String(r.creator_compartiment || '').trim() === ac))
+        );
+      }
+    }
 
     const { rows: cnt } = await pool.query(
       `SELECT COUNT(*)::int AS count FROM alop_instances a WHERE ${where}`,
@@ -723,6 +751,8 @@ router.get('/api/alop/:id', async (req, res) => {
         a.*,
         u.nume   AS creator_name,
         u.email  AS creator_email,
+        -- #143 — consumat de computeAlopCapabilities (drept moștenit prin compartiment).
+        u.compartiment AS creator_compartiment,
         df.nr_unic_inreg             AS df_nr,
         df.status                    AS df_status,
         df.obiect_fd_reviz_scurt     AS df_obiect,
@@ -1968,12 +1998,12 @@ router.post('/api/alop/:id/cancel', _csrf, async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const { rows: cur } = await pool.query(
-      'SELECT created_by FROM alop_instances WHERE id=$1 AND org_id=$2',
+      'SELECT created_by, compartiment FROM alop_instances WHERE id=$1 AND org_id=$2',
       [req.params.id, actor.orgId]
     );
     if (!cur[0]) return res.status(404).json({ error: 'not_found' });
     {
-      const authz = canDestroyOnly(actor, cur[0]);
+      const authz = await canDestroyOnly(pool, actor, cur[0]);
       if (!authz.allowed) return res.status(403).json({ error: authz.reason });
     }
 

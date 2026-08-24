@@ -10,6 +10,7 @@ import { isCabDept } from './authz-formular.mjs';
 export function computeAlopCapabilities(alop, actor, opts = {}) {
   const caps = {
     is_owner: false,
+    is_owner_comp: false,   // #143 — drept moștenit prin compartimentul creatorului
     is_cab: false,
     is_completed: false,
     is_cancelled: false,
@@ -25,8 +26,23 @@ export function computeAlopCapabilities(alop, actor, opts = {}) {
   const status = alop.status;
   caps.is_completed = status === 'completed';
   caps.is_cancelled = status === 'cancelled';
+  // #143 — PROPRIETARUL E COMPARTIMENTUL, NU PERSOANA.
+  // `is_owner` acorda drepturi doar creatorului nominal, deși `canEditAlop` accepta
+  // de mult rolul `comp` (coleg de compartiment) pe TOATE mutațiile. Rezultatul era o
+  // ruptură buton↔poartă: colegul trecea de server, dar ieșea devreme din funcția asta
+  // (`!is_owner && !is_cab`) ⇒ df_action/phase_action null ⇒ niciun buton de randat.
+  // Oglindește EXACT cele două surse din `isCreatorCompColleague` (authz-formular.mjs):
+  // compartimentul declarat pe ALOP, apoi compartimentul curent al creatorului
+  // (`creator_compartiment`, proiectat din JOIN-ul `users u` deja existent în GET detaliu).
+  // Rămâne funcție PURĂ — comparația nu costă niciun query în plus.
+  const _ac = String(opts.actorComp || '').trim();
+  caps.is_owner_comp = !!_ac && (
+       String(alop.compartiment || '').trim() === _ac
+    || String(alop.creator_compartiment || '').trim() === _ac
+  );
   caps.is_owner = String(alop.created_by) === String(actor?.userId)
-    || actor?.role === 'admin' || actor?.role === 'org_admin';
+    || actor?.role === 'admin' || actor?.role === 'org_admin'
+    || caps.is_owner_comp;
 
   // În afara owner-gate (mirror exact: refresh + nouă ordonanțare nu sunt owner-gated)
   caps.can_refresh = !caps.is_completed && !caps.is_cancelled;
@@ -89,8 +105,10 @@ export function computeAlopCapabilities(alop, actor, opts = {}) {
     caps.phase_action = 'confirma_plata';
   }
 
-  // canDestroyOnly (routes/alop.mjs /cancel) permite DOAR creator+admin, NU cab_dept —
-  // owner-gatat explicit ca să nu apară un buton care eșuează la clic pentru membri CAB.
+  // canDestroyOnly (routes/alop.mjs /cancel) permite creator + admin + coleg de
+  // compartiment (#143), dar NU cab_dept — de aceea gate-ul de aici e `is_owner`
+  // (care include compartimentul), nu `is_owner || is_cab`: un membru CAB din alt
+  // compartiment ar vedea un buton care eșuează la clic cu 403.
   caps.can_delete = caps.is_owner && !alop.df_id && !alop.ord_id;
   return caps;
 }
