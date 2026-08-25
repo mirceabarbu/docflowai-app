@@ -7,13 +7,14 @@
  *   L3 — Certificat semnatar: CN, O, validitate, emitent
  *   L4 — Lanț certificare: cert → intermediate CA → root QTSP
  *   L5 — OCSP/CRL: certificatul era valabil la momentul semnării
- *   L6 — QES/eIDAS: QTSP prezent în EU Trusted List
+ *   L6 — QES/eIDAS: dovadă qcStatements + politici (vezi services/qc-evidence.mjs)
  *
  * Dependențe: pkijs, asn1js, pvutils (toate MIT)
  */
 
 import crypto from 'crypto';
 import { logger } from './middleware/logger.mjs';
+import { evaluateQcEvidence, derOids, keyUsageFromDer, OID_CERT_POLICIES } from './services/qc-evidence.mjs';
 
 // ── OID-uri relevante ──────────────────────────────────────────────────────
 const OID_SIGNED_DATA       = '1.2.840.113549.1.7.2';
@@ -31,8 +32,13 @@ const OID_CA_ISSUERS        = '1.3.6.1.5.5.7.48.2';
 const OID_CRL_DIST          = '2.5.29.31';
 const OID_QC_STATEMENTS     = '1.3.6.1.5.5.7.1.3';
 const OID_QC_COMPLIANCE     = '0.4.0.1862.1.1'; // QcCompliance — QES
+const OID_CERT_POLICIES_EXT = OID_CERT_POLICIES; // 2.5.29.32
+const OID_KEY_USAGE         = '2.5.29.15';
 
-// QTSP-uri românești cunoscute (CN rădăcini)
+// QTSP-uri românești cunoscute (CN rădăcini).
+// ⛔ #144 (P0-05): lista e DOAR etichetă de afișare (`qtspName`). NU intră
+// în nicio decizie booleană — calificarea se decide pe dovadă, în
+// `services/qc-evidence.mjs`.
 const KNOWN_ROMANIAN_QTSP = [
   'STS', 'certSIGN', 'Trans Sped', 'AlfaTrust', 'DigiSign',
   'Namirial', 'DIGSIGN', 'CERTSIGN',
@@ -371,11 +377,34 @@ export async function verifyPdfSignatures(pdfBytes) {
           issuerCN.includes(q.toUpperCase()) || issuerO.includes(q.toUpperCase())
         );
 
-        result.isQES = isKnownQTSP || !!qcExt;
-        result.levels.L6.ok = result.isQES;
+        // #144 (P0-05) — verdictul se ia pe DOVADĂ, prin modulul comun
+        // `services/qc-evidence.mjs`. Numele QTSP rămâne doar etichetă.
+        const _oidsOf = (extnID) => {
+          try {
+            const e = signerCert.extensions?.find(x => x.extnID === extnID);
+            return e?.extnValue?.valueBlock?.valueHex ? derOids(e.extnValue.valueBlock.valueHex) : [];
+          } catch { return []; }
+        };
+        const _kuExt = signerCert.extensions?.find(x => x.extnID === OID_KEY_USAGE);
+        const qc = evaluateQcEvidence({
+          qcStatementOids: _oidsOf(OID_QC_STATEMENTS),
+          certPolicyOids:  _oidsOf(OID_CERT_POLICIES_EXT),
+          keyUsage:        keyUsageFromDer(_kuExt?.extnValue?.valueBlock?.valueHex),
+        });
+
+        result.isQES = qc.isQES;
+        result.levels.L6.ok = qc.isQES;
+        result.levels.L6.evidence = qc.evidence;
+        result.levels.L6.missing  = qc.missing;
+        result.levels.L6.isQualifiedCert = qc.isQualifiedCert;
         result.levels.L6.qtspName = isKnownQTSP
           ? KNOWN_ROMANIAN_QTSP.find(q => issuerCN.includes(q.toUpperCase()) || issuerO.includes(q.toUpperCase()))
-          : (qcExt ? 'QcCompliance prezent în certificat' : 'Necunoscut');
+          : (qcExt ? 'Emitent nerecunoscut (QcStatements prezent)' : 'Necunoscut');
+        result.levels.L6.note = qc.isQES
+          ? `Calificat pe dovadă: ${qc.evidence.join(' · ')}`
+          : qc.isQualifiedCert
+            ? `Certificat calificat, dar fără dovadă QSCD — lipsește: ${qc.missing.join(', ')}`
+            : `Necalificat — lipsește: ${qc.missing.join(', ')}`;
       }
 
     } catch(e) {

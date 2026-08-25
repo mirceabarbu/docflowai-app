@@ -10,7 +10,7 @@
  *   L3 — Certificat semnatar (CN, O, validitate)
  *   L4 — Lanț de certificare (cert → intermediate → root)
  *   L5 — OCSP/CRL (certificatul era valabil la semnare)
- *   L6 — QES/eIDAS conformance (QcCompliance sau QTSP cunoscut)
+ *   L6 — QES/eIDAS conformance (dovadă: qcStatements + politici — vezi qc-evidence.mjs)
  */
 
 import crypto from 'crypto';
@@ -18,6 +18,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { logger } from '../middleware/logger.mjs';
+import { evaluateQcEvidence, derOids, keyUsageFromDer, OID_CERT_POLICIES } from './qc-evidence.mjs';
 
 // ── Trusted CA bundle (opțional) ──────────────────────────────────────────
 // Fișier: server/certs/sts-ca-bundle.pem
@@ -71,6 +72,7 @@ const OID = {
   QC_TYPE:         '0.4.0.1862.1.6',
   QC_TYPE_ESIGN:   '0.4.0.1862.1.6.1',
   TIMESTAMP:       '1.2.840.113549.1.9.16.2.14',
+  CERT_POLICIES:   OID_CERT_POLICIES,
 };
 
 // QTSP-uri românești/europene cunoscute
@@ -129,9 +131,13 @@ export async function verifyPdfSignatures(pdfBytes) {
     return { ok: false, error: 'no_signatures', message: 'Nicio semnătură electronică găsită în PDF.', signatures: [] };
   }
 
+  // #144/E2 — trăsături la nivel de DOCUMENT, citite o singură dată.
+  // DocTimeStamp / DSS decid nivelul PAdES; nu se pot deduce din CMS-ul semnăturii.
+  const pdfFeatures = _detectPdfTimestampFeatures(pdfBytes);
+
   const results = [];
   for (const raw of rawSigs) {
-    const r = await _verifySingleSignature(raw, pkijs, asn1js);
+    const r = await _verifySingleSignature(raw, pkijs, asn1js, pdfFeatures);
     results.push(r);
   }
 
@@ -143,7 +149,7 @@ export async function verifyPdfSignatures(pdfBytes) {
   };
 }
 
-async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js) {
+async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js, pdfFeatures = {}) {
   const result = {
     index:          index + 1,
     isValid:        false,
@@ -158,8 +164,10 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
     // ── Câmpuri compliance ──────────────────────────────────────────────
     validation_time:       new Date().toISOString(),  // momentul verificării
     validation_source:     'local',                   // 'local' | 'ocsp' | 'crl'
-    ltv_ready:             false,                     // true dacă avem timestamp CMS + OCSP
-    certificate_qc_status: 'unknown',                 // 'qualified' | 'non-qualified' | 'unknown'
+    ltv_ready:             false,                     // true doar cu marcă temporală REALĂ + OCSP (#144/E1)
+    certificate_qc_status: 'unknown',                 // 'qualified' | 'qualified-no-qscd' | 'non-qualified' | 'unknown'
+    hasTrustedTimestamp:   false,                     // marcă temporală atestată de terț (#144/E1)
+    padesLevel:            'B-B',                     // 'B-B' | 'B-T' | 'B-LT' (#144/E2)
   };
 
   try {
@@ -385,22 +393,60 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
       }
 
       // ── L6: QES/eIDAS ───────────────────────────────────────────────
+      // #144 (P0-05): verdictul se ia pe DOVADĂ (OID-uri din qcStatements și
+      // din politicile de certificare), NU pe potrivirea numelui emitentului.
+      // Numele QTSP rămâne DOAR etichetă de afișare.
       result.levels.L6 = { name: 'Conformitate QES/eIDAS', ok: false };
       const qtsp = _detectQTSP(certInfo);
       const hasQcExt = !!signerCert.extensions?.find(e => e.extnID === OID.QC_STATEMENTS);
-      result.isQES = qtsp.found || hasQcExt;
-      result.levels.L6.ok      = result.isQES;
-      result.levels.L6.qtsp    = qtsp.name;
-      result.levels.L6.note    = result.isQES
-        ? `QTSP: ${qtsp.name || 'QcCompliance prezent'}${hasQcExt ? ' · QcCompliance ✓' : ''}`
-        : 'QTSP nerecunoscut — posibil certificat necalificat';
-      result.certificate.certificateType = result.isQES ? 'qualified' : 'unknown';
+      const qcStatementOids = _extOids(signerCert, OID.QC_STATEMENTS);
+      const certPolicyOids  = _extOids(signerCert, OID.CERT_POLICIES);
+      // keyUsage: preferăm forma deja parsată; dacă pkijs nu a populat
+      // `parsedValue`, o recitim din DER-ul brut. Fără plasa asta, un certificat
+      // REAL ar fi declasat doar pentru că extensia n-a fost pre-parsată.
+      const keyUsage = certInfo.keyUsage
+        || keyUsageFromDer(signerCert.extensions?.find(e => e.extnID === OID.KEY_USAGE)?.extnValue?.valueBlock?.valueHex);
+      const qc = evaluateQcEvidence({ qcStatementOids, certPolicyOids, keyUsage });
+
+      result.isQES             = qc.isQES;
+      result.levels.L6.ok      = qc.isQES;
+      result.levels.L6.qtsp    = qtsp.name;          // etichetă, NU dovadă
+      result.levels.L6.evidence = qc.evidence;
+      result.levels.L6.missing  = qc.missing;
+      result.levels.L6.note    = qc.isQES
+        ? `Calificat pe dovadă: ${qc.evidence.join(' · ')}`
+        : qc.isQualifiedCert
+          ? `Certificat calificat, dar fără dovadă QSCD — lipsește: ${qc.missing.join(', ')}`
+          : `Necalificat — lipsește: ${qc.missing.join(', ')}`;
+      result.certificate.certificateType =
+        qc.isQES ? 'qualified' : qc.isQualifiedCert ? 'qualified_no_qscd' : 'unknown';
       result.certificate.qtspName        = qtsp.name;
+      if (hasQcExt && qcStatementOids.length === 0) {
+        result.warnings.push('Extensia QcStatements e prezentă dar nu conține OID-uri recunoscute.');
+      }
 
       // ── Campuri compliance derivate ──────────────────────────────────
-      result.certificate_qc_status = result.isQES ? 'qualified' : 'non-qualified';
-      // ltv_ready: avem timestamp CMS + OCSP verificat cu succes
-      result.ltv_ready = !!(result.signingTime && result.levels.L5?.ok === true);
+      result.certificate_qc_status =
+        qc.isQES ? 'qualified' : qc.isQualifiedCert ? 'qualified-no-qscd' : 'non-qualified';
+
+      // ── E1: ltv_ready cere marcă temporală REALĂ ─────────────────────
+      // Înainte de #144 se folosea `result.signingTime`, care vine din atributul
+      // CMS `signing_time` — AUTODECLARAT de semnatar, nu atestat de o terță
+      // parte. „LTV" fără marcă temporală e o afirmație falsă. Cerem acum
+      // atributul nesemnat de timestamp (RFC 3161) sau un DocTimeStamp în PDF.
+      const hasTsAttr = !!si?.unsignedAttrs?.attributes?.find(a => a.type === OID.TIMESTAMP);
+      const hasTimestamp = hasTsAttr || !!pdfFeatures.hasDocTimeStamp;
+      result.hasTrustedTimestamp = hasTimestamp;
+      result.ltv_ready = !!(hasTimestamp && result.levels.L5?.ok === true);
+
+      // ── E2: nivelul PAdES declarat ───────────────────────────────────
+      result.padesLevel = hasTimestamp
+        ? (pdfFeatures.hasDss ? 'B-LT' : 'B-T')
+        : 'B-B';
+      if (!hasTimestamp) {
+        result.levels.L6.note += ' · Verdict valabil LA MOMENTUL VERIFICĂRII: fără marcă temporală '
+          + '(PAdES B-B), momentul semnării nu poate fi probat de o terță parte.';
+      }
     }
 
   } catch(e) {
@@ -503,6 +549,29 @@ function _extractCertInfo(cert, pkijs) {
     ocspUrl,
     caIssuersUrl,
   };
+}
+
+// ── #144 (P0-05) — OID-urile din corpul unei extensii X.509 ───────────────
+// pkijs expune `extnValue` ca OctetString; scanăm DER-ul brut cu `derOids`
+// (tolerant) în loc să construim arborele ASN.1 al fiecărei extensii.
+function _extOids(cert, extnID) {
+  try {
+    const ext = cert?.extensions?.find(e => e.extnID === extnID);
+    const hex = ext?.extnValue?.valueBlock?.valueHex;
+    if (!hex) return [];
+    return derOids(hex);
+  } catch { return []; }
+}
+
+// ── #144/E2 — DocTimeStamp / DSS la nivel de document ─────────────────────
+function _detectPdfTimestampFeatures(pdfBytes) {
+  try {
+    const s = Buffer.from(pdfBytes).toString('binary');
+    return {
+      hasDocTimeStamp: /\/DocTimeStamp/.test(s),
+      hasDss:          /\/DSS\b/.test(s) || /\/VRI\b/.test(s),
+    };
+  } catch { return { hasDocTimeStamp: false, hasDss: false }; }
 }
 
 // ── Detectare QTSP din emitentul certificatului ───────────────────────────
