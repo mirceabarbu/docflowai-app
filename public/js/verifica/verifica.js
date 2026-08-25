@@ -91,6 +91,8 @@ async function verifyByPdf() {
 // ── Render DB result (verificare după flow ID) ─────────────────────────────
 function renderDbResult(data) {
   $('result').style.display = 'block';
+  $('levelsSection').style.display = 'block';
+  $('sigList').innerHTML = '';
 
   // Verdict
   const isComplete = data.status === 'completed';
@@ -143,15 +145,15 @@ function renderDbResult(data) {
 // ── Render Crypto result (verificare criptografică PDF) ────────────────────
 function renderCryptoResult(data) {
   $('result').style.display = 'block';
+  $('levelsSection').style.display = 'none';
+  $('sigList').innerHTML = '';
 
-  const sig  = data.signatures?.[0];
+  const sigs = data.signatures || [];
+  const sig  = sigs[0];
   const sum  = data.summary;
 
   if (!sig && data.error === 'no_signatures') {
     setVerdict('invalid', '❌', 'Nicio semnătură electronică găsită', 'PDF-ul nu conține o semnătură electronică calificată PAdES.');
-    renderLevels([
-      { name: 'Semnătură CMS', status: 'fail', note: 'Absentă' },
-    ]);
     return;
   }
 
@@ -160,62 +162,9 @@ function renderCryptoResult(data) {
     return;
   }
 
-  // Verdict global
-  const isQES   = sum?.isQES || sig.isQES;
-  const isValid = sum?.isValid || sig.isValid;
-  if (isValid && isQES) {
-    setVerdict('valid', '✅', 'Semnătură electronică calificată (QES)', `Semnată de ${sum?.signer || sig.certificate?.subject?.CN || '?'} · ${sum?.qtsp || ''}`);
-  } else if (isValid) {
-    setVerdict('partial', '🔐', 'Semnătură validă — conformitate QES neverificată', `QTSP nerecunoscut sau certificat fără QcCompliance`);
-  } else {
-    setVerdict('invalid', '❌', 'Semnătură invalidă sau document modificat', sig.errors?.join(' · ') || '');
-  }
+  renderAggregateVerdict(sigs, sum);
 
-  // Niveluri
-  const L = sig.levels || {};
-  const levels = [
-    { name: 'Integritate document (L1)',     status: dotStatus(L.L1?.ok), note: L.L1?.ok ? 'Hash intact' : (L.L1?.ok === false ? 'Modificat!' : 'Neverificat') },
-    { name: 'Semnătură CMS/PKCS#7 (L2)',    status: dotStatus(L.L2?.ok), note: L.L2?.note || (L.L2?.ok ? 'Validă' : 'Invalidă') },
-    { name: 'Certificat semnatar (L3)',      status: dotStatus(L.L3?.ok), note: L.L3?.ok ? 'Prezent' : 'Lipsă' },
-    { name: 'Lanț certificare (L4)',         status: dotStatus(L.L4?.ok), note: L.L4?.ok ? `${sig.chain?.length || 0} niveluri` : 'Incomplet' },
-    { name: 'OCSP/CRL — revocare (L5)',      status: dotStatus(L.L5?.ok), note: L.L5?.note || (L.L5?.ok === null ? 'URL OCSP lipsă' : L.L5?.ok ? 'Valabil' : 'Revocat!') },
-    { name: 'Conformitate QES/eIDAS (L6)',   status: dotStatus(L.L6?.ok), note: L.L6?.qtspName || (L.L6?.ok ? 'QES confirmat' : 'Neverificat') },
-  ];
-  renderLevels(levels);
-
-  // Certificat
-  if (sig.certificate) {
-    $('cryptoSection').style.display = 'block';
-    const c = sig.certificate;
-    $('certInfoGrid').innerHTML = [
-      { lbl: 'Semnatar (CN)', val: c.subject?.CN || '—' },
-      { lbl: 'Organizație',   val: c.subject?.O || '—' },
-      { lbl: 'Emis de',       val: c.issuer?.CN || '—' },
-      { lbl: 'Data semnării', val: sig.signingTime ? fmt(sig.signingTime) : '—' },
-      { lbl: 'Valabil de la', val: c.notBefore ? fmt(c.notBefore) : '—' },
-      { lbl: 'Valabil până la', val: c.notAfter ? fmt(c.notAfter) : '—' },
-      { lbl: 'Valabil la semnare', val: c.validAtSigning === true ? '✅ Da' : (c.validAtSigning === false ? '❌ Nu' : '—') },
-      { lbl: 'URL OCSP', val: c.ocspUrl || '—' },
-    ].map(i => `<div class="info-box"><div class="lbl">${i.lbl}</div><div class="val" style="font-size:.82rem;">${esc(String(i.val))}</div></div>`).join('');
-  }
-
-  // Lanț certificare
-  if (sig.chain?.length > 0) {
-    $('chainSection').style.display = 'block';
-    $('chainBox').innerHTML = sig.chain.map((c, i) => {
-      const type = c.isSelfSigned ? 'root' : (i === 0 ? 'end' : 'ca');
-      const icon = type === 'root' ? '🏛' : (type === 'end' ? '👤' : '🔗');
-      const label = type === 'root' ? 'CA Rădăcină' : (type === 'end' ? 'Semnatar' : 'CA Intermediar');
-      return `<div class="chain-item">
-        <span class="chain-icon">${icon}</span>
-        <div style="flex:1;">
-          <div class="chain-cn">${esc(c.CN || '?')}</div>
-          <div class="chain-org">${esc(c.O || c.issuerCN || '')} · ${fmtShort(c.notBefore)} – ${fmtShort(c.notAfter)}</div>
-        </div>
-        <span class="chain-badge ${type}">${label}</span>
-      </div>`;
-    }).join('');
-  }
+  sigs.forEach((s, i) => $('sigList').appendChild(renderSignatureBlock(s, i, sigs.length)));
 
   // Date din DB (dacă au fost corelate)
   if (data.dbData) {
@@ -238,6 +187,161 @@ function renderCryptoResult(data) {
         </tr>`).join('');
     }
   }
+}
+
+// ── Verdict agregat (documentul, nu prima semnătură — #146) ────────────────
+// La N=1, comportamentul e IDENTIC cu versiunea veche (criteriu de non-regresie):
+// `summary.isValid`/`isQES` la un singur element sunt egale cu `sig.isValid`/`isQES`.
+function renderAggregateVerdict(sigs, sum) {
+  const sig = sigs[0];
+  if (sigs.length === 1) {
+    const isQES   = sum?.isQES ?? sig.isQES;
+    const isValid = sum?.isValid ?? sig.isValid;
+    if (isValid && isQES) {
+      setVerdict('valid', '✅', 'Semnătură electronică calificată (QES)', `Semnată de ${sum?.signer || sig.certificate?.subject?.CN || '?'} · ${sum?.qtsp || ''}`);
+    } else if (isValid) {
+      setVerdict('partial', '🔐', 'Semnătură validă — conformitate QES neverificată', `QTSP nerecunoscut sau certificat fără QcCompliance`);
+    } else {
+      setVerdict('invalid', '❌', 'Semnătură invalidă sau document modificat', sig.errors?.join(' · ') || '');
+    }
+    return;
+  }
+
+  const N = sigs.length;
+  const cnOf = s => s.certificate?.subject?.CN || '?';
+  const names            = sigs.map(cnOf).join(' · ');
+  const invalidNames     = sigs.filter(s => s.isValid === false).map(cnOf);
+  const inconclusiveNames = sigs.filter(s => s.levels?.L2?.ok === null).map(cnOf);
+  const qesCount = sigs.filter(s => s.isQES).length;
+
+  if (sum?.allValid && sum?.allQES) {
+    setVerdict('valid', '✅', `${N} semnături electronice calificate (QES)`, names);
+  } else if (sum?.allValid) {
+    setVerdict('valid', '✅', `${N} semnături valide (${qesCount} calificate)`, names);
+  } else if (invalidNames.length > 0) {
+    setVerdict('invalid', '❌', `${invalidNames.length} din ${N} semnături invalide`, invalidNames.join(' · '));
+  } else if (inconclusiveNames.length > 0) {
+    setVerdict('partial', '⚠', `${N} semnături · ${inconclusiveNames.length} neconcludente`, inconclusiveNames.join(' · '));
+  } else {
+    setVerdict('partial', '⚠', `${N} semnături — stare neclară`, names);
+  }
+}
+
+// ── Bloc per semnătură (calea PDF) ──────────────────────────────────────────
+// Extras din vechiul renderCryptoResult — aceeași logică de randare pentru
+// niveluri/certificat/lanț, apelată acum o dată per semnătură.
+function renderSignatureBlock(sig, index, total) {
+  const block = document.createElement('div');
+  block.className = 'sig-block' + (index > 0 ? ' collapsed' : '');
+
+  const head = document.createElement('div');
+  head.className = 'sig-head';
+
+  const dotState = sig.isValid === false ? 'fail' : (sig.isValid === true ? 'ok' : 'unknown');
+  const dot = document.createElement('div');
+  dot.className = 'sig-dot ' + dotState;
+  head.appendChild(dot);
+
+  const idxEl = document.createElement('div');
+  idxEl.className = 'sig-index';
+  idxEl.textContent = '#' + (index + 1);
+  head.appendChild(idxEl);
+
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'sig-name-wrap';
+  const cnEl = document.createElement('div');
+  cnEl.className = 'sig-cn';
+  cnEl.textContent = sig.certificate?.subject?.CN || 'Necunoscut';
+  nameWrap.appendChild(cnEl);
+  if (sig.certificate?.subject?.O) {
+    const orgEl = document.createElement('div');
+    orgEl.className = 'sig-org';
+    orgEl.textContent = sig.certificate.subject.O;
+    nameWrap.appendChild(orgEl);
+  }
+  head.appendChild(nameWrap);
+
+  if (sig.isQES) {
+    const qesBadge = document.createElement('span');
+    qesBadge.className = 'sig-qes-badge';
+    qesBadge.textContent = 'QES';
+    head.appendChild(qesBadge);
+  }
+
+  const chevron = document.createElement('span');
+  chevron.className = 'sig-chevron';
+  chevron.textContent = '▾';
+  head.appendChild(chevron);
+
+  const body = document.createElement('div');
+  body.className = 'sig-body';
+
+  // Niveluri
+  const L = sig.levels || {};
+  const levels = [
+    { name: 'Integritate document (L1)',     status: dotStatus(L.L1?.ok), note: L.L1?.ok ? 'Hash intact' : (L.L1?.ok === false ? 'Modificat!' : 'Neverificat') },
+    { name: 'Semnătură CMS/PKCS#7 (L2)',    status: dotStatus(L.L2?.ok), note: L.L2?.note || (L.L2?.ok ? 'Validă' : 'Invalidă') },
+    { name: 'Certificat semnatar (L3)',      status: dotStatus(L.L3?.ok), note: L.L3?.ok ? 'Prezent' : 'Lipsă' },
+    { name: 'Lanț certificare (L4)',         status: dotStatus(L.L4?.ok), note: L.L4?.ok ? `${sig.chain?.length || 0} niveluri` : 'Incomplet' },
+    { name: 'OCSP/CRL — revocare (L5)',      status: dotStatus(L.L5?.ok), note: L.L5?.note || (L.L5?.ok === null ? 'URL OCSP lipsă' : L.L5?.ok ? 'Valabil' : 'Revocat!') },
+    { name: 'Conformitate QES/eIDAS (L6)',   status: dotStatus(L.L6?.ok), note: L.L6?.qtspName || (L.L6?.ok ? 'QES confirmat' : 'Neverificat') },
+  ];
+  const levelsBox = document.createElement('div');
+  levelsBox.className = 'levels sig-levels';
+  levelsBox.innerHTML = levels.map(l => `
+    <div class="level-item">
+      <div class="level-dot ${l.status}"></div>
+      <div>
+        <div class="level-name">${esc(l.name)}</div>
+        <div class="level-status ${l.status}">${esc(l.note)}</div>
+      </div>
+    </div>`).join('');
+  body.appendChild(levelsBox);
+
+  // Certificat
+  if (sig.certificate) {
+    const c = sig.certificate;
+    const certGrid = document.createElement('div');
+    certGrid.className = 'info-grid sig-cert';
+    certGrid.innerHTML = [
+      { lbl: 'Semnatar (CN)', val: c.subject?.CN || '—' },
+      { lbl: 'Organizație',   val: c.subject?.O || '—' },
+      { lbl: 'Emis de',       val: c.issuer?.CN || '—' },
+      { lbl: 'Data semnării', val: sig.signingTime ? fmt(sig.signingTime) : '—' },
+      { lbl: 'Valabil de la', val: c.notBefore ? fmt(c.notBefore) : '—' },
+      { lbl: 'Valabil până la', val: c.notAfter ? fmt(c.notAfter) : '—' },
+      { lbl: 'Valabil la semnare', val: c.validAtSigning === true ? '✅ Da' : (c.validAtSigning === false ? '❌ Nu' : '—') },
+      { lbl: 'URL OCSP', val: c.ocspUrl || '—' },
+    ].map(i => `<div class="info-box"><div class="lbl">${esc(i.lbl)}</div><div class="val" style="font-size:.82rem;">${esc(String(i.val))}</div></div>`).join('');
+    body.appendChild(certGrid);
+  }
+
+  // Lanț certificare
+  if (sig.chain?.length > 0) {
+    const chainBox = document.createElement('div');
+    chainBox.className = 'chain sig-chain';
+    chainBox.innerHTML = sig.chain.map((c, i) => {
+      const type = c.isSelfSigned ? 'root' : (i === 0 ? 'end' : 'ca');
+      const icon = type === 'root' ? '🏛' : (type === 'end' ? '👤' : '🔗');
+      const label = type === 'root' ? 'CA Rădăcină' : (type === 'end' ? 'Semnatar' : 'CA Intermediar');
+      return `<div class="chain-item">
+        <span class="chain-icon">${icon}</span>
+        <div style="flex:1;">
+          <div class="chain-cn">${esc(c.CN || '?')}</div>
+          <div class="chain-org">${esc(c.O || c.issuerCN || '')} · ${fmtShort(c.notBefore)} – ${fmtShort(c.notAfter)}</div>
+        </div>
+        <span class="chain-badge ${type}">${label}</span>
+      </div>`;
+    }).join('');
+    body.appendChild(chainBox);
+  }
+
+  block.appendChild(head);
+  block.appendChild(body);
+
+  head.addEventListener('click', () => block.classList.toggle('collapsed'));
+
+  return block;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -296,18 +400,22 @@ function clearResult() {
   $('result').style.display = 'none';
   $('errBox').style.display = 'none';
   $('dbSection').style.display = 'none';
-  $('cryptoSection').style.display = 'none';
+  $('levelsSection').style.display = 'none';
   $('signersSection').style.display = 'none';
-  $('chainSection').style.display = 'none';
   $('signersTbody').innerHTML = '';
-  $('certInfoGrid').innerHTML = '';
-  $('chainBox').innerHTML = '';
   $('dbInfoGrid').innerHTML = '';
   $('levelsBox').innerHTML = '';
+  $('sigList').innerHTML = '';
 }
 
 function setLoading(on) {
   $('loading').style.display = on ? 'block' : 'none';
+}
+
+// Expunere pentru teste (happy-dom, `new Function(src).call(globalThis)` nu
+// lasă declarațiile top-level pe window) — fără efect în producție.
+if (typeof window !== 'undefined') {
+  window.__verificaTest = { renderCryptoResult, renderDbResult, renderAggregateVerdict, renderSignatureBlock, clearResult };
 }
 
 // Precompletare ID din URL: /verifica?id=PT_XXXX sau /verifica#PT_XXXX

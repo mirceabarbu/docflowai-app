@@ -250,6 +250,8 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
       validation_source:     sig.validation_source || 'local',
       ltv_ready:             sig.ltv_ready || false,
       certificate_qc_status: sig.certificate_qc_status || 'unknown',
+      padesLevel:            sig.padesLevel || null,
+      hasTrustedTimestamp:   sig.hasTrustedTimestamp || false,
       signingTime:        sig.signingTime,
       isValid:            sig.isValid,
       isQES:              sig.isQES,
@@ -442,12 +444,19 @@ async function _generateReportPdf(report) {
       page.drawText(ro(`Semnatura #${cert.signerIndex} — ${c.subject?.CN || 'Necunoscut'}`), { x: MARGIN, y, size: 9, font: fontB, color: COL.text }); y -= 16;
 
       // Tip certificat + QTSP
+      // #144 (P0-05): a treia stare — certificat calificat, dar fără dovadă QSCD.
+      // NU o lăsa să cadă pe ramura „NECUNOSCUT": ar fi mai puțin adevărat decât azi.
+      const isQcNoQscd = !cert.isQES && (
+        c.certificateType === 'qualified_no_qscd' || cert.certificate_qc_status === 'qualified-no-qscd');
       const typeColor = cert.isQES ? COL.ok : COL.warn;
-      const typeLabel = cert.isQES ? 'CALIFICAT (QES)' : c.certificateType?.toUpperCase() || 'NECUNOSCUT';
-      page.drawRectangle({ x: MARGIN, y: y - 2, width: 120, height: 14, color: typeColor, borderRadius: 3 });
+      const typeLabel = cert.isQES ? 'CALIFICAT (QES)'
+        : isQcNoQscd ? 'CALIFICAT, FARA DOVADA QSCD'
+        : c.certificateType?.toUpperCase() || 'NECUNOSCUT';
+      const typeW = isQcNoQscd ? 172 : 120;
+      page.drawRectangle({ x: MARGIN, y: y - 2, width: typeW, height: 14, color: typeColor, borderRadius: 3 });
       page.drawText(typeLabel, { x: MARGIN + 6, y: y + 1, size: 7, font: fontB, color: COL.white });
       if (c.qtspName) {
-        page.drawText(`QTSP: ${c.qtspName}`, { x: MARGIN + 130, y: y + 1, size: 8, font: fontB, color: COL.accent2 });
+        page.drawText(`QTSP: ${c.qtspName}`, { x: MARGIN + typeW + 10, y: y + 1, size: 8, font: fontB, color: COL.accent2 });
       }
       y -= 20;
 
@@ -466,9 +475,16 @@ async function _generateReportPdf(report) {
       drawKV('QcStatements', c.hasQcStatements ? 'Prezent (QES confirmed)' : 'Absent');
       // ── Compliance fields ──────────────────────────────────────────────
       drawKV('Status QC', cert.certificate_qc_status === 'qualified' ? 'CALIFICAT (QES)' :
+             cert.certificate_qc_status === 'qualified-no-qscd' ? 'CALIFICAT, FARA DOVADA QSCD' :
              cert.certificate_qc_status === 'non-qualified' ? 'NECALIFICAT' : 'Necunoscut',
              cert.certificate_qc_status === 'qualified' ? COL.ok :
+             cert.certificate_qc_status === 'qualified-no-qscd' ? COL.warn :
              cert.certificate_qc_status === 'non-qualified' ? COL.warn : COL.muted);
+      // #144/E2 — nivelul PAdES real (fără marcă temporală: B-B)
+      if (cert.padesLevel) {
+        drawKV('Nivel PAdES', cert.padesLevel,
+               cert.padesLevel === 'B-B' ? COL.warn : COL.ok);
+      }
       drawKV('Sursa validare', cert.validation_source === 'ocsp' ? 'OCSP (live)' :
              cert.validation_source === 'crl' ? 'CRL' : 'Local (offline)');
       drawKV('LTV Ready', cert.ltv_ready ? 'DA — timestamp + OCSP prezente' : 'NU',

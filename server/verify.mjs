@@ -7,13 +7,14 @@
  *   L3 — Certificat semnatar: CN, O, validitate, emitent
  *   L4 — Lanț certificare: cert → intermediate CA → root QTSP
  *   L5 — OCSP/CRL: certificatul era valabil la momentul semnării
- *   L6 — QES/eIDAS: QTSP prezent în EU Trusted List
+ *   L6 — QES/eIDAS: dovadă qcStatements + politici (vezi services/qc-evidence.mjs)
  *
  * Dependențe: pkijs, asn1js, pvutils (toate MIT)
  */
 
 import crypto from 'crypto';
 import { logger } from './middleware/logger.mjs';
+import { evaluateQcEvidence, derOids, keyUsageFromDer, OID_CERT_POLICIES } from './services/qc-evidence.mjs';
 
 // ── OID-uri relevante ──────────────────────────────────────────────────────
 const OID_SIGNED_DATA       = '1.2.840.113549.1.7.2';
@@ -31,12 +32,215 @@ const OID_CA_ISSUERS        = '1.3.6.1.5.5.7.48.2';
 const OID_CRL_DIST          = '2.5.29.31';
 const OID_QC_STATEMENTS     = '1.3.6.1.5.5.7.1.3';
 const OID_QC_COMPLIANCE     = '0.4.0.1862.1.1'; // QcCompliance — QES
+const OID_CERT_POLICIES_EXT = OID_CERT_POLICIES; // 2.5.29.32
+const OID_KEY_USAGE         = '2.5.29.15';
 
-// QTSP-uri românești cunoscute (CN rădăcini)
+// QTSP-uri românești cunoscute (CN rădăcini).
+// ⛔ #144 (P0-05): lista e DOAR etichetă de afișare (`qtspName`). NU intră
+// în nicio decizie booleană — calificarea se decide pe dovadă, în
+// `services/qc-evidence.mjs`.
 const KNOWN_ROMANIAN_QTSP = [
   'STS', 'certSIGN', 'Trans Sped', 'AlfaTrust', 'DigiSign',
   'Namirial', 'DIGSIGN', 'CERTSIGN',
 ];
+
+// ── #145 — identificarea certificatului semnatar ───────────────────────────
+// ⛔ NU lua `certificates[0]`. În CMS, `certificates` este un SET (RFC 5652) —
+// un sac NEORDONAT. În fișierele produse de fluxul STS, primul element este
+// RĂDĂCINA (CA, cheie RSA), nu semnatarul (cheie EC). Alegerea pe poziție a
+// produs în producție un FALS NEGATIV pe orice document valid: cheia RSA a
+// rădăcinii era folosită ca să verifice o semnătură ECDSA ⇒ „Semnătură RSA
+// INVALIDĂ". Identitatea semnatarului E în document: `signerInfos[0].sid`.
+
+const OID_BASIC_CONSTRAINTS = '2.5.29.19';
+const OID_SUBJECT_KEY_ID    = '2.5.29.14';
+
+/** DER-ul unui obiect pkijs (comparație pe octeți, nu pe șiruri reconstruite). */
+function _der(obj) {
+  try { return Buffer.from(obj.toSchema().toBER(false)); } catch { return null; }
+}
+function _hexOf(hexView) {
+  try { return hexView ? Buffer.from(hexView).toString('hex').toLowerCase() : null; } catch { return null; }
+}
+/** Conținutul unui OCTET STRING DER (header scurt sau lung). */
+function _unwrapOctetString(buf) {
+  const b = Buffer.from(buf);
+  if (b.length < 2 || b[0] !== 0x04) return null;
+  let len = b[1], off = 2;
+  if (len & 0x80) {
+    const n = len & 0x7f; len = 0;
+    for (let i = 0; i < n; i++) len = (len << 8) | b[2 + i];
+    off = 2 + n;
+  }
+  return b.slice(off, off + len);
+}
+function _skiOf(cert) {
+  const e = cert.extensions?.find(x => x.extnID === OID_SUBJECT_KEY_ID);
+  const raw = e?.extnValue?.valueBlock?.valueHexView || e?.extnValue?.valueBlock?.valueHex;
+  if (!raw) return null;
+  const inner = _unwrapOctetString(raw);
+  return inner ? inner.toString('hex').toLowerCase() : null;
+}
+function _isCA(cert) {
+  const e = cert.extensions?.find(x => x.extnID === OID_BASIC_CONSTRAINTS);
+  if (!e) return false;               // extensie absentă ⇒ entitate finală
+  try { return e.parsedValue?.cA === true; } catch { return false; }
+}
+function _isSelfSigned(cert) {
+  const s = _der(cert.subject), i = _der(cert.issuer);
+  return !!(s && i && s.equals(i));
+}
+function _cnOf(rdn) {
+  return rdn?.typesAndValues?.find(tv => tv.type === OID_COMMON_NAME)?.value?.valueBlock?.value || '';
+}
+
+/**
+ * Alege certificatul semnatarului din sacul CMS.
+ * @returns {{cert: any, branch: number}} branch = ramura care a prins:
+ *   1 issuerAndSerialNumber · 2 subjectKeyIdentifier · 3 euristică · 4 certs[0]
+ */
+export function _selectSignerCert(signedData, certs, pkijs) {
+  const list = (certs || []).filter(c => c instanceof pkijs.Certificate);
+  if (!list.length) return { cert: undefined, branch: 0 };
+
+  const si  = signedData?.signerInfos?.[0];
+  const sid = si?.sid;
+
+  // 1 — sid = issuerAndSerialNumber: potrivire pe SERIE **și** pe DN-ul
+  //     emitentului, comparat pe DER (ordinea RDN și UTF8String vs
+  //     PrintableString fac comparația textuală fals-negativă).
+  if (sid?.serialNumber && sid?.issuer) {
+    const wantSerial = _hexOf(sid.serialNumber.valueBlock.valueHexView ?? sid.serialNumber.valueBlock.valueHex);
+    const wantIssuer = _der(sid.issuer);
+    for (const c of list) {
+      const gotSerial = _hexOf(c.serialNumber.valueBlock.valueHexView ?? c.serialNumber.valueBlock.valueHex);
+      if (!wantSerial || gotSerial !== wantSerial) continue;
+      const gotIssuer = _der(c.issuer);
+      if (wantIssuer && gotIssuer && gotIssuer.equals(wantIssuer)) return { cert: c, branch: 1 };
+    }
+  }
+
+  // 2 — sid = subjectKeyIdentifier: potrivire pe extensia 2.5.29.14
+  if (sid && !sid.serialNumber) {
+    const wantSki = _hexOf(sid.valueBlock?.valueHexView ?? sid.valueBlock?.valueHex);
+    if (wantSki) {
+      for (const c of list) if (_skiOf(c) === wantSki) return { cert: c, branch: 2 };
+    }
+  }
+
+  // 3 — euristică: primul certificat de entitate finală, ne-auto-semnat,
+  //     fără „OCSP" în CN (responder-ele OCSP sunt tot entități finale).
+  for (const c of list) {
+    if (_isCA(c) || _isSelfSigned(c)) continue;
+    if (/OCSP/i.test(_cnOf(c.subject))) continue;
+    return { cert: c, branch: 3 };
+  }
+
+  // 4 — ultimă instanță. ⛔ NICIODATĂ tăcută — tăcerea ei a fost chiar bug-ul.
+  return { cert: list[0], branch: 4 };
+}
+
+/** Certificatul al cărui SUBIECT (DER) coincide cu EMITENTUL (DER) al lui cert. */
+export function _findIssuerCert(cert, certs, pkijs) {
+  const want = _der(cert?.issuer);
+  if (!want) return null;
+  for (const c of (certs || [])) {
+    if (!(c instanceof pkijs.Certificate) || c === cert) continue;
+    const got = _der(c.subject);
+    if (got && got.equals(want)) return c;
+  }
+  return null;
+}
+
+// ── #145/C — algoritmi, curbe, format de semnătură ────────────────────────
+const SIG_ALGS = {
+  '1.2.840.10045.4.3.2':   { family: 'ECDSA',   hash: 'SHA-256' },
+  '1.2.840.10045.4.3.3':   { family: 'ECDSA',   hash: 'SHA-384' },
+  '1.2.840.10045.4.3.4':   { family: 'ECDSA',   hash: 'SHA-512' },
+  '1.2.840.10045.4.1':     { family: 'ECDSA',   hash: 'SHA-1'   },
+  '1.2.840.10045.2.1':     { family: 'ECDSA',   hash: null      }, // id-ecPublicKey folosit ca alg de semnătură
+  '1.2.840.113549.1.1.11': { family: 'RSA',     hash: 'SHA-256' },
+  '1.2.840.113549.1.1.12': { family: 'RSA',     hash: 'SHA-384' },
+  '1.2.840.113549.1.1.13': { family: 'RSA',     hash: 'SHA-512' },
+  '1.2.840.113549.1.1.5':  { family: 'RSA',     hash: 'SHA-1'   },
+  '1.2.840.113549.1.1.1':  { family: 'RSA',     hash: null      }, // rsaEncryption ⇒ digest din digestAlgorithm
+  '1.2.840.113549.1.1.10': { family: 'RSA-PSS', hash: null      },
+};
+const DIGEST_ALGS = {
+  '2.16.840.1.101.3.4.2.1': 'SHA-256',
+  '2.16.840.1.101.3.4.2.2': 'SHA-384',
+  '2.16.840.1.101.3.4.2.3': 'SHA-512',
+  '1.3.14.3.2.26':          'SHA-1',
+};
+const EC_CURVES = {
+  '1.2.840.10045.3.1.7': { name: 'P-256', size: 32 },
+  '1.3.132.0.34':        { name: 'P-384', size: 48 },
+  '1.3.132.0.35':        { name: 'P-521', size: 66 },
+};
+
+/** Algoritmul REAL al semnăturii, citit din SignerInfo — nu dedus din cheie. */
+export function _sigAlgInfo(sigOid, digestOid) {
+  const t = SIG_ALGS[sigOid] || null;
+  const hash = t?.hash || DIGEST_ALGS[digestOid] || null;
+  return { family: t?.family || null, hash, oid: sigOid || null };
+}
+
+/** Curba din parametrii cheii — ⛔ nu se mai presupune P-256. */
+export function _curveFromSpki(pubKeyInfo) {
+  let oid = null;
+  try {
+    const p = pubKeyInfo?.algorithm?.algorithmParams;
+    oid = p?.valueBlock?.toString?.() || (typeof p?.getValue === 'function' ? p.getValue() : null);
+  } catch { oid = null; }
+  return (oid && EC_CURVES[oid]) ? { ...EC_CURVES[oid], oid } : null;
+}
+
+/**
+ * Semnătura ECDSA din CMS e DER (`SEQUENCE{INTEGER r, INTEGER s}`);
+ * `webcrypto.subtle.verify` cere formatul raw: `r||s`, fiecare pe EXACT
+ * dimensiunea curbei. Fără conversie, verificarea întoarce `false` chiar și
+ * cu certificatul corect.
+ * ⛔ Intrare care nu e o secvență DER validă ⇒ întoarsă NESCHIMBATĂ, fără
+ * excepție aruncată.
+ * @param {Buffer|Uint8Array} sig
+ * @param {number} fieldSize 32 (P-256) | 48 (P-384) | 66 (P-521)
+ */
+export function ecdsaDerToRaw(sig, fieldSize) {
+  const b = Buffer.from(sig);
+  if (!fieldSize || fieldSize < 1) return b;
+  if (b.length === fieldSize * 2 && b[0] !== 0x30) return b;   // deja raw
+  try {
+    if (b.length < 8 || b[0] !== 0x30) return b;
+    let off = 1, len = b[off++];
+    if (len & 0x80) {
+      const n = len & 0x7f;
+      if (n < 1 || n > 4) return b;
+      len = 0;
+      for (let i = 0; i < n; i++) len = (len << 8) | b[off++];
+    }
+    if (off + len !== b.length) return b;
+    const readInt = () => {
+      if (b[off++] !== 0x02) return null;
+      let l = b[off++];
+      if (l & 0x80) {
+        const n = l & 0x7f;
+        if (n < 1 || n > 4) return null;
+        l = 0;
+        for (let i = 0; i < n; i++) l = (l << 8) | b[off++];
+      }
+      if (l < 1 || off + l > b.length) return null;
+      let v = b.slice(off, off + l);
+      off += l;
+      while (v.length > 1 && v[0] === 0x00) v = v.slice(1);     // zero de aliniere (bit de semn)
+      if (v.length > fieldSize) return null;
+      return Buffer.concat([Buffer.alloc(fieldSize - v.length, 0), v]); // stânga-completare
+    };
+    const r = readInt(); if (!r) return b;
+    const s = readInt(); if (!s) return b;
+    if (off !== b.length) return b;
+    return Buffer.concat([r, s]);
+  } catch { return b; }
+}
 
 /**
  * Extrage toate semnăturile din bytes-ii unui PDF (ByteRange + /Contents).
@@ -148,7 +352,12 @@ export async function verifyPdfSignatures(pdfBytes) {
       // ── Extract certificat semnatar DEVREME (folosit în L2 fallback și în L3) ──
       // FIX v3.9.337: era declarat la L244 dar folosit la L166 în catch-ul L2 fallback → Temporal Dead Zone
       const certs = signedData.certificates || [];
-      const signerCert = certs[0]; // primul cert = semnatarul
+      // #145 — certificatul semnatar se identifică din SignerInfo, NU pe poziție.
+      const _sel = _selectSignerCert(signedData, certs, pkijs);
+      const signerCert = _sel.cert;
+      const _APROX_NOTE = 'Certificatul semnatar nu a putut fi identificat din SignerInfo — verificare aproximativă';
+      if (_sel.branch === 4) result.warnings.push(_APROX_NOTE);
+      result.signerCertSource = _sel.branch;
 
       // ── L2: Verificare semnătură CMS ─────────────────────────────────
       result.levels.L2 = { name: 'Semnătură CMS', ok: null };
@@ -175,10 +384,18 @@ export async function verifyPdfSignatures(pdfBytes) {
           const si         = signedData.signerInfos[0];
           const sigValue   = Buffer.from(si.signature.valueBlock.valueHexView);
           const pubKeyInfo = signerCert.subjectPublicKeyInfo;
-          // Extragem algoritmul din certificat
-          const algOid = pubKeyInfo.algorithm.algorithmId;
-          const isECDSA = algOid === '1.2.840.10045.2.1';
-          const isRSA   = algOid === '1.2.840.113549.1.1.1';
+          // Algoritmul CHEII din certificatul ales
+          const algOid     = pubKeyInfo.algorithm.algorithmId;
+          const keyIsECDSA = algOid === '1.2.840.10045.2.1';
+          const keyIsRSA   = algOid === '1.2.840.113549.1.1.1';
+          // #145/C4 — algoritmul REAL al SEMNĂTURII, citit din SignerInfo
+          const sigAlg = _sigAlgInfo(
+            si.signatureAlgorithm?.algorithmId,
+            si.digestAlgorithm?.algorithmId
+          );
+          const needsEC  = sigAlg.family === 'ECDSA';
+          const needsRSA = sigAlg.family === 'RSA' || sigAlg.family === 'RSA-PSS';
+
           // Reconstituim datele semnate: signedAttrs DER (0xa0 → 0x31)
           let dataToVerify;
           if (si.signedAttrs?.encodedValue) {
@@ -190,32 +407,55 @@ export async function verifyPdfSignatures(pdfBytes) {
             dataToVerify = Buffer.from(ab);
           }
           const { webcrypto } = crypto;
-          let cryptoKey, algoParams;
           const pubKeyDer = Buffer.from(pubKeyInfo.toSchema().toBER(false));
-          if (isECDSA) {
-            cryptoKey = await webcrypto.subtle.importKey(
+
+          if ((needsEC && !keyIsECDSA) || (needsRSA && !keyIsRSA)) {
+            // #145/C3 — necunoscut ≠ invalid: NU verificăm cu o cheie străină.
+            result.levels.L2.ok   = null;
+            result.levels.L2.note = 'Algoritmul semnăturii nu corespunde cheii certificatului selectat';
+          } else if (needsEC || (!sigAlg.family && keyIsECDSA)) {
+            // #145/C2 — curba se citește din cheie, nu se presupune P-256.
+            const curve = _curveFromSpki(pubKeyInfo);
+            if (!curve) {
+              result.levels.L2.ok   = null;
+              result.levels.L2.note = 'Curbă eliptică necunoscută — verificare imposibilă';
+            } else {
+              const hash = sigAlg.hash || 'SHA-256';
+              const cryptoKey = await webcrypto.subtle.importKey(
+                'spki', pubKeyDer,
+                { name: 'ECDSA', namedCurve: curve.name },
+                false, ['verify']
+              );
+              // #145/C1 — semnătura CMS e DER; WebCrypto cere raw (r||s).
+              const rawSig = ecdsaDerToRaw(sigValue, curve.size);
+              const ok = await webcrypto.subtle.verify(
+                { name: 'ECDSA', hash }, cryptoKey, rawSig, dataToVerify
+              );
+              result.levels.L2.ok   = ok;
+              result.levels.L2.note = ok
+                ? `Semnătură ECDSA ${curve.name}/${hash} verificată criptografic (WebCrypto)`
+                : `Semnătură ECDSA ${curve.name}/${hash} INVALIDĂ`;
+            }
+          } else if (sigAlg.family === 'RSA-PSS') {
+            result.levels.L2.ok   = null;
+            result.levels.L2.note = 'Semnătură RSASSA-PSS — verificare nesuportată de acest verificator';
+          } else if (sigAlg.family === 'RSA' || (!sigAlg.family && keyIsRSA)) {
+            const hash = sigAlg.hash || 'SHA-256';
+            const cryptoKey = await webcrypto.subtle.importKey(
               'spki', pubKeyDer,
-              { name: 'ECDSA', namedCurve: 'P-256' },
+              { name: 'RSASSA-PKCS1-v1_5', hash },
               false, ['verify']
             );
-            algoParams = { name: 'ECDSA', hash: 'SHA-256' };
-          } else if (isRSA) {
-            cryptoKey = await webcrypto.subtle.importKey(
-              'spki', pubKeyDer,
-              { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-              false, ['verify']
+            const ok = await webcrypto.subtle.verify(
+              { name: 'RSASSA-PKCS1-v1_5' }, cryptoKey, sigValue, dataToVerify
             );
-            algoParams = { name: 'RSASSA-PKCS1-v1_5' };
-          }
-          if (cryptoKey) {
-            const ok = await webcrypto.subtle.verify(algoParams, cryptoKey, sigValue, dataToVerify);
             result.levels.L2.ok   = ok;
             result.levels.L2.note = ok
-              ? `Semnătură ${isECDSA ? 'ECDSA' : 'RSA'} verificată criptografic (WebCrypto)`
-              : `Semnătură ${isECDSA ? 'ECDSA' : 'RSA'} INVALIDĂ`;
+              ? `Semnătură RSA/${hash} verificată criptografic (WebCrypto)`
+              : `Semnătură RSA/${hash} INVALIDĂ`;
           } else {
             result.levels.L2.ok   = null;
-            result.levels.L2.note = 'Algoritm semnătură necunoscut — verificare imposibilă';
+            result.levels.L2.note = `Algoritm semnătură necunoscut (${sigAlg.oid || 'n/a'}) — verificare imposibilă`;
           }
         } catch(manualErr) {
           result.levels.L2.ok   = null;
@@ -252,6 +492,7 @@ export async function verifyPdfSignatures(pdfBytes) {
       // ── L3: Informații certificat semnatar ────────────────────────────
       // NOTE: certs și signerCert sunt declarate mai sus (înainte de L2) — vezi FIX v3.9.337
       result.levels.L3 = { name: 'Certificat semnatar', ok: false };
+      if (_sel.branch === 4) result.levels.L3.note = _APROX_NOTE;
 
       if (signerCert instanceof pkijs.Certificate) {
         const getAttr = (rdn, oid) =>
@@ -346,10 +587,19 @@ export async function verifyPdfSignatures(pdfBytes) {
         // OCSP check live
         if (result.certificate?.ocspUrl) {
           try {
-            const ocspResult = await checkOCSP(signerCert, certs[1], result.signingTime, pkijs, asn1js);
-            result.levels.L5.ok     = ocspResult.good;
-            result.levels.L5.status = ocspResult.status;
-            result.levels.L5.note   = ocspResult.note;
+            // #145/D — emitentul se caută pe SUBIECT(DER) == EMITENT(DER) al
+            // semnatarului; `certs[1]` era aceeași presupunere de ordine.
+            const issuerCert = _findIssuerCert(signerCert, certs, pkijs);
+            if (!issuerCert) {
+              // ⛔ nu ghicim: L5 rămâne null, cu notă.
+              result.levels.L5.ok   = null;
+              result.levels.L5.note = 'Certificatul emitent nu a fost găsit în CMS — OCSP imposibil de interogat';
+            } else {
+              const ocspResult = await checkOCSP(signerCert, issuerCert, result.signingTime, pkijs, asn1js);
+              result.levels.L5.ok     = ocspResult.good;
+              result.levels.L5.status = ocspResult.status;
+              result.levels.L5.note   = ocspResult.note;
+            }
           } catch(ocspErr) {
             result.levels.L5.ok   = null;
             result.levels.L5.note = `OCSP check eșuat: ${ocspErr.message.substring(0, 80)}`;
@@ -371,11 +621,34 @@ export async function verifyPdfSignatures(pdfBytes) {
           issuerCN.includes(q.toUpperCase()) || issuerO.includes(q.toUpperCase())
         );
 
-        result.isQES = isKnownQTSP || !!qcExt;
-        result.levels.L6.ok = result.isQES;
+        // #144 (P0-05) — verdictul se ia pe DOVADĂ, prin modulul comun
+        // `services/qc-evidence.mjs`. Numele QTSP rămâne doar etichetă.
+        const _oidsOf = (extnID) => {
+          try {
+            const e = signerCert.extensions?.find(x => x.extnID === extnID);
+            return e?.extnValue?.valueBlock?.valueHex ? derOids(e.extnValue.valueBlock.valueHex) : [];
+          } catch { return []; }
+        };
+        const _kuExt = signerCert.extensions?.find(x => x.extnID === OID_KEY_USAGE);
+        const qc = evaluateQcEvidence({
+          qcStatementOids: _oidsOf(OID_QC_STATEMENTS),
+          certPolicyOids:  _oidsOf(OID_CERT_POLICIES_EXT),
+          keyUsage:        keyUsageFromDer(_kuExt?.extnValue?.valueBlock?.valueHex),
+        });
+
+        result.isQES = qc.isQES;
+        result.levels.L6.ok = qc.isQES;
+        result.levels.L6.evidence = qc.evidence;
+        result.levels.L6.missing  = qc.missing;
+        result.levels.L6.isQualifiedCert = qc.isQualifiedCert;
         result.levels.L6.qtspName = isKnownQTSP
           ? KNOWN_ROMANIAN_QTSP.find(q => issuerCN.includes(q.toUpperCase()) || issuerO.includes(q.toUpperCase()))
-          : (qcExt ? 'QcCompliance prezent în certificat' : 'Necunoscut');
+          : (qcExt ? 'Emitent nerecunoscut (QcStatements prezent)' : 'Necunoscut');
+        result.levels.L6.note = qc.isQES
+          ? `Calificat pe dovadă: ${qc.evidence.join(' · ')}`
+          : qc.isQualifiedCert
+            ? `Certificat calificat, dar fără dovadă QSCD — lipsește: ${qc.missing.join(', ')}`
+            : `Necalificat — lipsește: ${qc.missing.join(', ')}`;
       }
 
     } catch(e) {
@@ -459,16 +732,55 @@ async function checkOCSP(cert, issuerCert, signingTime, pkijs, asn1js) {
 
 /**
  * Formatează rezultatul verificării pentru afișare.
+ *
+ * `summary` descrie DOCUMENTUL, nu doar prima semnătură (#146): `isValid`/`isQES`
+ * sunt conjuncții stricte peste TOATE semnăturile găsite — altfel un document cu
+ * a doua semnătură invalidă raporta "valid" pe baza primeia. `null` (necunoscut,
+ * ex. OCSP indisponibil) NU face `allValid` fals — se reflectă separat în
+ * `anyInconclusive` (regula #144/#145: necunoscut ≠ invalid).
+ *
+ * Câmpurile `signer`/`organization`/`issuer`/`signingTime`/`qtsp`/`levels` rămân
+ * ale PRIMEI semnături, păstrate DOAR pentru compatibilitate cu consumatori
+ * vechi — NU descriu documentul. Cine vrea starea documentului citește
+ * `allValid`/`allQES`/`signers`.
  */
 export function formatVerificationResult(result) {
-  const sig = result.signatures?.[0];
-  if (!sig) return result;
+  const sigs = result.signatures || [];
+  const sig  = sigs[0];
+  if (!sig) {
+    return {
+      ...result,
+      summary: {
+        signatureCount: 0,
+        allValid: false,
+        allQES: false,
+        anyInconclusive: false,
+        signers: [],
+      },
+    };
+  }
+
+  const allValid        = sigs.every(s => s.isValid === true);
+  const allQES          = sigs.every(s => Boolean(s.isQES));
+  const anyInconclusive = sigs.some(s => s.levels?.L2?.ok === null);
 
   return {
     ...result,
     summary: {
-      isValid:    sig.isValid,
-      isQES:      sig.isQES,
+      signatureCount: sigs.length,
+      allValid,
+      allQES,
+      anyInconclusive,
+      signers: sigs.map(s => ({
+        cn:          s.certificate?.subject?.CN || 'Necunoscut',
+        o:           s.certificate?.subject?.O || '',
+        issuerCN:    s.certificate?.issuer?.CN || '',
+        signingTime: s.signingTime,
+        isValid:     s.isValid,
+        isQES:       s.isQES,
+      })),
+      isValid:    allValid,
+      isQES:      allQES,
       signer:     sig.certificate?.subject?.CN || 'Necunoscut',
       organization: sig.certificate?.subject?.O || '',
       issuer:     sig.certificate?.issuer?.CN || '',
