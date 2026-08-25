@@ -732,16 +732,55 @@ async function checkOCSP(cert, issuerCert, signingTime, pkijs, asn1js) {
 
 /**
  * Formatează rezultatul verificării pentru afișare.
+ *
+ * `summary` descrie DOCUMENTUL, nu doar prima semnătură (#146): `isValid`/`isQES`
+ * sunt conjuncții stricte peste TOATE semnăturile găsite — altfel un document cu
+ * a doua semnătură invalidă raporta "valid" pe baza primeia. `null` (necunoscut,
+ * ex. OCSP indisponibil) NU face `allValid` fals — se reflectă separat în
+ * `anyInconclusive` (regula #144/#145: necunoscut ≠ invalid).
+ *
+ * Câmpurile `signer`/`organization`/`issuer`/`signingTime`/`qtsp`/`levels` rămân
+ * ale PRIMEI semnături, păstrate DOAR pentru compatibilitate cu consumatori
+ * vechi — NU descriu documentul. Cine vrea starea documentului citește
+ * `allValid`/`allQES`/`signers`.
  */
 export function formatVerificationResult(result) {
-  const sig = result.signatures?.[0];
-  if (!sig) return result;
+  const sigs = result.signatures || [];
+  const sig  = sigs[0];
+  if (!sig) {
+    return {
+      ...result,
+      summary: {
+        signatureCount: 0,
+        allValid: false,
+        allQES: false,
+        anyInconclusive: false,
+        signers: [],
+      },
+    };
+  }
+
+  const allValid        = sigs.every(s => s.isValid === true);
+  const allQES          = sigs.every(s => Boolean(s.isQES));
+  const anyInconclusive = sigs.some(s => s.levels?.L2?.ok === null);
 
   return {
     ...result,
     summary: {
-      isValid:    sig.isValid,
-      isQES:      sig.isQES,
+      signatureCount: sigs.length,
+      allValid,
+      allQES,
+      anyInconclusive,
+      signers: sigs.map(s => ({
+        cn:          s.certificate?.subject?.CN || 'Necunoscut',
+        o:           s.certificate?.subject?.O || '',
+        issuerCN:    s.certificate?.issuer?.CN || '',
+        signingTime: s.signingTime,
+        isValid:     s.isValid,
+        isQES:       s.isQES,
+      })),
+      isValid:    allValid,
+      isQES:      allQES,
       signer:     sig.certificate?.subject?.CN || 'Necunoscut',
       organization: sig.certificate?.subject?.O || '',
       issuer:     sig.certificate?.issuer?.CN || '',

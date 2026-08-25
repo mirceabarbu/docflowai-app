@@ -6,7 +6,7 @@
 <title>Verificare Document — DocFlowAI</title>
 <link rel="stylesheet" href="/css/df/tokens.css?v=3.9.693">
 <link rel="stylesheet" href="/css/df/components.css?v=3.9.717">
-<link rel="stylesheet" href="/css/verifica/verifica.css?v=3.9.693">
+<link rel="stylesheet" href="/css/verifica/verifica.css?v=3.9.804">
 <script src="/js/df-utils.js?v=3.9.693"></script>
 </head>
 <body>
@@ -101,9 +101,11 @@
       </div>
     </div>
 
-    <!-- Niveluri verificare -->
-    <div class="sec-title">Niveluri de verificare</div>
-    <div class="levels" id="levelsBox"></div>
+    <!-- Niveluri verificare (calea DB / după ID flux) -->
+    <div id="levelsSection" style="display:none;">
+      <div class="sec-title">Niveluri de verificare</div>
+      <div class="levels" id="levelsBox"></div>
+    </div>
 
     <!-- Date document (din DB) -->
     <div id="dbSection" style="display:none;">
@@ -120,16 +122,8 @@
       </div>
     </div>
 
-    <!-- Date criptografice -->
-    <div id="cryptoSection" style="display:none;">
-      <div class="sec-title" style="margin-top:20px;">Certificat semnatar</div>
-      <div class="info-grid" id="certInfoGrid"></div>
-
-      <div id="chainSection" style="display:none;">
-        <div class="sec-title" style="margin-top:16px;">Lanț de certificare</div>
-        <div class="chain" id="chainBox"></div>
-      </div>
-    </div>
+    <!-- Semnături (calea PDF / verificare criptografică) — un bloc per semnătură -->
+    <div id="sigList"></div>
 
   </div><!-- /result -->
 
@@ -141,6 +135,6 @@
 
 </div>
 
-<script src="/js/verifica/verifica.js?v=3.9.797"></script>
+<script src="/js/verifica/verifica.js?v=3.9.804"></script>
 </body>
 </html>
