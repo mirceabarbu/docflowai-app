@@ -438,6 +438,9 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
       const hasTimestamp = hasTsAttr || !!pdfFeatures.hasDocTimeStamp;
       result.hasTrustedTimestamp = hasTimestamp;
       result.ltv_ready = !!(hasTimestamp && result.levels.L5?.ok === true);
+      // #149 — marca temporală e DETECTATĂ, nu VALIDATĂ: nu verificăm tokenul
+      // RFC 3161 și nici lanțul TSA. Nivelul declarat e o observație.
+      result.timestampValidated = false;
 
       // ── E2: nivelul PAdES declarat ───────────────────────────────────
       result.padesLevel = hasTimestamp

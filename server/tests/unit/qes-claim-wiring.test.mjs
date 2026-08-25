@@ -15,6 +15,21 @@ import { dirname, join } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = p => readFileSync(join(ROOT, p), 'utf8');
 
+/**
+ * #149/F1 — garda de la #144 era prea largă: interzicea ORICE `||` într-o
+ * atribuire de `isQES`, deci bloca și cod perfect legitim (a forțat deja un
+ * `Boolean(...)` inutil). Ce trebuie interzis e afirmația SLABĂ de dinainte de
+ * #144 — calificarea dedusă din NUMELE emitentului sau din simpla PREZENȚĂ a
+ * extensiei — nu operatorul `||` în sine.
+ *
+ * Returnează true doar dacă atribuirea combină cu `||` un operand slab.
+ */
+const WEAK_OPERAND = /qtsp\.found|isKnownQTSP|KNOWN_QTSP|KNOWN_ROMANIAN_QTSP|hasQcStatements|issuerCN/;
+export function hasWeakOrClaim(assignment) {
+  if (!/\|\|/.test(assignment)) return false;
+  return WEAK_OPERAND.test(assignment);
+}
+
 const ENGINES = [
   'services/certificate-verify.mjs',
   'verify.mjs',
@@ -33,12 +48,13 @@ describe('#144 — ambele motoare deleagă verdictul la qc-evidence.mjs', () => 
         expect(src).toMatch(/evaluateQcEvidence\s*\(/);
       });
 
-      it('⭐ nu mai atribuie isQES dintr-un `||` (nume QTSP sau extensie prezentă)', () => {
+      it('⭐ nu mai atribuie isQES dintr-un `||` peste operanzi SLABI (nume QTSP / extensie prezentă)', () => {
         const assigns = src.match(/\bisQES\s*=\s*[^;\n]+/g) || [];
         expect(assigns.length).toBeGreaterThan(0);
         for (const a of assigns) {
+          // #149/F1 — garda se aplică DOAR pe `||` cu operand slab, nu pe orice `||`.
+          expect(hasWeakOrClaim(a)).toBe(false);
           // singura formă admisă: derivare din rezultatul modulului
-          expect(a).not.toMatch(/\|\|/);
           expect(a).toMatch(/qc\.isQES|false/);
         }
       });
@@ -88,5 +104,22 @@ describe('#144/E1 — ltv_ready nu se mai bazează pe signing_time autodeclarat'
     expect(m).not.toBeNull();
     expect(m[0]).not.toMatch(/result\.signingTime/);
     expect(m[0]).toMatch(/hasTimestamp/);
+  });
+});
+
+describe('#149/F1 — garda strânsă: `||` legitim nu mai declanșează falsul pozitiv', () => {
+  it('respinge afirmația SLABĂ (nume QTSP sau extensie prezentă)', () => {
+    expect(hasWeakOrClaim('isQES = qtsp.found || cert.hasQcStatements')).toBe(true);
+    expect(hasWeakOrClaim('isQES = isKnownQTSP(issuer) || hasQcStatements')).toBe(true);
+    expect(hasWeakOrClaim('result.isQES = qc.isQES || cert.hasQcStatements')).toBe(true);
+  });
+
+  it('⭐ NU mai respinge un `||` fără operanzi slabi (cazul de control din #149)', () => {
+    expect(hasWeakOrClaim('isQES = qc.isQES === true || qc.isQES === 1')).toBe(false);
+  });
+
+  it('nu se declanșează pe atribuirile reale, care n-au niciun `||`', () => {
+    expect(hasWeakOrClaim('result.isQES = qc.isQES')).toBe(false);
+    expect(hasWeakOrClaim('result.isQES             = qc.isQES')).toBe(false);
   });
 });

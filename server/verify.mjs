@@ -22,7 +22,6 @@ const OID_SIGNING_TIME      = '1.2.840.113549.1.9.5';
 const OID_SHA256            = '2.16.840.1.101.3.4.2.1';
 const OID_SHA1              = '1.3.14.3.2.26';
 const OID_RSA               = '1.2.840.113549.1.1.1';
-const OID_ECDSA             = '1.2.840.10045.4.3.2';
 const OID_COMMON_NAME       = '2.5.4.3';
 const OID_ORGANIZATION      = '2.5.4.10';
 const OID_COUNTRY           = '2.5.4.6';
@@ -277,6 +276,28 @@ export function extractPdfSignatures(pdfBytes) {
 }
 
 /**
+ * #149 — verdictul, ca funcție PURĂ (formula de producție, nu o copie a ei).
+ *
+ * Fail-closed: `null` înseamnă „nu am putut verifica" și NU mai contribuie la un
+ * verdict pozitiv — doar `true` explicit contează. Înainte de #149 formula era
+ * „diferit de false", deci necunoscutul trecea drept valid.
+ *
+ * ⛔ L5 (OCSP/CRL) rămâne DELIBERAT în afara formulei: e `null` la majoritatea
+ * documentelor reale (OCSP indisponibil sau neîncercat), iar includerea lui ar
+ * marca „neconcludent" fiecare document care azi trece corect — o supra-corecție
+ * mai gravă decât bug-ul. L4 (lanț) nu intră nici el, ca și înainte de #149.
+ *
+ * @param {object} levels - result.levels
+ * @returns {boolean}
+ */
+export function computeVerdict(levels) {
+  const l1ok = levels?.L1?.ok === true;
+  const l2ok = levels?.L2?.ok === true;
+  const l3ok = levels?.L3?.ok === true;
+  return l1ok && l2ok && l3ok;
+}
+
+/**
  * Verifică complet o semnătură PDF.
  * @param {Buffer} pdfBytes — bytes-ii PDF-ului complet
  * @returns {Promise<VerificationResult>}
@@ -465,29 +486,37 @@ export async function verifyPdfSignatures(pdfBytes) {
       }
 
       // ── L1 completare: verificăm hash-ul din SignedData ───────────────
+      // #149 — comparația NU mai e gardată de `eContent`. În PAdES semnătura e
+      // ÎNTOTDEAUNA detașată (eContent absent), deci vechea gardă sărea peste
+      // singura verificare reală de integritate la FIECARE document real, iar
+      // ramura `else` declara `true` fără să fi comparat nimic. Sursa hash-ului
+      // e aceeași în ambele cazuri: `hashData` (datele din ByteRange).
       try {
-        const encapContent = signedData.encapContentInfo;
-        if (encapContent?.eContent) {
-          // Hash-ul e în signed attributes
-          const si = signedData.signerInfos?.[0];
-          const msgDigestAttr = si?.signedAttrs?.attributes?.find(
-            a => a.type === '1.2.840.113549.1.9.4' // id-messageDigest
-          );
-          if (msgDigestAttr) {
-            const embeddedHash = Buffer.from(
-              msgDigestAttr.values[0].valueBlock.valueHex
-            ).toString('hex');
-            const computedHash = crypto.createHash('sha256').update(hashData).digest('hex');
-            result.levels.L1.ok = embeddedHash.toLowerCase() === computedHash.toLowerCase();
-            result.levels.L1.embeddedHash  = embeddedHash;
-            result.levels.L1.computedHash  = computedHash;
-          } else {
-            result.levels.L1.ok = true; // presupunem intact dacă nu găsim atribut
+        const si = signedData.signerInfos?.[0];
+        const msgDigestAttr = si?.signedAttrs?.attributes?.find(
+          a => a.type === '1.2.840.113549.1.9.4' // id-messageDigest
+        );
+        if (msgDigestAttr) {
+          const embeddedHash = Buffer.from(
+            msgDigestAttr.values[0].valueBlock.valueHex
+          ).toString('hex');
+          const computedHash = crypto.createHash('sha256').update(hashData).digest('hex');
+          result.levels.L1.ok = embeddedHash.toLowerCase() === computedHash.toLowerCase();
+          result.levels.L1.embeddedHash  = embeddedHash;
+          result.levels.L1.computedHash  = computedHash;
+          if (result.levels.L1.ok === false) {
+            result.levels.L1.note = 'Document MODIFICAT după semnare — hash-ul nu corespunde';
           }
         } else {
-          result.levels.L1.ok = true;
+          // #149 — fail-closed: absența atributului nu dovedește integritatea.
+          result.levels.L1.ok   = null;
+          result.levels.L1.note = 'Neconcludent — atributul messageDigest lipseste din CMS';
         }
-      } catch { result.levels.L1.ok = true; }
+      } catch (e) {
+        // #149 — fail-closed: o eroare de parsare NU e o dovada de integritate.
+        result.levels.L1.ok   = null;
+        result.levels.L1.note = 'Neconcludent — eroare la verificarea integritatii';
+      }
 
       // ── L3: Informații certificat semnatar ────────────────────────────
       // NOTE: certs și signerCert sunt declarate mai sus (înainte de L2) — vezi FIX v3.9.337
@@ -563,7 +592,14 @@ export async function verifyPdfSignatures(pdfBytes) {
           });
         }
         result.chain = chain;
-        result.levels.L4.ok = chain.length >= 2; // minim cert + CA
+        // #149 — un lanț a cărui rădăcină e DEDUSĂ din numele emitentului nu e
+        // un lanț verificat. Nu-l mai declarăm `true`; `null` = neconcludent.
+        // (L4 nu intră în `isValid` — nici azi, nici după acest lot.)
+        const _chainInferred = chain.some(c => c.isInferred === true);
+        result.levels.L4.ok = chain.length >= 2 ? (_chainInferred ? null : true) : false;
+        if (_chainInferred) {
+          result.levels.L4.note = 'Neconcludent — rădăcina lanțului e dedusă, nu verificată criptografic';
+        }
 
         // ── L5: OCSP/CRL ──────────────────────────────────────────────
         result.levels.L5 = { name: 'Validitate certificat (OCSP/CRL)', ok: null };
@@ -657,10 +693,7 @@ export async function verifyPdfSignatures(pdfBytes) {
     }
 
     // Calcul status general
-    const l1ok = result.levels.L1?.ok !== false;
-    const l2ok = result.levels.L2?.ok !== false;
-    const l3ok = result.levels.L3?.ok === true;
-    result.isValid = l1ok && l2ok && l3ok;
+    result.isValid = computeVerdict(result.levels);
 
     results.push(result);
   }
