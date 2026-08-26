@@ -1011,10 +1011,22 @@ function renderDocsList(ft,docs){
   }).join('');
 }
 
+// #153 — mesajul se ramifică pe CODUL de status. Înainte, ORICE răspuns non-ok cădea pe
+// /pdf și afișa „nu este disponibil încă" — inclusiv pentru 403, ceea ce a costat un
+// diagnostic întreg: omului i se spunea că documentul lipsește, când de fapt nu avea drept.
+// 403 nu are fallback: /pdf trece prin ACEEAȘI poartă (isFlowAccessAllowed) și ar da tot 403.
 async function viewFlowPdf(flowId){
   try{
     const r=await fetch(`/flows/${encodeURIComponent(flowId)}/signed-pdf`,{credentials:'include'});
     if(!r.ok){
+      if(r.status===403){
+        setS('Nu aveți drept de acces la acest document.','err');
+        return;
+      }
+      if(r.status!==404){
+        setS('Eroare la descărcarea PDF-ului fluxului (cod '+r.status+').','err');
+        return;
+      }
       try{
         const r2=await fetch(`/flows/${encodeURIComponent(flowId)}/pdf`,{credentials:'include'});
         if(r2.ok){
