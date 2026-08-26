@@ -282,7 +282,9 @@ function renderSignatureBlock(sig, index, total) {
     { name: 'Integritate document (L1)',     status: dotStatus(L.L1?.ok), note: L.L1?.ok ? 'Hash intact' : (L.L1?.ok === false ? 'Modificat!' : 'Neverificat') },
     { name: 'Semnătură CMS/PKCS#7 (L2)',    status: dotStatus(L.L2?.ok), note: L.L2?.note || (L.L2?.ok ? 'Validă' : 'Invalidă') },
     { name: 'Certificat semnatar (L3)',      status: dotStatus(L.L3?.ok), note: L.L3?.ok ? 'Prezent' : 'Lipsă' },
-    { name: 'Lanț certificare (L4)',         status: dotStatus(L.L4?.ok), note: L.L4?.ok ? `${sig.chain?.length || 0} niveluri` : 'Incomplet' },
+    // #149 — `null` = neconcludent (rădăcină dedusă), NU „incomplet". Folosim
+    // nota serverului când există, ca să nu afirmăm pe pagina publică altceva.
+    { name: 'Lanț certificare (L4)',         status: dotStatus(L.L4?.ok), note: L.L4?.ok ? `${sig.chain?.length || 0} niveluri` : (L.L4?.note || (L.L4?.ok === false ? 'Incomplet' : 'Neconcludent')) },
     { name: 'OCSP/CRL — revocare (L5)',      status: dotStatus(L.L5?.ok), note: L.L5?.note || (L.L5?.ok === null ? 'URL OCSP lipsă' : L.L5?.ok ? 'Valabil' : 'Revocat!') },
     { name: 'Conformitate QES/eIDAS (L6)',   status: dotStatus(L.L6?.ok), note: L.L6?.qtspName || (L.L6?.ok ? 'QES confirmat' : 'Neverificat') },
   ];

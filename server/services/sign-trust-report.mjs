@@ -252,6 +252,7 @@ function _buildReportStructure(flowId, data, signers, events, cryptoResult) {
       certificate_qc_status: sig.certificate_qc_status || 'unknown',
       padesLevel:            sig.padesLevel || null,
       hasTrustedTimestamp:   sig.hasTrustedTimestamp || false,
+      timestampValidated:    sig.timestampValidated === true,
       signingTime:        sig.signingTime,
       isValid:            sig.isValid,
       isQES:              sig.isQES,
@@ -472,7 +473,9 @@ async function _generateReportPdf(report) {
       drawKV('Status revocare', (c.revocationStatus || 'unknown').toUpperCase(),
              c.revocationStatus === 'valid' ? COL.ok : c.revocationStatus === 'revoked' ? COL.fail : COL.warn);
       drawKV('Algoritm semnatura', c.signatureAlgorithm);
-      drawKV('QcStatements', c.hasQcStatements ? 'Prezent (QES confirmed)' : 'Absent');
+      // #149 — prezența extensiei NU confirmă calificarea; calificarea vine din
+      // evaluarea pe dovadă (#144). Eticheta descrie doar ce s-a observat.
+      drawKV('QcStatements', c.hasQcStatements ? 'Prezent' : 'Absent');
       // ── Compliance fields ──────────────────────────────────────────────
       drawKV('Status QC', cert.certificate_qc_status === 'qualified' ? 'CALIFICAT (QES)' :
              cert.certificate_qc_status === 'qualified-no-qscd' ? 'CALIFICAT, FARA DOVADA QSCD' :
@@ -482,7 +485,12 @@ async function _generateReportPdf(report) {
              cert.certificate_qc_status === 'non-qualified' ? COL.warn : COL.muted);
       // #144/E2 — nivelul PAdES real (fără marcă temporală: B-B)
       if (cert.padesLevel) {
-        drawKV('Nivel PAdES', cert.padesLevel,
+        // #149 — nivelul vine din DETECTAREA mărcii temporale, nu din validarea
+        // tokenului RFC 3161. Marcăm asta explicit ca să nu afirmăm ce n-am probat.
+        drawKV('Nivel PAdES',
+               cert.timestampValidated === true
+                 ? cert.padesLevel
+                 : `${cert.padesLevel} (detectat, nevalidat)`,
                cert.padesLevel === 'B-B' ? COL.warn : COL.ok);
       }
       drawKV('Sursa validare', cert.validation_source === 'ocsp' ? 'OCSP (live)' :
