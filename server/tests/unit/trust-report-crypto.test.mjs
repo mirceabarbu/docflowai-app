@@ -64,22 +64,25 @@ describe('#147 — L2 real în motorul Raportului de încredere', () => {
     }
   });
 
-  // #150 (C3) — paritate L4 între motoare. NU e (încă) egalitate: pe fixtura
-  // reală, `certs` din CMS vine în ordinea [rădăcină, semnatar, CA intermediar],
-  // iar `verify.mjs` (motorul public, NO-TOUCH în acest lot) decide „rădăcină
-  // dedusă" uitându-se DOAR la ULTIMUL element din listă — care aici e CA
-  // intermediar, nu rădăcina (deja prezentă, dar pe poziția 0). Rezultă un
-  // fals „Neconcludent" în motorul public, deși lanțul e complet din CMS.
-  // `certificate-verify.mjs` (motorul Raportului) reconstruiește lanțul prin
-  // urmărirea reală issuer→issuer și găsește corect rădăcina REALĂ din CMS —
-  // `L4.ok = true` acolo e CORECT (regula #150/C2: nu strica un `true` corect).
-  // Testul fixează divergența CUNOSCUTĂ ca să nu treacă neobservată o schimbare
-  // viitoare; vezi raportul PROMPT-150, itemul 9.
-  it('C3 — L4.ok diverge CUNOSCUT între motoare pe fixtură (bug de ordine în verify.mjs, NO-TOUCH)', async () => {
+  // #150 (C3) → #151 (B) — INVERSAT. La #150, `verify.mjs` (motorul public)
+  // construia lanțul iterând `certs` în ordinea din CMS (SET neordonat, RFC
+  // 5652) și testa „rădăcină dedusă?" doar pe ULTIMUL element din listă. Pe
+  // fixtura reală, `certs` vine [rădăcină, semnatar, CA intermediar] — ultimul
+  // element era CA-ul intermediar, nu rădăcina (deja prezentă, dar pe poziția
+  // 0) → codul FABRICA o „rădăcină dedusă" DUPLICAT → fals „Neconcludent"
+  // (`L4.ok === null`) deși lanțul era complet.
+  // `certificate-verify.mjs` (motorul Raportului) reconstruia deja lanțul
+  // corect prin urmărire issuer→issuer și dădea `L4.ok === true`.
+  // #151/B a adus `verify.mjs` la aceeași construcție (urcare de la semnatar
+  // spre rădăcină prin `_findIssuerCert`, oprire pe self-signed, deducere
+  // DOAR când emitentul chiar lipsește din `certs`). Divergența a dispărut —
+  // testul devine de PARITATE. Dacă redevine roșu (`pub !== trust`), unul din
+  // cele două motoare a regresat la construcția pe ordine/poziție.
+  it('B/C3 — L4.ok e IDENTIC între motoare pe fixtură (paritate, nu mai divergență)', async () => {
     const bytes = readFileSync(FIXTURE);
     const [pub, trust] = await Promise.all([verifyPublic(bytes), verifyTrustEngine(bytes)]);
-    expect(pub.signatures[0].levels.L4.ok).toBe(null);
-    expect(trust.signatures[0].levels.L4.ok).toBe(true);
+    expect(pub.signatures[0].levels.L4.ok).toBe(trust.signatures[0].levels.L4.ok);
+    expect(pub.signatures[0].levels.L4.ok).toBe(true);
   });
 
   it('L1 fără atribut messageDigest ⇒ null, nu true (fail-closed în ambele motoare)', () => {

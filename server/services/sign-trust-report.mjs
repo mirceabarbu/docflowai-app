@@ -482,7 +482,11 @@ async function _generateReportPdf(report) {
              c.validAtSigning === true ? COL.ok : c.validAtSigning === false ? COL.fail : COL.warn);
       drawKV('Status revocare', (c.revocationStatus || 'unknown').toUpperCase(),
              c.revocationStatus === 'valid' ? COL.ok : c.revocationStatus === 'revoked' ? COL.fail : COL.warn);
-      drawKV('Algoritm semnatura', c.signatureAlgorithm);
+      // #151 — eticheta descria valoarea drept "algoritmul semnaturii", dar
+      // c.signatureAlgorithm e algoritmul cu care CA-ul a semnat CERTIFICATUL,
+      // nu cel al semnaturii de pe document (acela apare separat, la sectiunea
+      // semnaturii). Reformulat ca sa nu para contradictoriu cu ECDSA de acolo.
+      drawKV('Algoritm semnatura certificat (emis de CA)', c.signatureAlgorithm);
       // #149 — prezența extensiei NU confirmă calificarea; calificarea vine din
       // evaluarea pe dovadă (#144). Eticheta descrie doar ce s-a observat.
       drawKV('QcStatements', c.hasQcStatements ? 'Prezent' : 'Absent');

@@ -74,14 +74,27 @@ describe('#149 — `null` nu mai devine „valid"', () => {
 });
 
 describe('#149 — lanțul nu se mai declară valid pe lungime', () => {
-  it('⭐ 5. lanț cu rădăcină DEDUSĂ ⇒ L4.ok null, iar isValid NU se schimbă', async () => {
+  // #151 — până la #151, `verify.mjs` construia lanțul iterând `certs` în
+  // ordinea din CMS și testa „lipsește rădăcina?" doar pe ULTIMUL element;
+  // pe fixtura reală asta fabrica o rădăcină DEDUSĂ duplicat (rădăcina reală
+  // era deja în listă, pe altă poziție) ⇒ L4.ok era `null`. Testul ĂSTA
+  // (creat la #149) fixa acel `null` ca „așteptat". După #151 (construcție
+  // prin urmărirea emitentului, nu prin ordine) lanțul real e complet și
+  // fără deducere ⇒ L4.ok e acum `true`. Invarianta REALĂ pe care testul o
+  // pinuiește — „L4 nu intră în formula verdictului, indiferent de valoare"
+  // — rămâne verificată mai jos, direct pe `computeVerdict`, cu un caz
+  // sintetic de rădăcină dedusă (vezi și verify-chain-order.test.mjs, cazul 3,
+  // pentru dovada că deducerea încă funcționează când rădăcina chiar lipsește).
+  it('⭐ 5. fixtura reală ⇒ L4.ok true (fix #151), iar isValid rămâne neschimbat', async () => {
     const out = await verifyPdfSignatures(readFileSync(FIXTURE));
     const sig = out.signatures[0];
-    // Rădăcina e adăugată de noi din issuerCN (isInferred: true, verify.mjs ~549/562).
-    expect(sig.chain.some(c => c.isInferred === true)).toBe(true);
-    expect(sig.levels.L4.ok).toBe(null);
-    // ...și totuși documentul rămâne valid: L4 nu intră în verdict.
+    expect(sig.chain.some(c => c.isInferred === true)).toBe(false);
+    expect(sig.levels.L4.ok).toBe(true);
     expect(sig.isValid).toBe(true);
+  });
+
+  it('⭐ L4.ok null (rădăcină dedusă, caz sintetic) NU schimbă verdictul', () => {
+    expect(computeVerdict(lvl({ L4: null }))).toBe(true);
   });
 });
 
