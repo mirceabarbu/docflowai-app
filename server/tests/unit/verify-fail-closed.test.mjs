@@ -74,14 +74,27 @@ describe('#149 — `null` nu mai devine „valid"', () => {
 });
 
 describe('#149 — lanțul nu se mai declară valid pe lungime', () => {
-  it('⭐ 5. lanț cu rădăcină DEDUSĂ ⇒ L4.ok null, iar isValid NU se schimbă', async () => {
+  // #151 — până la #151, `verify.mjs` construia lanțul iterând `certs` în
+  // ordinea din CMS și testa „lipsește rădăcina?" doar pe ULTIMUL element;
+  // pe fixtura reală asta fabrica o rădăcină DEDUSĂ duplicat (rădăcina reală
+  // era deja în listă, pe altă poziție) ⇒ L4.ok era `null`. Testul ĂSTA
+  // (creat la #149) fixa acel `null` ca „așteptat". După #151 (construcție
+  // prin urmărirea emitentului, nu prin ordine) lanțul real e complet și
+  // fără deducere ⇒ L4.ok e acum `true`. Invarianta REALĂ pe care testul o
+  // pinuiește — „L4 nu intră în formula verdictului, indiferent de valoare"
+  // — rămâne verificată mai jos, direct pe `computeVerdict`, cu un caz
+  // sintetic de rădăcină dedusă (vezi și verify-chain-order.test.mjs, cazul 3,
+  // pentru dovada că deducerea încă funcționează când rădăcina chiar lipsește).
+  it('⭐ 5. fixtura reală ⇒ L4.ok true (fix #151), iar isValid rămâne neschimbat', async () => {
     const out = await verifyPdfSignatures(readFileSync(FIXTURE));
     const sig = out.signatures[0];
-    // Rădăcina e adăugată de noi din issuerCN (isInferred: true, verify.mjs ~549/562).
-    expect(sig.chain.some(c => c.isInferred === true)).toBe(true);
-    expect(sig.levels.L4.ok).toBe(null);
-    // ...și totuși documentul rămâne valid: L4 nu intră în verdict.
+    expect(sig.chain.some(c => c.isInferred === true)).toBe(false);
+    expect(sig.levels.L4.ok).toBe(true);
     expect(sig.isValid).toBe(true);
+  });
+
+  it('⭐ L4.ok null (rădăcină dedusă, caz sintetic) NU schimbă verdictul', () => {
+    expect(computeVerdict(lvl({ L4: null }))).toBe(true);
   });
 });
 
@@ -121,18 +134,24 @@ describe('#149 — ancora de non-regresie pe fixtura reală', () => {
   });
 });
 
-describe('#149 — certificate-verify.mjs rămâne DELIBERAT fail-open până la #147', () => {
-  it('⭐ 7. L2 null (ECDSA în catch) + L3 true ⇒ isValid TRUE acolo, intenționat', async () => {
-    // A NU se „repara" aici. Cu formula strânsă acum, `isValid` ar deveni false
-    // pe TOATE semnăturile STS, iar Raportul de încredere le-ar tipări ca
-    // invalide — fals negativ pe un act oficial. „Nu am verificat" nu înseamnă
-    // „invalid", exact cum nu înseamnă „valid". Întâi #147 dă acelui motor o
-    // verificare ECDSA reală; abia apoi formula devine fail-closed acolo.
+describe('#147 — certificate-verify.mjs a devenit fail-closed, pe un L2 REAL', () => {
+  it('⭐ 7. fostul pinning #149 s-a inversat: L2 e acum verificat, nu `null`', async () => {
+    // ISTORIC: până la #147 acest test asertase `L2.ok === null` + `isValid === true`
+    // — fail-open DELIBERAT, fiindcă motorul nu avea verificare ECDSA reală și o
+    // formulă strânsă ar fi tipărit „invalid" pe toate semnăturile STS. #147 a
+    // portat nucleul criptografic; pinning-ul a devenit roșu exact cum trebuia
+    // și a fost rescris aici cu așteptarea inversă.
     const out = await verifyTrustEngine(readFileSync(FIXTURE));
     const s = out.signatures[0];
-    expect(s.levels.L2.ok).toBe(null);
+    expect(s.levels.L2.ok).toBe(true);
     expect(s.levels.L3.ok).toBe(true);
     expect(s.isValid).toBe(true);
+  });
+
+  it('⭐ aceeași combinație de niveluri (L1 null + L2 null + L3 true) ⇒ isValid FALSE', () => {
+    // Combinația pe care #149 o pinuia ca „true, intenționat" în acest motor.
+    // Acum motorul Raportului folosește `computeVerdict`, deci dă `false`.
+    expect(computeVerdict(lvl({ L1: null, L2: null }))).toBe(false);
   });
 
   it('#149/E2 — marca temporală e detectată, nu validată', async () => {

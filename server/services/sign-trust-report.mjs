@@ -36,8 +36,15 @@ const fmtDateShort = iso => iso
   : '—';
 
 // Diacritice → ASCII (pentru pdf-lib StandardFonts)
-const diacr = { 'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ș':'s','ț':'t','ş':'s','ţ':'t' };
-const ro = t => String(t || '').replace(/[^\x00-\xFF]/g, '').split('').map(ch => diacr[ch] || ch).join('');
+const diacr = {
+  'ă':'a','â':'a','î':'i','ș':'s','ț':'t','ş':'s','ţ':'t',
+  'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','Ş':'S','Ţ':'T',
+  'ë':'e','ü':'u','Ë':'E','Ü':'U',
+};
+// #150 — ORDINEA CONTEAZĂ: ă/ș/ț sunt în afara Latin-1, deci un strip aplicat
+// ÎNAINTE de mapare le ștergea complet („Semnătură" → „Semntur"). Mapăm întâi
+// diacriticele cunoscute, abia apoi curățăm ce a rămas neredabil de Helvetica.
+const ro = t => String(t || '').split('').map(ch => diacr[ch] || ch).join('').replace(/[^\x00-\xFF]/g, '');
 
 /**
  * Generează raportul de conformitate pentru un flux finalizat.
@@ -108,7 +115,10 @@ export async function generateTrustReport({ flowId, flowData, pdfBytes, pool }) 
         `, [
           certId, flowId, c.subject?.CN, c.subject?.CN, c.issuer?.O, c.issuer?.CN,
           c.serialNumber, c.notBefore, c.notAfter,
-          c.validAtSigning ?? false,
+          // #150 (D) — validAtSigning e null când signingTime nu e declarat în
+          // semnătură ("nedeterminat"), NU false ("NU era valabil"). Coloana e
+          // BOOLEAN nullable — păstrăm null-ul, nu-l coalescem la o afirmație falsă.
+          c.validAtSigning,
           c.revocationStatus || 'unknown',
           sig.levels?.L4?.ok ? 'valid' : 'unknown',
           c.hasQcStatements ?? false,
@@ -472,7 +482,11 @@ async function _generateReportPdf(report) {
              c.validAtSigning === true ? COL.ok : c.validAtSigning === false ? COL.fail : COL.warn);
       drawKV('Status revocare', (c.revocationStatus || 'unknown').toUpperCase(),
              c.revocationStatus === 'valid' ? COL.ok : c.revocationStatus === 'revoked' ? COL.fail : COL.warn);
-      drawKV('Algoritm semnatura', c.signatureAlgorithm);
+      // #151 — eticheta descria valoarea drept "algoritmul semnaturii", dar
+      // c.signatureAlgorithm e algoritmul cu care CA-ul a semnat CERTIFICATUL,
+      // nu cel al semnaturii de pe document (acela apare separat, la sectiunea
+      // semnaturii). Reformulat ca sa nu para contradictoriu cu ECDSA de acolo.
+      drawKV('Algoritm semnatura certificat (emis de CA)', c.signatureAlgorithm);
       // #149 — prezența extensiei NU confirmă calificarea; calificarea vine din
       // evaluarea pe dovadă (#144). Eticheta descrie doar ce s-a observat.
       drawKV('QcStatements', c.hasQcStatements ? 'Prezent' : 'Absent');
@@ -500,7 +514,9 @@ async function _generateReportPdf(report) {
       if (cert.validation_time) drawKV('Data verificare', fmtDate(cert.validation_time));
       if (c.ocspUrl) drawKV('OCSP URL', c.ocspUrl);
       // Timestamp CMS și hash document
-      if (cert.signingTime) drawKV('Timestamp CMS', fmtDate(cert.signingTime));
+      // #147/E2 — câmpul se tipărește ÎNTOTDEAUNA: absența atributului CMS
+      // `signingTime` e o proprietate a semnăturii (PAdES), nu un câmp uitat.
+      drawKV('Timestamp CMS', cert.signingTime ? fmtDate(cert.signingTime) : 'nedeclarat în semnătură');
       if (cert.docHash) {
         ensureSpace(26);
         page.drawText('Hash document (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;
@@ -558,7 +574,7 @@ async function _generateReportPdf(report) {
     { key: 'L2', label: 'Semnatura CMS/PKCS#7 valida criptografic' },
     { key: 'L3', label: 'Certificat semnatar prezent si parsabil' },
     { key: 'L4', label: 'Lant de certificare complet (cert → CA → Root)' },
-    { key: 'L5', label: 'Certificatul era valabil la momentul semnarii (OCSP/CRL)' },
+    { key: 'L5', label: 'Certificatul nu a fost revocat (verificare OCSP/CRL)' },
     { key: 'L6', label: 'Conformitate QES/eIDAS (QTSP acreditat + QcStatements)' },
   ];
 

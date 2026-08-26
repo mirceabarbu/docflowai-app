@@ -151,6 +151,62 @@ export function _findIssuerCert(cert, certs, pkijs) {
   return null;
 }
 
+function _getAttr(rdn, oid) {
+  return rdn?.typesAndValues?.find(tv => tv.type === oid)?.value?.valueBlock?.value || '';
+}
+
+/**
+ * #151 — construiește lanțul de certificare URCÂND din emitent în emitent,
+ * pornind de la `signerCert` (NU iterând `certs` în ordinea din CMS — SET
+ * neordonat, RFC 5652). Se oprește pe self-signed (vârf atins). Deduce o
+ * intrare de rădăcină DOAR când emitentul chiar lipsește din `certs`.
+ * Protecție la buclă: mulțime de vizitate (DER subiect) + adâncime maximă.
+ * Funcție PURĂ — testabilă direct cu certificate sintetice (pkijs.Certificate).
+ */
+export function _buildCertChain(signerCert, certs, pkijs, maxDepth = 10) {
+  const chain = [];
+  const visited = new Set();
+  let cur = signerCert;
+  let missingIssuer = false;
+  while (cur && chain.length < maxDepth) {
+    const subjDer = _der(cur.subject);
+    const key = subjDer ? subjDer.toString('hex') : null;
+    if (key && visited.has(key)) break; // buclă (cross-signed) — oprire, nu blocaj
+    if (key) visited.add(key);
+
+    const selfSigned = _isSelfSigned(cur);
+    chain.push({
+      CN:        _getAttr(cur.subject, OID_COMMON_NAME),
+      O:         _getAttr(cur.subject, OID_ORGANIZATION),
+      issuerCN:  _getAttr(cur.issuer, OID_COMMON_NAME),
+      notBefore: cur.notBefore?.value,
+      notAfter:  cur.notAfter?.value,
+      isSelfSigned: selfSigned,
+      isInferred: false,
+    });
+
+    if (selfSigned) break; // vârf atins — lanț închis, nimic de dedus
+
+    const issuerCert = _findIssuerCert(cur, certs, pkijs);
+    if (!issuerCert) { missingIssuer = true; break; }
+    cur = issuerCert;
+  }
+  // Deducem rădăcina DOAR dacă vârful atins nu e self-signed ȘI emitentul
+  // chiar lipsește din `certs` (Root CA e de obicei în trust store-ul OS,
+  // nu în CMS) — nu la epuizarea limitei de adâncime (acolo e o buclă).
+  if (missingIssuer && chain.length > 0) {
+    const last = chain[chain.length - 1];
+    chain.push({
+      CN:          last.issuerCN || 'Root CA',
+      O:           '',
+      issuerCN:    '',
+      isSelfSigned: true,
+      isInferred:  true, // dedus din lanț — Root CA în trust store OS
+    });
+  }
+  return chain;
+}
+
 // ── #145/C — algoritmi, curbe, format de semnătură ────────────────────────
 const SIG_ALGS = {
   '1.2.840.10045.4.3.2':   { family: 'ECDSA',   hash: 'SHA-256' },
@@ -564,33 +620,14 @@ export async function verifyPdfSignatures(pdfBytes) {
         }
 
         // ── L4: Lanț de certificare ────────────────────────────────────
+        // #151 — lanțul se construiește URCÂND din emitent în emitent, pornind
+        // de la semnatar (_buildCertChain → _findIssuerCert, subiect DER ===
+        // emitent DER), NU iterând `certs` în ordinea din CMS (SET neordonat —
+        // RFC 5652). Iterarea pe ordine fabrica o rădăcină „dedusă" DUPLICAT
+        // ori de câte ori rădăcina reală era deja în listă, dar nu pe ultima
+        // poziție.
         result.levels.L4 = { name: 'Lanț certificare', ok: false };
-        const chain = [];
-        for (const cert of certs) {
-          if (!(cert instanceof pkijs.Certificate)) continue;
-          chain.push({
-            CN:        getAttr(cert.subject, OID_COMMON_NAME),
-            O:         getAttr(cert.subject, OID_ORGANIZATION),
-            issuerCN:  getAttr(cert.issuer, OID_COMMON_NAME),
-            notBefore: cert.notBefore?.value,
-            notAfter:  cert.notAfter?.value,
-            isSelfSigned: getAttr(cert.subject, OID_COMMON_NAME) === getAttr(cert.issuer, OID_COMMON_NAME),
-            isInferred: false,
-          });
-        }
-        // Dacă ultimul cert din CMS nu e self-signed, Root CA nu e inclus (normal —
-        // Root CA e în trust store-ul OS/browser, nu se include în CMS).
-        // Adăugăm un entry dedus din issuerCN al ultimului cert, fără "?".
-        if (chain.length > 0 && !chain[chain.length - 1].isSelfSigned) {
-          const last = chain[chain.length - 1];
-          chain.push({
-            CN:          last.issuerCN || 'Root CA',
-            O:           '',
-            issuerCN:    '',
-            isSelfSigned: true,
-            isInferred:  true, // dedus din lanț — Root CA în trust store OS
-          });
-        }
+        const chain = _buildCertChain(signerCert, certs, pkijs);
         result.chain = chain;
         // #149 — un lanț a cărui rădăcină e DEDUSĂ din numele emitentului nu e
         // un lanț verificat. Nu-l mai declarăm `true`; `null` = neconcludent.
@@ -642,7 +679,9 @@ export async function verifyPdfSignatures(pdfBytes) {
           }
         } else {
           result.levels.L5.ok   = null;
-          result.levels.L5.note = 'URL OCSP nedisponibil în certificat — validitate confirmată prin QcStatements și L6';
+          // #147/E1 — QcStatements descrie CALIFICAREA certificatului; nu spune
+          // nimic despre REVOCARE. Fără URL OCSP starea rămâne NEVERIFICATĂ.
+          result.levels.L5.note = 'URL OCSP nedisponibil în certificat — starea de revocare NU a putut fi verificată';
           result.levels.L5.notApplicable = true; // nu e o eroare, e o limitare a certificatului
         }
 
