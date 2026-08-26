@@ -177,6 +177,28 @@ d('#153 — acces la conținutul fluxului derivat din DF/ORD', () => {
     });
   });
 
+  // ── 5b ⭐⭐ proiecția îngustă chiar hrănește canEditFormular ────────────────
+  // `isAllowedViaFormular` NU face `SELECT *`: proiectează exact câmpurile citite de
+  // `canEditFormular` (created_by, assigned_to, p2_compartiment, flow_id). Prezența lor
+  // în textul SQL nu e dovadă că ramura lor funcționează — testul ăsta o dă, pe calea
+  // `p2_comp`, singura care depinde de o coloană pe care ramura CAB n-o atinge deloc.
+  // Utilizatorul de aici NU e: creator, coleg de compartiment cu creatorul, membru CAB,
+  // semnatar, inițiator sau destinatar repartizat. Singura lui revendicare e
+  // doc.p2_compartiment — dacă acea coloană ar cădea din proiecție, ar primi 403.
+  it('5b. user cu compartimentul = doc.p2_compartiment (nu CAB, nu semnatar) → 200', async () => {
+    const p2CompUserId = await seedUser({ orgId, email: 'p2comp@x.ro', compartiment: 'Contabilitate' });
+    await pool.query(`UPDATE formulare_df SET p2_compartiment=$1 WHERE id=$2`, ['Contabilitate', dfId]);
+
+    const res = await request(app).get(`/flows/${FLOW_DF}/signed-pdf`)
+      .set('Cookie', cookie({ userId: p2CompUserId, role: 'user', orgId, email: 'p2comp@x.ro' }));
+    expect(res.status).toBe(200);
+
+    // Contra-proba: același om, pe fluxul fără DF/ORD, rămâne închis.
+    const res2 = await request(app).get(`/flows/${FLOW_BARE}/signed-pdf`)
+      .set('Cookie', cookie({ userId: p2CompUserId, role: 'user', orgId, email: 'p2comp@x.ro' }));
+    expect(res2.status).toBe(403);
+  });
+
   // ── 7 ⭐ documentul șters nu mai deschide fluxul ────────────────────────────
   it('7. DF cu deleted_at IS NOT NULL → 403', async () => {
     await pool.query(`UPDATE formulare_df SET deleted_at=NOW() WHERE id=$1`, [dfId]);
