@@ -500,7 +500,9 @@ async function _generateReportPdf(report) {
       if (cert.validation_time) drawKV('Data verificare', fmtDate(cert.validation_time));
       if (c.ocspUrl) drawKV('OCSP URL', c.ocspUrl);
       // Timestamp CMS și hash document
-      if (cert.signingTime) drawKV('Timestamp CMS', fmtDate(cert.signingTime));
+      // #147/E2 — câmpul se tipărește ÎNTOTDEAUNA: absența atributului CMS
+      // `signingTime` e o proprietate a semnăturii (PAdES), nu un câmp uitat.
+      drawKV('Timestamp CMS', cert.signingTime ? fmtDate(cert.signingTime) : 'nedeclarat în semnătură');
       if (cert.docHash) {
         ensureSpace(26);
         page.drawText('Hash document (SHA-256):', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted }); y -= 11;

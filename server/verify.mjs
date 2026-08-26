@@ -642,7 +642,9 @@ export async function verifyPdfSignatures(pdfBytes) {
           }
         } else {
           result.levels.L5.ok   = null;
-          result.levels.L5.note = 'URL OCSP nedisponibil în certificat — validitate confirmată prin QcStatements și L6';
+          // #147/E1 — QcStatements descrie CALIFICAREA certificatului; nu spune
+          // nimic despre REVOCARE. Fără URL OCSP starea rămâne NEVERIFICATĂ.
+          result.levels.L5.note = 'URL OCSP nedisponibil în certificat — starea de revocare NU a putut fi verificată';
           result.levels.L5.notApplicable = true; // nu e o eroare, e o limitare a certificatului
         }
 

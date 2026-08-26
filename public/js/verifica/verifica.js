@@ -309,7 +309,9 @@ function renderSignatureBlock(sig, index, total) {
       { lbl: 'Semnatar (CN)', val: c.subject?.CN || '—' },
       { lbl: 'Organizație',   val: c.subject?.O || '—' },
       { lbl: 'Emis de',       val: c.issuer?.CN || '—' },
-      { lbl: 'Data semnării', val: sig.signingTime ? fmt(sig.signingTime) : '—' },
+      // #147/E2 — STS nu pune atributul CMS `signingTime` (PAdES preferă marca
+      // temporală). O liniuță pare un câmp lipsă din eroare; spunem explicit.
+      { lbl: 'Data semnării', val: sig.signingTime ? fmt(sig.signingTime) : 'nedeclarată în semnătură' },
       { lbl: 'Valabil de la', val: c.notBefore ? fmt(c.notBefore) : '—' },
       { lbl: 'Valabil până la', val: c.notAfter ? fmt(c.notAfter) : '—' },
       { lbl: 'Valabil la semnare', val: c.validAtSigning === true ? '✅ Da' : (c.validAtSigning === false ? '❌ Nu' : '—') },

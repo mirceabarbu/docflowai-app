@@ -121,18 +121,24 @@ describe('#149 — ancora de non-regresie pe fixtura reală', () => {
   });
 });
 
-describe('#149 — certificate-verify.mjs rămâne DELIBERAT fail-open până la #147', () => {
-  it('⭐ 7. L2 null (ECDSA în catch) + L3 true ⇒ isValid TRUE acolo, intenționat', async () => {
-    // A NU se „repara" aici. Cu formula strânsă acum, `isValid` ar deveni false
-    // pe TOATE semnăturile STS, iar Raportul de încredere le-ar tipări ca
-    // invalide — fals negativ pe un act oficial. „Nu am verificat" nu înseamnă
-    // „invalid", exact cum nu înseamnă „valid". Întâi #147 dă acelui motor o
-    // verificare ECDSA reală; abia apoi formula devine fail-closed acolo.
+describe('#147 — certificate-verify.mjs a devenit fail-closed, pe un L2 REAL', () => {
+  it('⭐ 7. fostul pinning #149 s-a inversat: L2 e acum verificat, nu `null`', async () => {
+    // ISTORIC: până la #147 acest test asertase `L2.ok === null` + `isValid === true`
+    // — fail-open DELIBERAT, fiindcă motorul nu avea verificare ECDSA reală și o
+    // formulă strânsă ar fi tipărit „invalid" pe toate semnăturile STS. #147 a
+    // portat nucleul criptografic; pinning-ul a devenit roșu exact cum trebuia
+    // și a fost rescris aici cu așteptarea inversă.
     const out = await verifyTrustEngine(readFileSync(FIXTURE));
     const s = out.signatures[0];
-    expect(s.levels.L2.ok).toBe(null);
+    expect(s.levels.L2.ok).toBe(true);
     expect(s.levels.L3.ok).toBe(true);
     expect(s.isValid).toBe(true);
+  });
+
+  it('⭐ aceeași combinație de niveluri (L1 null + L2 null + L3 true) ⇒ isValid FALSE', () => {
+    // Combinația pe care #149 o pinuia ca „true, intenționat" în acest motor.
+    // Acum motorul Raportului folosește `computeVerdict`, deci dă `false`.
+    expect(computeVerdict(lvl({ L1: null, L2: null }))).toBe(false);
   });
 
   it('#149/E2 — marca temporală e detectată, nu validată', async () => {
