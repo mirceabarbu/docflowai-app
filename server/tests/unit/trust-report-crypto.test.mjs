@@ -64,6 +64,24 @@ describe('#147 — L2 real în motorul Raportului de încredere', () => {
     }
   });
 
+  // #150 (C3) — paritate L4 între motoare. NU e (încă) egalitate: pe fixtura
+  // reală, `certs` din CMS vine în ordinea [rădăcină, semnatar, CA intermediar],
+  // iar `verify.mjs` (motorul public, NO-TOUCH în acest lot) decide „rădăcină
+  // dedusă" uitându-se DOAR la ULTIMUL element din listă — care aici e CA
+  // intermediar, nu rădăcina (deja prezentă, dar pe poziția 0). Rezultă un
+  // fals „Neconcludent" în motorul public, deși lanțul e complet din CMS.
+  // `certificate-verify.mjs` (motorul Raportului) reconstruiește lanțul prin
+  // urmărirea reală issuer→issuer și găsește corect rădăcina REALĂ din CMS —
+  // `L4.ok = true` acolo e CORECT (regula #150/C2: nu strica un `true` corect).
+  // Testul fixează divergența CUNOSCUTĂ ca să nu treacă neobservată o schimbare
+  // viitoare; vezi raportul PROMPT-150, itemul 9.
+  it('C3 — L4.ok diverge CUNOSCUT între motoare pe fixtură (bug de ordine în verify.mjs, NO-TOUCH)', async () => {
+    const bytes = readFileSync(FIXTURE);
+    const [pub, trust] = await Promise.all([verifyPublic(bytes), verifyTrustEngine(bytes)]);
+    expect(pub.signatures[0].levels.L4.ok).toBe(null);
+    expect(trust.signatures[0].levels.L4.ok).toBe(true);
+  });
+
   it('L1 fără atribut messageDigest ⇒ null, nu true (fail-closed în ambele motoare)', () => {
     // Sursa: certificate-verify.mjs, ramura `else` a atributului msgDigest.
     const src = readFileSync(join(ROOT, 'server', 'services', 'certificate-verify.mjs'), 'utf8');
@@ -71,6 +89,16 @@ describe('#147 — L2 real în motorul Raportului de încredere', () => {
     expect(src).toMatch(/messageDigest lipseste din CMS/);
     // ...și nicio urmă din formula fail-open.
     expect(src.includes('ok !== false')).toBe(false);
+  });
+
+  // #150 (D) — validAtSigning fără signingTime e null (nedeterminat), nu true
+  // (evaluat fals la "acum") nici false. Fixtura reală n-are signingTime (STS
+  // nu pune atributul CMS — măsurat la #147), deci ăsta e cazul de zi cu zi.
+  it('⭐ D. validAtSigning === null pe fixtura reală (fără signingTime declarat)', async () => {
+    const out = await verifyTrustEngine(readFileSync(FIXTURE));
+    const s = out.signatures[0];
+    expect(s.signingTime).toBeFalsy();
+    expect(s.certificate.validAtSigning).toBe(null);
   });
 
   it('tabelele de algoritmi/curbe NU sunt duplicate în al doilea motor', () => {
@@ -130,5 +158,20 @@ describe('#147/C — selecția semnatarului ține cont de EMITENT, nu doar de se
     const out = await verifyTrustEngine(readFileSync(FIXTURE));
     expect(out.signatures[0].signerCertSource).toBe(1);
     expect(out.signatures[0].certificate.subject.CN).toBe('Barbu Ilie-Mircea');
+  });
+
+  // #150 (E) — CANAR: `_selectSignerCert` e acum într-un SINGUR loc (verify.mjs),
+  // folosit de AMBELE motoare. La #147 s-a descoperit că ramura 1 (emitent DER +
+  // serie, `sid.issuerAndSerialNumber`) era cod mort pe pkijs actual, iar
+  // semnatarul era în schimb prins TĂCUT de euristica de la ramura 2 — funcțional
+  // corect, dar fragil: dacă euristica ar fi ghicit greșit, nimic n-ar fi semnalat-o.
+  // Acest test fixează `branch === 1` pe fixtura reală. DACĂ PICĂ: o versiune
+  // viitoare de pkijs a schimbat din nou forma lui `sid`, selecția a degradat
+  // (din nou) pe euristică, iar asta trebuie să facă CI-ul ROȘU — nu să fie
+  // „reparat" prin relaxarea aserțiunii (ex. `branch <= 3`), ceea ce ar ascunde
+  // exact fragilitatea pe care testul există s-o prindă.
+  it('⭐ canar — _selectSignerCert rămâne pe ramura 1 (emitent DER + serie) pe fixtura reală', async () => {
+    const out = await verifyTrustEngine(readFileSync(FIXTURE));
+    expect(out.signatures[0].signerCertSource).toBe(1);
   });
 });

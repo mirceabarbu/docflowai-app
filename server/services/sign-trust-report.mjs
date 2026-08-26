@@ -36,8 +36,15 @@ const fmtDateShort = iso => iso
   : '—';
 
 // Diacritice → ASCII (pentru pdf-lib StandardFonts)
-const diacr = { 'ă':'a','â':'a','î':'i','ș':'s','ț':'t','Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','ș':'s','ț':'t','ş':'s','ţ':'t' };
-const ro = t => String(t || '').replace(/[^\x00-\xFF]/g, '').split('').map(ch => diacr[ch] || ch).join('');
+const diacr = {
+  'ă':'a','â':'a','î':'i','ș':'s','ț':'t','ş':'s','ţ':'t',
+  'Ă':'A','Â':'A','Î':'I','Ș':'S','Ț':'T','Ş':'S','Ţ':'T',
+  'ë':'e','ü':'u','Ë':'E','Ü':'U',
+};
+// #150 — ORDINEA CONTEAZĂ: ă/ș/ț sunt în afara Latin-1, deci un strip aplicat
+// ÎNAINTE de mapare le ștergea complet („Semnătură" → „Semntur"). Mapăm întâi
+// diacriticele cunoscute, abia apoi curățăm ce a rămas neredabil de Helvetica.
+const ro = t => String(t || '').split('').map(ch => diacr[ch] || ch).join('').replace(/[^\x00-\xFF]/g, '');
 
 /**
  * Generează raportul de conformitate pentru un flux finalizat.
@@ -108,7 +115,10 @@ export async function generateTrustReport({ flowId, flowData, pdfBytes, pool }) 
         `, [
           certId, flowId, c.subject?.CN, c.subject?.CN, c.issuer?.O, c.issuer?.CN,
           c.serialNumber, c.notBefore, c.notAfter,
-          c.validAtSigning ?? false,
+          // #150 (D) — validAtSigning e null când signingTime nu e declarat în
+          // semnătură ("nedeterminat"), NU false ("NU era valabil"). Coloana e
+          // BOOLEAN nullable — păstrăm null-ul, nu-l coalescem la o afirmație falsă.
+          c.validAtSigning,
           c.revocationStatus || 'unknown',
           sig.levels?.L4?.ok ? 'valid' : 'unknown',
           c.hasQcStatements ?? false,
@@ -560,7 +570,7 @@ async function _generateReportPdf(report) {
     { key: 'L2', label: 'Semnatura CMS/PKCS#7 valida criptografic' },
     { key: 'L3', label: 'Certificat semnatar prezent si parsabil' },
     { key: 'L4', label: 'Lant de certificare complet (cert → CA → Root)' },
-    { key: 'L5', label: 'Certificatul era valabil la momentul semnarii (OCSP/CRL)' },
+    { key: 'L5', label: 'Certificatul nu a fost revocat (verificare OCSP/CRL)' },
     { key: 'L6', label: 'Conformitate QES/eIDAS (QTSP acreditat + QcStatements)' },
   ];
 

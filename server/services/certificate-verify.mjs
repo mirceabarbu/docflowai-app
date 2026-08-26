@@ -332,10 +332,14 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
       if (stAttr) {
         result.signingTime = stAttr.values?.[0]?.toDate?.() || null;
       }
-      // validAtSigning: folosim signingTime din CMS dacă există, altfel verificăm că cert e valid acum
-      const checkTime = result.signingTime || new Date();
-      result.certificate.validAtSigning =
-        (new Date(certInfo.notBefore) <= checkTime && checkTime <= new Date(certInfo.notAfter));
+      // #150 (D) — validAtSigning cere un MOMENT DE REFERINȚĂ real. `signingTime`
+      // lipsește la fiecare document real (STS nu pune atributul CMS — vezi #147),
+      // iar fallback-ul la `new Date()` evalua de fapt „valabil ACUM", nu „la
+      // semnare" — un certificat expirat între timp ar fi apărut fals „valabil
+      // la semnare". Fără moment declarat, răspunsul corect e null (nedeterminat).
+      result.certificate.validAtSigning = result.signingTime
+        ? (new Date(certInfo.notBefore) <= new Date(result.signingTime) && new Date(result.signingTime) <= new Date(certInfo.notAfter))
+        : null;
 
       // ── L4: Lanț certificare ────────────────────────────────────────
       result.levels.L4 = { name: 'Lanț de certificare', ok: false };
@@ -416,11 +420,18 @@ async function _verifySingleSignature({ cmsHex, hashData, index }, pkijs, asn1js
       }
 
       result.chain = chain;
-      result.levels.L4.ok   = chain.length >= 2;
-      result.levels.L4.note = `${chain.length} certificate în lanț${chain.some(c => c.isInferred) ? ' (CA inferred din certificat)' : ''}`;
+      // #150 (C) — oglindește regula #149 din verify.mjs: un lanț a cărui
+      // rădăcină e DEDUSĂ (nu vine din CMS/bundle) nu e verificat criptografic.
+      // Dacă TOATE certificatele vin din CMS/bundle (niciun isInferred), lanțul
+      // e verificat și L4.ok=true rămâne corect — nu se degradează la null.
+      const _chainInferred = chain.some(c => c.isInferred === true);
+      result.levels.L4.ok   = chain.length >= 2 ? (_chainInferred ? null : true) : false;
+      result.levels.L4.note = _chainInferred
+        ? 'Neconcludent — rădăcina lanțului e dedusă, nu verificată criptografic'
+        : `${chain.length} certificate în lanț`;
 
       // ── L5: OCSP ────────────────────────────────────────────────────
-      result.levels.L5 = { name: 'Validitate la semnare (OCSP/CRL)', ok: null };
+      result.levels.L5 = { name: 'Stare de revocare (OCSP/CRL)', ok: null };
       if (certInfo.ocspUrl) {
         try {
           // Găsim CA-ul direct al signerCert (issuer match)
