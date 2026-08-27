@@ -688,7 +688,10 @@ function renderAlopDetail(a,container){
     {label:'Ordonanțare',icon:'💰',color:'#8b5cf6',
      done:!!a.ord_completed_at||isCompleted,
      active:a.status==='ordonantare',
-     sub:a.ord_id?'ORD aprobat':'Fără ORD'},
+     // #157 — a.ord_id doar confirmă că EXISTĂ un rând ORD (poate fi draft, netrimis
+     // pe flux). a.ord_aprobat e derivat server-side din fluxul autoritar (alop.mjs)
+     // și e deja folosit real pentru tranziții — aici doar îl CONSUMĂM pentru afișare.
+     sub:!a.ord_id?'Fără ORD':a.ord_aprobat?'ORD aprobat':'ORD în lucru'},
     {label:'Plată',      icon:'🏦',color:'#10b981',
      done:isCompleted,
      active:a.status==='plata',
@@ -1033,15 +1036,23 @@ async function alopDeschideORD(alopId,btn){
       await new Promise(res=>setTimeout(res,100));
       try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
       newDocFromList();
-      if(alop.df_id)setTimeout(()=>{
+      if(alop.df_id){
+        // #157 — era un setTimeout(400) orb, pariind că #o-df-sel are deja opțiunile
+        // încărcate din pasul inițial de pagină (loadDfAprobate, o singură dată la load).
+        // Dacă acel fetch nu apucase să termine (sau DF-ul era prea nou în sesiune),
+        // .value nu prindea nicio opțiune și legătura DF↔ORD se pierdea la salvare —
+        // nu doar vizual, #o-df-id (câmpul care chiar se salvează) rămânea gol. Reîncarcă
+        // explicit lista (idempotent, garantează și prospețime) și abia apoi setează.
+        await loadDfAprobate();
         const s=document.getElementById('o-df-sel');
-        if(!s)return;
-        s.value=alop.df_id;
-        // dispatch 'change' ca să trigger-uim onchange="selectDfAprobat()" — set
-        // programatic .value NU declanșează handler-ul, ceea ce împiedica
-        // auto-popularea rândurilor din DF la prima deschidere.
-        s.dispatchEvent(new Event('change'));
-      },400);
+        if(s){
+          s.value=alop.df_id;
+          // dispatch 'change' ca să trigger-uim onchange="selectDfAprobat()" — set
+          // programatic .value NU declanșează handler-ul, ceea ce împiedica
+          // auto-popularea rândurilor din DF la prima deschidere.
+          s.dispatchEvent(new Event('change'));
+        }
+      }
     }
   }catch(e){console.error('alopDeschideORD',e);}
   finally{_dfOpenInFlight=null;if(btn)btn.disabled=false;}
@@ -1054,20 +1065,23 @@ function alopGoToDF(alopId){
   try{history.replaceState({},'',`${location.pathname}?tip=df&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
   setTimeout(()=>newDocFromList(),100);
 }
-function alopGoToORD(alopId,dfId){
+async function alopGoToORD(alopId,dfId){
   document.getElementById('section-list').style.display='';
   document.getElementById('section-form').style.display='none';
   document.getElementById('ltab-ord').click();
   try{history.replaceState({},'',`${location.pathname}?tip=ord&alop_id=${encodeURIComponent(alopId)}`);}catch(_){}
-  setTimeout(()=>{
-    newDocFromList();
-    if(dfId)setTimeout(()=>{
-      const s=document.getElementById('o-df-sel');
-      if(!s)return;
+  await new Promise(res=>setTimeout(res,100));
+  newDocFromList();
+  // #157 — aceeași reparație ca în alopDeschideORD: elimină setTimeout(400) orb,
+  // reîncarcă explicit lista înainte de a seta valoarea.
+  if(dfId){
+    await loadDfAprobate();
+    const s=document.getElementById('o-df-sel');
+    if(s){
       s.value=dfId;
       s.dispatchEvent(new Event('change'));
-    },400);
-  },100);
+    }
+  }
 }
 
 // ── Acțiuni ALOP ──────────────────────────────────────────────────────────────
