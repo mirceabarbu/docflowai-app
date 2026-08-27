@@ -934,7 +934,12 @@ async function openDoc(ft,id){
       setS('Document aprobat','ok');
       return;
     }else if(status==='pending_p2'&&role==='p2'){
-      if(ft==='ordnt')setModeP2Ord();else setModeP2Df();
+      if(ft==='ordnt'){
+        setModeP2Ord();
+        // #154 — non-blocant: bannerele de trezorerie apar progresiv (ca și spinnerul
+        // existent la verificarea IBAN), nu se așteaptă înainte de a continua randarea.
+        if(typeof _recheckAllOrdIbanuri==='function')_recheckAllOrdIbanuri();
+      }else setModeP2Df();
       setLockedBar(ft,'Completați câmpurile dvs. (marcate) și apăsați Finalizez.','info');
     }else if(status==='pending_p2'&&role==='p1'){
       lockAll(ft,true);

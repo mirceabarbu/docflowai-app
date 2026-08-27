@@ -400,18 +400,23 @@ async function _lookupByIban(target){
     const bankaEl=_bFld(bloc,'banca_beneficiar');
     const bankName=d.bankName||'';
     const declared=(bankaEl&&bankaEl.value||'').trim();
+    let mainHtml;
     if(!declared){
       if(bankaEl&&bankName)bankaEl.value=bankName;
       let extra='';
       if(d.isTreasury&&(d.treasuryCity||d.treasuryCounty)){
         extra=' · '+[d.treasuryCity,d.treasuryCounty].filter(Boolean).map(esc).join(', ');
       }
-      _renderIbanStatusBadge(`<span style="${green}">✓ IBAN valid · ${esc(bankName)}${extra}</span>`,bloc);
+      mainHtml=`<span style="${green}">✓ IBAN valid · ${esc(bankName)}${extra}</span>`;
     } else if(_normBankName(declared)===_normBankName(bankName)){
-      _renderIbanStatusBadge(`<span style="${green}">✓ IBAN valid · ${esc(bankName)}</span>`,bloc);
+      mainHtml=`<span style="${green}">✓ IBAN valid · ${esc(bankName)}</span>`;
     } else {
-      _renderIbanStatusBadge(`<span style="${amber}">⚠ IBAN valid · derivat din IBAN: ${esc(bankName)} — banca declarată diferă</span>`,bloc);
+      mainHtml=`<span style="${amber}">⚠ IBAN valid · derivat din IBAN: ${esc(bankName)} — banca declarată diferă</span>`;
     }
+    // #154 — avertizare INDEPENDENTĂ de potrivirea numelui băncii de mai sus: se poate
+    // afișa ȘI alături de un status verde (bancă declarată corect, dar cont NU e trezorerie).
+    const treasuryHtml=d.isTreasury?'':`<div style="${amber}margin-top:4px;">⚠ Cont NU este de trezorerie — verificați cu Serviciul Buget înainte de a continua.</div>`;
+    _renderIbanStatusBadge(mainHtml+treasuryHtml,bloc);
   }catch(_){
     const cur=_bFld(bloc,'iban_beneficiar');
     if(!cur || (cur.value||'').toUpperCase().replace(/\s+/g,'')!==iban) return;
@@ -421,6 +426,19 @@ async function _lookupByIban(target){
   }
 }
 window._lookupByIban=_lookupByIban;
+
+// #154 — Responsabil CAB: la deschiderea documentului (doc.js/openDoc), verifică automat
+// TOATE conturile IBAN completate de P1, pe toate blocurile (#128). Nu așteaptă focusout —
+// la P2 câmpurile sunt disabled prin lockAll(true), deci focusout nu se mai produce.
+// Secvențial (nu Promise.all): /api/verify/iban e calcul local sincron server-side, costul
+// e neglijabil chiar și pe multe blocuri, iar secvențial evită orice cursă pe DOM.
+async function _recheckAllOrdIbanuri(){
+  for(const bloc of _blocList()){
+    const ibanEl=_bFld(bloc,'iban_beneficiar');
+    if(ibanEl && (ibanEl.value||'').trim()) await _lookupByIban(ibanEl);
+  }
+}
+window._recheckAllOrdIbanuri=_recheckAllOrdIbanuri;
 
 // ── #128j — DELEGARE: un singur set de handlere pe #ord-blocuri ───────────────
 // Orice bloc — existent, adăugat de utilizator, restaurat din draft sau recreat de
