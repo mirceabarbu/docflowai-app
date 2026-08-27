@@ -13,6 +13,7 @@ import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../../services/authz-scope.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
 import { dfAprobatSql } from '../../services/df-aprobat-sql.mjs';
+import { extractPdfSignatures } from '../../services/certificate-verify.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -403,6 +404,26 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
       }
       if (uploadedHash === uploadPayload.preHash) return res.status(422).json({ error: 'pdf_not_signed', message: 'Documentul uploadat este identic cu cel descărcat — nu conține semnătură.' });
       signers[idx].uploadVerified = true; signers[idx].uploadedHash = uploadedHash; signers[idx].pdfUploaded = true;
+    }
+    // P0-06 — pasul 2 (OBSERVARE, #156): garda pe hash e moartă structural la semnatarul
+    // 2+ (uploadToken vine din /pdf, fișierul din /signed-pdf — hash-urile nu au cum să
+    // corespundă). Invariantul „numărul de semnături CREȘTE" e mai fiabil. Deocamdată DOAR
+    // loghează — nu respinge — cât timp adunăm date reale de producție înainte de flip.
+    try {
+      const prevB64   = data.signedPdfB64 || data.pdfB64 || '';
+      const prevRaw   = prevB64.includes('base64,') ? prevB64.split('base64,')[1] : prevB64;
+      const beforeBuf = Buffer.from(prevRaw, 'base64');
+      const afterBuf  = Buffer.from(rawCheck, 'base64');
+      const sigBefore = extractPdfSignatures(beforeBuf).length;
+      const sigAfter  = extractPdfSignatures(afterBuf).length;
+      if (sigAfter <= sigBefore) {
+        logger.warn({ flowId, signerEmail: signers[idx].email, sigBefore, sigAfter },
+          'P0-06 OBSERVARE: PDF uploadat nu are mai multe semnături decât versiunea anterioară');
+        writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'P0_06_OBSERVED_UNSIGNED',
+          actorEmail: signers[idx].email, actorIp: _getIp(req), payload: { sigBefore, sigAfter } });
+      }
+    } catch(sigErr) {
+      logger.warn({ err: sigErr, flowId }, 'P0-06 OBSERVARE: eroare la verificarea semnăturilor (non-fatal)');
     }
     if (!Array.isArray(data.signedPdfVersions)) data.signedPdfVersions = [];
     data.signedPdfVersions.push({ uploadedAt: new Date().toISOString(), uploadedBy: signers[idx].email || signers[idx].name || 'unknown', signerIndex: idx, signerName: signerName || signers[idx].name || '' });
