@@ -111,17 +111,25 @@ export async function finalizeDfOnFlowCompleted(pool, flowId) {
 
 /**
  * selfHealAlopDfLinkByAlop — varianta LAZY, cheiată pe alopId, apelată din
- * GET /api/alop/:id. Rezolvă cazul „ALOP fără DF" fără a atinge calea de semnare:
- * caută documentul DF care revendică ALOP-ul prin `source_alop_id`, cu flux
- * FINALIZAT, și îl reataşează. Marchează și `status='aprobat'` (calea cloud nu o face).
- * Oglindește self-heal #1 pentru ORD din alop.mjs. Non-fatală și idempotentă.
+ * GET /api/alop/:id. Rezolvă DOUĂ cazuri, fără a atinge calea de semnare:
+ *  (1) „ALOP fără DF" — df_id NULL: caută documentul DF care revendică ALOP-ul
+ *      prin `source_alop_id`, cu flux FINALIZAT, și îl reataşează.
+ *  (2) #158 — „ALOP cu DF pe o revizie VECHE": df_id EXISTĂ dar nu (mai) e revizia
+ *      cu numărul maxim aprobată a dosarului — tipic R0 legacy (fără source_alop_id),
+ *      în timp ce R1 a fost aprobată separat prin calea CLOUD, care nu poate apela
+ *      `selfHealAlopDfLink` din `signing.mjs` (zonă NO-TOUCH). Avansează pointerul.
+ * Marchează și `status='aprobat'` (calea cloud nu o face). Oglindește self-heal #1
+ * pentru ORD din alop.mjs. Non-fatală și idempotentă.
  * Ambiguitatea (mai multe candidate cu revizia MAXIMĂ) se rezolvă prin SKIP + warn.
+ * Siguranță la (2): pointerul VECHI se suprascrie DOAR dacă documentul la care
+ * pointează azi are ACELAȘI nr_unic_inreg ca revizia găsită — protejează o
+ * relegare manuală deliberată către un DF dintr-un dosar complet diferit.
  */
 export async function selfHealAlopDfLinkByAlop(pool, alopId) {
   if (!pool || !alopId) return null;
   try {
     const { rows: cands } = await pool.query(`
-      SELECT fd.id, fd.flow_id, fd.revizie_nr, fd.status,
+      SELECT fd.id, fd.flow_id, fd.revizie_nr, fd.status, fd.nr_unic_inreg,
              (f.data->>'completedAt') AS completed_at
         FROM formulare_df fd
         JOIN flows f ON f.id = fd.flow_id
@@ -139,17 +147,30 @@ export async function selfHealAlopDfLinkByAlop(pool, alopId) {
     }
     const cand = cands[0];
 
+    // #158 — pe lângă df_id NULL, avansăm și un pointer EXISTENT dar pe o revizie
+    // veche (vezi JSDoc de mai sus). Siguranță: doar dacă documentul vechi are
+    // ACELAȘI nr_unic_inreg ca revizia găsită (același dosar fizic) — altfel o
+    // relegare manuală către alt dosar ar fi suprascrisă tăcut.
     const { rows: linked } = await pool.query(`
-      UPDATE alop_instances
+      UPDATE alop_instances a
          SET df_id = $1,
-             df_flow_id = COALESCE(df_flow_id, $2),
-             df_completed_at = COALESCE(df_completed_at, $3::timestamptz, NOW()),
+             df_flow_id = CASE WHEN a.df_id IS NULL THEN COALESCE(a.df_flow_id, $2) ELSE $2 END,
+             df_completed_at = CASE WHEN a.df_id IS NULL
+                                     THEN COALESCE(a.df_completed_at, $3::timestamptz, NOW())
+                                     ELSE COALESCE($3::timestamptz, NOW()) END,
              updated_at = NOW()
-       WHERE id = $4
-         AND df_id IS NULL
-         AND cancelled_at IS NULL
+       WHERE a.id = $4
+         AND a.cancelled_at IS NULL
+         AND a.df_id IS DISTINCT FROM $1
+         AND (
+           a.df_id IS NULL
+           OR EXISTS (
+             SELECT 1 FROM formulare_df fd_old
+              WHERE fd_old.id = a.df_id AND fd_old.nr_unic_inreg = $5
+           )
+         )
       RETURNING id, df_id, df_flow_id, df_completed_at
-    `, [cand.id, cand.flow_id, cand.completed_at || null, alopId]);
+    `, [cand.id, cand.flow_id, cand.completed_at || null, alopId, cand.nr_unic_inreg]);
 
     if (!linked[0]) return null;
 
