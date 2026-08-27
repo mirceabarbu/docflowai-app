@@ -845,7 +845,10 @@ router.get('/api/alop/:id', async (req, res) => {
     // Calea de semnare CLOUD nu poate apela cârligul de finalizare (zona NO-TOUCH),
     // deci reataşarea se face aici, la prima deschidere a ALOP-ului. Oglindește
     // self-heal #1/#2 pentru ORD. Non-fatal: o eroare nu strică afișarea.
-    if (!alop.df_id) {
+    // #158 — pe lângă „fără DF" (df_id NULL), și pointer EXISTENT dar pe o revizie
+    // mai veche decât cea în vigoare (df_revizie_vigoare_nr, derivat pe dosar la
+    // #135) — calea cloud nu poate avansa singură pointerul (vezi alop-link.mjs).
+    if (!alop.df_id || (alop.df_revizie_vigoare_nr != null && alop.df_revizie_nr !== alop.df_revizie_vigoare_nr)) {
       const healed = await selfHealAlopDfLinkByAlop(pool, req.params.id);
       if (healed) {
         alop.df_id           = healed.df_id;
