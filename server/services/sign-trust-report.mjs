@@ -341,6 +341,42 @@ async function _generateReportPdf(report) {
     y -= 6;
   };
 
+  // #152 — rupe `text` în linii care încap în `maxW` la `size`, măsurând cu
+  // fontul REAL (nu estimare pe număr de caractere — fontul e proporțional).
+  // Un cuvânt mai lung decât `maxW` se rupe pe caractere (hash-uri, DN-uri
+  // fără spații) — altfel ar depăși tăcut marginea. `text` trebuie să fie
+  // deja pregătit pentru desenare (ex. trecut prin ro() dacă apelantul o
+  // face) — funcția doar măsoară și rupe, nu transformă conținutul.
+  const wrapLines = (text, font, size, maxW) => {
+    const str = String(text ?? '');
+    if (!str.trim()) return [];
+    const words = str.split(/\s+/).filter(Boolean);
+    const lines = [];
+    let cur = '';
+    for (let word of words) {
+      while (font.widthOfTextAtSize(word, size) > maxW && word.length > 1) {
+        let lo = 1, hi = word.length, fit = 1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          if (font.widthOfTextAtSize(word.slice(0, mid), size) <= maxW) { fit = mid; lo = mid + 1; }
+          else hi = mid - 1;
+        }
+        if (cur) { lines.push(cur); cur = ''; }
+        lines.push(word.slice(0, fit));
+        word = word.slice(fit);
+      }
+      const test = cur ? cur + ' ' + word : word;
+      if (font.widthOfTextAtSize(test, size) > maxW && cur) {
+        lines.push(cur);
+        cur = word;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  };
+
   const drawSection = (title, icon = '') => {
     ensureSpace(28);
     y -= 8;
@@ -350,10 +386,24 @@ async function _generateReportPdf(report) {
   };
 
   const drawKV = (label, value, color = COL.text) => {
-    ensureSpace(16);
-    page.drawText(ro(label) + ':', { x: MARGIN, y, size: 8, font: fontB, color: COL.muted });
-    page.drawText(ro(String(value || '—')), { x: MARGIN + 130, y, size: 8, font: fontR, color, maxWidth: COL_W - 130 });
-    y -= 14;
+    const KV_LINE_H = 11;
+    const labelStr = ro(label) + ':';
+    // #152 — coloana valorii pornea la un x fix (MARGIN+130); o etichetă mai
+    // lată (ex. „Algoritm semnatura certificat (emis de CA):") se scurgea
+    // peste valoare. Poziția valorii se calculează acum din lățimea REALĂ a
+    // etichetei, cu un minim de 130 (comportament identic pentru etichetele
+    // scurte, majoritatea).
+    const valueX = MARGIN + Math.max(130, fontB.widthOfTextAtSize(labelStr, 8) + 10);
+    const lines  = wrapLines(ro(String(value ?? '—')), fontR, 8, COL_W - (valueX - MARGIN));
+    const rowLines = lines.length || 1;
+    ensureSpace(rowLines * KV_LINE_H + 3);
+    page.drawText(labelStr, { x: MARGIN, y, size: 8, font: fontB, color: COL.muted });
+    let ly = y;
+    for (const line of (lines.length ? lines : [''])) {
+      page.drawText(line, { x: valueX, y: ly, size: 8, font: fontR, color });
+      ly -= KV_LINE_H;
+    }
+    y = ly - 3;
   };
 
   const levelColor = (ok, lvl) => {
@@ -544,15 +594,21 @@ async function _generateReportPdf(report) {
             return '';
           })();
           const label = ch.isEndEntity ? '' : qtspMark;
-          page.drawText(`${i+1}. ${cn}${suffix}${label} [${role}]`,
-            { x: MARGIN + 8, y, size: 7.5, font: fontR, color: col, maxWidth: COL_W - 20 });
-          y -= 11;
+          const chainLines = wrapLines(`${i+1}. ${cn}${suffix}${label} [${role}]`, fontR, 7.5, COL_W - 20);
+          ensureSpace(chainLines.length * 11 + 4);
+          for (const ln of chainLines) {
+            page.drawText(ln, { x: MARGIN + 8, y, size: 7.5, font: fontR, color: col });
+            y -= 11;
+          }
         }
         // Notă de subsol dacă sunt certe inferred
         if (cert.chain.some(ch => ch.isInferred)) {
-          page.drawText('¹ Dedus din campul issuer al certificatului (CA nu a fost inclus in CMS de catre provideri)',
-            { x: MARGIN + 8, y, size: 6.5, font: fontR, color: COL.muted, maxWidth: COL_W - 20 });
-          y -= 10;
+          const noteLines = wrapLines('¹ Dedus din campul issuer al certificatului (CA nu a fost inclus in CMS de catre provideri)', fontR, 6.5, COL_W - 20);
+          ensureSpace(noteLines.length * 9 + 4);
+          for (const ln of noteLines) {
+            page.drawText(ln, { x: MARGIN + 8, y, size: 6.5, font: fontR, color: COL.muted });
+            y -= 9;
+          }
         }
       }
       y -= 6; drawLine();
@@ -579,20 +635,32 @@ async function _generateReportPdf(report) {
   ];
 
   for (const item of levelItems) {
-    ensureSpace(20);
     const lvl = levels6[item.key];
     const ok  = lvl?.ok;
     const col = levelColor(ok, lvl);
     const lbl = levelText(ok, lvl);
+
+    const LABEL_LINE_H = 12, NOTE_LINE_H = 10;
+    const labelLines = wrapLines(`${item.key}: ${ro(item.label)}`, fontR, 8, COL_W - 75);
+    const noteLines  = lvl?.note ? wrapLines(ro(`  ${lvl.note}`), fontR, 7, COL_W - 75) : [];
+    const rowH = Math.max(18, labelLines.length * LABEL_LINE_H + noteLines.length * NOTE_LINE_H + 6);
+
+    ensureSpace(rowH);
     page.drawRectangle({ x: MARGIN, y: y - 3, width: 62, height: 14, color: col, borderRadius: 3 });
     { const tw = fontB.widthOfTextAtSize(lbl, 7); const bx = MARGIN + Math.max(0, (62 - tw) / 2);
       page.drawText(lbl, { x: bx, y: y + 1, size: 7, font: fontB, color: COL.white }); }
-    page.drawText(`${item.key}: ${ro(item.label)}`, { x: MARGIN + 70, y: y + 1, size: 8, font: fontR, color: COL.text, maxWidth: COL_W - 75 });
-    if (lvl?.note) {
-      y -= 13;
-      page.drawText(ro(`  ${lvl.note}`), { x: MARGIN + 70, y, size: 7, font: fontR, color: COL.muted, maxWidth: COL_W - 75 });
+
+    let ly = y + 1;
+    for (const line of labelLines) {
+      page.drawText(line, { x: MARGIN + 70, y: ly, size: 8, font: fontR, color: COL.text });
+      ly -= LABEL_LINE_H;
     }
-    y -= 18;
+    for (const line of noteLines) {
+      page.drawText(line, { x: MARGIN + 70, y: ly, size: 7, font: fontR, color: COL.muted });
+      ly -= NOTE_LINE_H;
+    }
+
+    y -= rowH;
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -614,36 +682,33 @@ async function _generateReportPdf(report) {
   page.drawText('Actor', { x: MARGIN + 270, y, size: 7.5, font: fontB, color: COL.muted });
   y -= 18;
 
+  const AUDIT_LINE_H = 10;
   for (const ev of report.auditTrail) {
-    ensureSpace(14);
     const evColor = ev.event === 'REFUSED' || ev.event === 'FLOW_CANCELLED' ? COL.fail
       : ev.event === 'FLOW_COMPLETED' || ev.event === 'SIGNED' ? COL.ok : COL.text;
-    page.drawText(ro(fmtDate(ev.timestamp)), { x: MARGIN, y, size: 7, font: fontR, color: COL.muted, maxWidth: 135 });
-    page.drawText(ro(evLabels[ev.event] || ev.event), { x: MARGIN + 140, y, size: 7, font: fontB, color: evColor, maxWidth: 125 });
-    page.drawText(ro(ev.actor), { x: MARGIN + 270, y, size: 7, font: fontR, color: COL.text, maxWidth: 130 });
-    y -= 13;
+    const dateLines  = wrapLines(ro(fmtDate(ev.timestamp)), fontR, 7, 135);
+    const evLines    = wrapLines(ro(evLabels[ev.event] || ev.event), fontB, 7, 125);
+    const actorLines = wrapLines(ro(ev.actor), fontR, 7, 130);
+    const rowLines   = Math.max(1, dateLines.length, evLines.length, actorLines.length);
+
+    ensureSpace(rowLines * AUDIT_LINE_H + 3);
+    let ly = y;
+    for (const l of dateLines)  { page.drawText(l, { x: MARGIN, y: ly, size: 7, font: fontR, color: COL.muted }); ly -= AUDIT_LINE_H; }
+    ly = y;
+    for (const l of evLines)    { page.drawText(l, { x: MARGIN + 140, y: ly, size: 7, font: fontB, color: evColor }); ly -= AUDIT_LINE_H; }
+    ly = y;
+    for (const l of actorLines) { page.drawText(l, { x: MARGIN + 270, y: ly, size: 7, font: fontR, color: COL.text }); ly -= AUDIT_LINE_H; }
+
+    y -= rowLines * AUDIT_LINE_H + 3;
   }
 
   // ══════════════════════════════════════════════════════════════════════
   // ── §6 CONCLUZIE AUTOMATA + §7 QR CODE ──────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
-  // Estimăm înălțimea textului folosind lățimea reală în pixeli
+  // #152 — folosește helperul de încadrare partajat (măsurare cu fontul real)
   const CONCL_FONT_SIZE = 8.5;
   const CONCL_MAX_W     = COL_W - 16; // 16px padding chenar
-  const conclWordsArr   = report.conclusion.split(' ');
-  const conclLinesArr   = [];
-  let conclCurLine = '';
-  for (const w of conclWordsArr) {
-    const test = conclCurLine ? conclCurLine + ' ' + w : w;
-    // Estimăm: Helvetica ~0.5 * fontSize per char medie
-    if (fontR.widthOfTextAtSize(test, CONCL_FONT_SIZE) > CONCL_MAX_W && conclCurLine) {
-      conclLinesArr.push(conclCurLine);
-      conclCurLine = w;
-    } else {
-      conclCurLine = test;
-    }
-  }
-  if (conclCurLine) conclLinesArr.push(conclCurLine);
+  const conclLinesArr   = wrapLines(ro(report.conclusion), fontR, CONCL_FONT_SIZE, CONCL_MAX_W);
 
   const CONCL_LINE_H  = CONCL_FONT_SIZE + 5;
   const CONCL_PAD     = 12;
