@@ -207,9 +207,10 @@ router.post('/bulk-signing/initiate', _bulkRateLimit, async (req, res) => {
        RETURNING id`,
       [actor.email.toLowerCase(), orgId || null, providerId,
        JSON.stringify(items),
+       // #160 — cheia privată NU se mai scrie în `bulk_signing_sessions.sts_provider_data`.
        JSON.stringify({ codeVerifier, codeChallenge, state, nonce,
          idpUrl, signUrl, clientId, kid: providerConfig.kid,
-         privateKeyPem: providerConfig.privateKeyPem, redirectUri })]
+         redirectUri })]
     )).rows[0].id;
 
     // URL OAuth cu state = BULK_{sessionId}___{randomState}
@@ -265,9 +266,19 @@ export async function processBulkOAuthCallback(sessionId, query, res) {
     // providerului, care are extragere robustă de cert — identic cu
     // cloud-signing.mjs L113-115). Evităm fetch-ul manual care rata
     // signingCertificate ca string PEM direct.
+    // #160 — cheia de semnare vine din configurația organizației sesiunii bulk.
+    const _bulkOrg    = await _getOrg(session.org_id);
+    const _bulkConfig = getOrgProviderConfig(_bulkOrg, session.provider_id || 'sts-cloud');
+    if (!_bulkConfig.privateKeyPem) {
+      logger.error({ sessionId, orgId: session.org_id },
+        '#160: configurația STS a organizației nu conține cheia de semnare (bulk)');
+      return res.redirect(`/bulk-signer.html?session=${sessionId}&sts_error=${encodeURIComponent(
+        'Configurația STS a instituției este incompletă.')}`);
+    }
     const tokenResult = await provider.exchangeCodeForToken(
       code,
-      { providerData: pd, sessionId }
+      { providerData: pd, sessionId },
+      _bulkConfig.privateKeyPem
     );
     if (!tokenResult.ok) {
       logger.error({ sessionId, err: tokenResult }, 'bulk STS: exchangeCodeForToken failed');

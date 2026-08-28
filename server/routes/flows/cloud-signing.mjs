@@ -111,7 +111,19 @@ router.get('/flows/sts-oauth-callback', async (req, res) => {
     const session = { sessionId, flowId, signerToken: signer.token, provider: 'sts-cloud', providerData: pd };
 
     // ── PASUL 1: code → access token + cert din /userinfo ─────────────────────
-    const tokenResult = await provider.exchangeCodeForToken(code, session);
+    // #160 — cheia de semnare se citește AICI, din configurația organizației, și se
+    // transmite explicit. Nu mai vine din `signer.stsProviderData` (starea persistată).
+    const _stsProviderId = signer.signingProvider || 'sts-cloud';
+    const { rows: _orgRows } = await pool.query(
+      'SELECT signing_providers_config FROM organizations WHERE id=$1', [data.orgId]
+    );
+    const _stsConfig = getOrgProviderConfig(_orgRows[0] || null, _stsProviderId);
+    if (!_stsConfig.privateKeyPem) {
+      logger.error({ flowId, orgId: data.orgId, providerId: _stsProviderId },
+        '#160: configurația STS a organizației nu conține cheia de semnare');
+      return errRedirect('Configurația STS a instituției este incompletă. Contactați administratorul.');
+    }
+    const tokenResult = await provider.exchangeCodeForToken(code, session, _stsConfig.privateKeyPem);
     if (!tokenResult.ok) return errRedirect(tokenResult.message || 'Eroare token STS');
     const { accessToken, certPem, certChainPem } = tokenResult;
 

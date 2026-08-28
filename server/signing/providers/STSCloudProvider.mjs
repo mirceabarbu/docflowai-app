@@ -75,7 +75,11 @@ export class STSCloudProvider {
         codeVerifier, codeChallenge, state, nonce,
         hashBase64, docName: flowData.docName || flowId,
         idpUrl, signUrl, clientId,
-        kid: config.kid, privateKeyPem: config.privateKeyPem,
+        // #160 — cheia privată a instituției NU mai intră în starea sesiunii.
+        // `providerData` ajunge persistat în `signers[].stsProviderData`, adică
+        // în JSONB-ul fluxului. Se transmite explicit la apel, din configurația
+        // organizației (vezi `exchangeCodeForToken`).
+        kid: config.kid,
         redirectUri, signerEmail: signer.email,
       },
     };
@@ -84,6 +88,9 @@ export class STSCloudProvider {
   async getSigningUrl(session) { return session.signingUrl || null; }
 
   async processOAuthCallback(query, session, pdfBytes) {
+    // ⚠️ #160 — COD MORT (zero apelanți în repo, verificat). Depinde de cheia din
+    // `providerData`, care nu mai e populată. Dacă e vreodată reînviat, trebuie
+    // adus pe același contract ca `exchangeCodeForToken` (cheia primită la apel).
     const { code, state, error, error_description } = query;
     const pd = session.providerData || {};
 
@@ -299,10 +306,18 @@ export class STSCloudProvider {
   // submitHashToSTS:      pasul 2 din callback — trimitem hash-ul după ce l-am calculat
   //                       (cu signing-certificate-v2 inclus în signedAttrs)
 
-  async exchangeCodeForToken(code, session) {
+  // #160 — al treilea parametru e OBLIGATORIU: cheia privată vine de la apelant,
+  // din `organizations.signing_providers_config`, niciodată din starea sesiunii.
+  async exchangeCodeForToken(code, session, signingKeyPem) {
     const pd = session.providerData || {};
+    if (!signingKeyPem) {
+      logger.error({ sessionId: session?.sessionId },
+        'STS: cheia de semnare nu a fost furnizată de apelant — refuz fail-closed');
+      return { ok: false, error: 'sts_key_missing',
+               message: 'Configurația STS a instituției este incompletă.' };
+    }
     try {
-      const clientAssertion = this._buildClientAssertion(pd.clientId, pd.kid, pd.privateKeyPem, pd.idpUrl);
+      const clientAssertion = this._buildClientAssertion(pd.clientId, pd.kid, signingKeyPem, pd.idpUrl);
       const tokenResp = await _fetchIPv4(`${pd.idpUrl}/oauth2/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
