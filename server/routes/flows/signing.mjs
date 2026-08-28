@@ -80,7 +80,10 @@ const signFlow = async (req, res) => {
     await saveFlow(flowId, data);
     // R-02: audit_log
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'SIGNED', actorIp: _getIp(req), actorEmail: signers[idx].email, payload: { signerName: signers[idx].name, order: signers[idx].order } });
-    return res.json({ ok: true, flowId, completed: data.signers.every(s => s.status === 'signed'), nextSigner: null, nextLink: null, awaitingUpload: true, flow: _stripPdfB64(data) });
+    // #159: răspunsul mergea prin `_stripPdfB64`, deci ducea cu el sesiunea cloud
+    // (`stsProviderData`/`stsToken`) și tokenurile TUTUROR celorlalți semnatari.
+    // Frontendul (`semdoc-signer/main.js:788`) nu citește câmpul `flow`.
+    return res.json({ ok: true, flowId, completed: data.signers.every(s => s.status === 'signed'), nextSigner: null, nextLink: null, awaitingUpload: true, flow: _stripSensitive(data, token) });
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 };
 router.post('/flows/:flowId/sign', _signRateLimit, signFlow);

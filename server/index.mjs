@@ -526,6 +526,7 @@ import { getAllModulesForUser as _getAllModulesForUser } from './services/entitl
 import { transmitFlowTo, resolveRecipientEmails, alreadyHasAccessEmails } from './services/flow-transmit.mjs';
 import { insertNotificationOnce } from './services/notify-dedup.mjs';
 import { needsLargeBody } from './services/body-limit.mjs';
+import { stripSensitive, stripPdfB64 } from './services/flow-dto.mjs';
 import templatesRouter from './routes/templates.mjs';
 import totpRouter from './routes/totp.mjs';     // 2FA TOTP // Q-06: extras din index.mjs
 
@@ -929,23 +930,9 @@ function newFlowId(institutie) { return makeFlowId(institutie); }
 function buildSignerLink(req, flowId, token) {
   return `${publicBaseUrl(req)}/semdoc-signer.html?flow=${encodeURIComponent(flowId)}&token=${encodeURIComponent(token)}`;
 }
-function stripPdfB64(data) {
-  if (!data || typeof data !== 'object') return data;
-  const { pdfB64, signedPdfB64, ...rest } = data;
-  return { ...rest, hasPdf: !!pdfB64, hasSignedPdf: !!signedPdfB64 };
-}
-function stripSensitive(data, callerSignerToken = null) {
-  if (!data || typeof data !== 'object') return data;
-  const { pdfB64, signedPdfB64, ...rest } = data;
-  return {
-    ...rest, hasPdf: !!pdfB64,
-    hasSignedPdf: !!(signedPdfB64 || (data.storage === 'drive' && (data.driveFileLinkFinal || data.driveFileIdFinal))),
-    signers: (data.signers || []).map(s => {
-      const { token, ...signerRest } = s;
-      return callerSignerToken && s.token === callerSignerToken ? { ...signerRest, token } : signerRest;
-    }),
-  };
-}
+// #159 — `stripPdfB64` / `stripSensitive` au fost mutate în
+// `server/services/flow-dto.mjs` (modul pur, testabil fără să pornească serverul).
+// Importate mai sus. `injectFlowDeps` le pasează mai departe, neschimbat.
 
 const SIGNER_TOKEN_EXPIRY_DAYS = parseInt(process.env.SIGNER_TOKEN_EXPIRY_DAYS || '90');
 function isSignerTokenExpired(signer) {
