@@ -59,10 +59,16 @@
       function renderProviderRadios(providers, preferred) {
         const container = document.getElementById('providerRadios');
         if (!container) return;
-        // Pre-select: preferred user — NU auto-selectăm dacă nu e preferință salvată
-        const preselectId = (preferred && providers.some(p => p.id === preferred))
-          ? preferred
-          : null;
+        // Pre-select, în ordinea de precădere (#161):
+        //   1. preferința salvată a utilizatorului, dacă providerul e activ în org;
+        //   2. STS Cloud QES ca implicit, dacă e activ în org — oglindește „Cu tabel
+        //      generat", pre-bifat în grupul „Tip document";
+        //   3. nimic bifat (org fără STS) — utilizatorul alege explicit, ca înainte.
+        const DEFAULT_PROVIDER_ID = 'sts-cloud';
+        const preselectId =
+          (preferred && providers.some(p => p.id === preferred))
+            ? preferred
+            : (providers.some(p => p.id === DEFAULT_PROVIDER_ID) ? DEFAULT_PROVIDER_ID : null);
         container.innerHTML = '';
         // Polish Etapa B: ordonăm providerii — cloud primii, local-upload ultimul
         const sortedProviders = [...providers].sort((a, b) => {
