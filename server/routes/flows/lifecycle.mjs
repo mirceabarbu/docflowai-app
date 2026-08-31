@@ -574,10 +574,12 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
       if (dfRows.length) {
         const cancelledDf = dfRows[0];
         await pool.query(
+          // #164 — scoped pe fluxul ANULAT. Cheiat doar pe `df_id`, un al doilea flux al
+          // aceluiași document ștergea pointerul către primul (incidentul ORD 46055).
           `UPDATE alop_instances
            SET df_flow_id=NULL, df_completed_at=NULL, updated_at=NOW()
-           WHERE df_id=$1 AND cancelled_at IS NULL`,
-          [cancelledDf.id]
+           WHERE df_id=$1 AND cancelled_at IS NULL AND df_flow_id=$2`,
+          [cancelledDf.id, flowId]
         );
         logger.info({ dfId: cancelledDf.id, revizieNr: cancelledDf.revizie_nr, flowId },
           `[ALOP] flow cancelled → DF R${cancelledDf.revizie_nr || 0} revenit la completed, ALOP df_flow_id=NULL`);
@@ -599,10 +601,11 @@ router.post('/flows/:flowId/cancel', async (req, res) => {
       if (ordRows.length) {
         const ordId = ordRows[0].id;
         await pool.query(
+          // #164 — scoped pe fluxul ANULAT (vezi B1).
           `UPDATE alop_instances
              SET ord_flow_id=NULL, ord_completed_at=NULL, updated_at=NOW()
-           WHERE ord_id=$1 AND cancelled_at IS NULL`,
-          [ordId]
+           WHERE ord_id=$1 AND cancelled_at IS NULL AND ord_flow_id=$2`,
+          [ordId, flowId]
         );
         logger.info({ ordId, flowId }, '[ALOP] flow cancelled → ord_flow_id=NULL (simetric DF)');
       }
