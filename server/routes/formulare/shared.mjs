@@ -22,6 +22,7 @@ import { isPlatformAdmin } from '../../services/authz-scope.mjs';
 import { loadActorCompAndCab, isCabDept, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
 import { requireDb } from './_helpers.mjs';
 import { dosarKeyExpr } from '../../services/df-dosar-key.mjs';
+import { dfAprobatSql } from '../../services/df-aprobat-sql.mjs';
 import { narrowCanDeleteRows } from '../../services/formular-capabilities.mjs';
 
 let PDFLibFormular = null;
@@ -535,7 +536,12 @@ router.get('/api/formulare/list', async (req, res) => {
       // badge = 'transmis_flux' dacă _dfTransmis; altfel 'aprobat' dacă (_dfAprobat OR status='aprobat');
       // altfel status brut. Filtrele de mai jos sunt inversa algebrică a acestei derivări (filtru ⟺ badge).
       const _dfTransmis = `fd.status='completed' AND fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled' AND (f.data->>'status') IS DISTINCT FROM 'refused'`;
-      const _dfAprobat  = `fd.flow_id IS NOT NULL AND ((f.data->>'status')='completed' OR (f.data->>'completed')::boolean=true)`;
+      // #165 — forma laxă de aici nu verifica `f.deleted_at` și nici `status='cancelled'`,
+      // deci un flux anulat administrativ (care păstrează `completed:true` ca istoric)
+      // continua să producă badge-ul „Aprobat" și bloca relansarea prin `return` timpuriu
+      // din `computeDocCapabilities`. Incidentul DF 46149, 31.08.2026. Sursă unică:
+      // `services/df-aprobat-sql.mjs`, aceeași folosită de pagina de detaliu a documentului.
+      const _dfAprobat  = dfAprobatSql('fd', 'f');
       // #132a — refuzul se DERIVĂ din flux, nu se citește din coloană. Motiv: garda
       // `WHERE status IN ('transmis_flux','completed')` din signing.mjs:153 nu prinde un DF
       // aflat în `de_revizuit` când fluxul e refuzat ⇒ badge-ul rămânea „De revizuit".
@@ -621,8 +627,14 @@ router.get('/api/formulare/list', async (req, res) => {
               AND TRIM(fdx.nr_unic_inreg) = TRIM(fd.nr_unic_inreg)
               AND ${dosarKeyExpr('fdx')} IS DISTINCT FROM ${dosarKeyExpr('fd')}
           ) AS nr_partajat,
-          CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-               THEN true ELSE false END AS aprobat,
+          -- #165 — aprobat alimenteaza computeDocCapabilities (doc.aprobat), care are
+          -- return timpuriu pe ramura aprobata. Aceeasi sursa unica ca fragmentul de
+          -- filtru _dfAprobat si ca badge_status de mai jos.
+          -- COALESCE: predicatul poate da NULL (flux fara cheia 'completed' in JSONB);
+          -- coloana ramane boolean strict, ca la rutele de detaliu (CASE ... ELSE false).
+          -- Valoarea de adevar e IDENTICA cu fragmentul de filtru, care trateaza NULL
+          -- explicit prin IS NOT TRUE.
+          COALESCE((${_dfAprobat}), false) AS aprobat,
           COALESCE(
             CASE WHEN fd.status = 'completed'
                       AND fd.flow_id IS NOT NULL
@@ -639,9 +651,9 @@ router.get('/api/formulare/list', async (req, res) => {
                       AND f.deleted_at IS NULL
                       AND (f.data->>'status') IN ('refused','rejected')
                  THEN 'neaprobat' END,
-            CASE WHEN fd.flow_id IS NOT NULL
-                      AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-                 THEN 'aprobat' ELSE fd.status END
+            -- #165 — identic cu fragmentul de filtru _dfAprobat de mai sus (paritate
+            -- filtru<=>badge, vezi comentariul de la definirea fragmentelor).
+            CASE WHEN ${_dfAprobat} THEN 'aprobat' ELSE fd.status END
           ) AS badge_status,
           COALESCE(u1.nume, u1.email) AS initiator,
           u1.compartiment AS initiator_comp,
