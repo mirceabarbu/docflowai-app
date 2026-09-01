@@ -190,8 +190,12 @@ async function populateOrd(doc){
   sv('o-iban',doc.iban_beneficiar);sv('o-cifb',doc.cif_beneficiar);sv('o-banca',doc.banca_beneficiar);
   sv('o-inf1',doc.inf_pv_plata);sv('o-inf2',doc.inf_pv_plata1);
   // Restabilește selecția DF legat
-  const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value=doc.df_id||'';
+  // #167 — ORDINEA CONTEAZĂ: hidden-ul se scrie PRIMUL, fiindcă _renderDfSelect citește din el
+  // ca să decidă dacă are nevoie de opțiunea „lipicioasă". Eticheta vine din nr_unic_inreg-ul
+  // ORD-ului (copia numărului de DF), ca opțiunea să fie recognoscibilă chiar dacă DF-ul nu mai
+  // e în lista de aprobate.
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
+  _renderDfSelect(doc.nr_unic_inreg?('DF '+doc.nr_unic_inreg):'DF legat');
   lockDfSelectIfLinked(); // ORD legat de DF → referința DF needitabilă (ciclu ALOP)
   // Context buget an exercițiu pentru atenționarea inline — REZOLVAT de backend pe GET detaliu
   // (paritate cu garda hard). Setat ÎNAINTE de upTot() ca verificarea live să-l vadă.
@@ -1096,8 +1100,10 @@ function newDoc(ft){
     if(typeof resetOrdBlocuri==='function')resetOrdBlocuri();
     document.getElementById('o-tbody').innerHTML='';addOR();clrImg('o-cimg','o-cph');clrImg('o-cimg2','o-cph2');
     document.getElementById('o-alist').innerHTML='';document.getElementById('o-adata').value='[]';
-    const dfSel=document.getElementById('o-df-sel');if(dfSel)dfSel.value='';
+    // #167 — hidden gol ⇒ _renderDfSelect nu adaugă nicio opțiune lipicioasă și resetează și
+    // eticheta reținută de la documentul precedent (SPA — nu se reîncarcă pagina).
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
+    _renderDfSelect('');
     lockDfSelectIfLinked(); // ORD nou fără DF → select-ul rămâne selectabil (enabled)
     lockOrdIdentityCols(); // ORD nou fără DF → coloanele de identitate editabile
     _resetOrdBuget(); // fără DF selectat → fără context de plafon (se încarcă la DF-select)

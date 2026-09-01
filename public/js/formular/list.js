@@ -140,16 +140,46 @@ async function loadDfAprobate(){
     const j=await r.json();
     if(!r.ok||!j.ok)return;
     _dfAprobate=j.documents||[];
-    const sel=document.getElementById('o-df-sel');
-    if(!sel)return;
-    sel.innerHTML='<option value="" style="background:#0d1630;color:#e8eeff">— selectare DF aprobat —</option>'
-      +_dfAprobate.map(d=>{
-        const nr=d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr';
-        const sub=d.subtitlu_df?` — ${esc(d.subtitlu_df.slice(0,50))}`:'';
-        const rev=(d.revizie_nr>0)?` (R${d.revizie_nr})`:'';
-        return`<option value="${esc(d.id)}" style="background:#0d1630;color:#e8eeff">${nr}${sub}${rev}</option>`;
-      }).join('');
+    _renderDfSelect();
   }catch(_){}
+}
+
+// #167 — INVARIANT: după orice randare a lui #o-df-sel, dacă #o-df-id are valoare, selectul
+// conține o opțiune cu acea valoare ȘI acea opțiune e selectată.
+//
+// De ce e nevoie: din #167 ruta /api/formulare-df/aprobate întoarce DOAR DF-uri cu aprobarea
+// VIE. Un ORD deja salvat poate purta un df_id a cărui aprobare s-a desfăcut ulterior (flux
+// anulat, refuzat sau șters) — legătura aia e un FAPT ISTORIC și nu se pierde. Fără opțiunea
+// „lipicioasă", selectul ar rămâne gol, iar validarea de la completare (care citește SELECTUL,
+// nu hidden-ul) ar bloca fals documentul.
+//
+// Închide și cursa preexistentă: init-ul apelează loadDfAprobate() FĂRĂ await, deci randarea
+// poate sosi DUPĂ populateOrd și îi rescria selecția. Acum orice randare o restaurează.
+//
+// ⛔ #o-df-id rămâne SINGURA sursă de adevăr pentru ce se salvează. Funcția asta NU scrie
+//    niciodată în hidden — doar citește din el.
+let _dfStickyLabel='';
+function _renderDfSelect(stickyLabel){
+  if(typeof stickyLabel==='string')_dfStickyLabel=stickyLabel;
+  const sel=document.getElementById('o-df-sel');
+  if(!sel)return;
+  const linkedId=(document.getElementById('o-df-id')?.value||'').trim();
+  sel.innerHTML='<option value="" style="background:#0d1630;color:#e8eeff">— selectare DF aprobat —</option>'
+    +_dfAprobate.map(d=>{
+      const nr=d.nr_unic_inreg?`DF ${esc(d.nr_unic_inreg)}`:'DF fără număr';
+      const sub=d.subtitlu_df?` — ${esc(d.subtitlu_df.slice(0,50))}`:'';
+      const rev=(d.revizie_nr>0)?` (R${d.revizie_nr})`:'';
+      return`<option value="${esc(d.id)}" style="background:#0d1630;color:#e8eeff">${nr}${sub}${rev}</option>`;
+    }).join('');
+  if(linkedId&&![...sel.options].some(o=>o.value===linkedId)){
+    const o=document.createElement('option');
+    o.value=linkedId;
+    o.textContent=(_dfStickyLabel||'DF legat')+' — aprobare desfăcută';
+    o.dataset.aprobat='0';
+    o.style.background='#0d1630';o.style.color='#ffb37a';
+    sel.appendChild(o);
+  }
+  if(linkedId)sel.value=linkedId;
 }
 async function selectDfAprobat(){
   const sel=document.getElementById('o-df-sel');
@@ -1087,6 +1117,7 @@ function _populateCompartimente(){
   window.resetFilters           = resetFilters;
 
   window.loadDfAprobate         = loadDfAprobate;
+  window._renderDfSelect        = _renderDfSelect;   // #167 — invariant select⟷hidden
   window.selectDfAprobat        = selectDfAprobat;
   window.onDfSelect             = onDfSelect;
   window.debouncedBenefSearch   = debouncedBenefSearch;

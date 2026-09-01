@@ -88,8 +88,10 @@ router.get('/api/formulare-df', async (req, res) => {
         fd.flow_id, fd.revizie_nr, fd.este_revizie,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
-        CASE WHEN fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-             THEN true ELSE false END AS aprobat,
+        -- #166 — sursa unica. Aici lipsea inclusiv garda f.deleted_at IS NULL (am afirmat
+        -- gresit contrariul in promptul #165). COALESCE pastreaza coloana
+        -- boolean strict cand predicatul da NULL.
+        COALESCE(${dfAprobatSql('fd', 'f')}, false) AS aprobat,
         -- #126 A6: semnal (NU blocaj) — alt DOSAR folosește același număr unic.
         -- Calculat server-side ca să nu existe divergență cu regula de cheie.
         EXISTS(
@@ -128,8 +130,12 @@ router.get('/api/formulare-df/aprobate', async (req, res) => {
       JOIN flows f ON f.id = fd.flow_id
       WHERE fd.org_id = $1
         AND fd.deleted_at IS NULL
-        AND fd.flow_id IS NOT NULL
-        AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+        -- #167 — sursa unica. Forma veche nu verifica nici fluxul soft-sters, nici anulat,
+        -- nici refuzat, iar un flux anulat pastreaza cheia de finalizare in JSONB: un DF cu
+        -- aprobarea DESFACUTA ramanea in lista din care se alege DF-ul unei ordonantari noi.
+        -- Garda de pointer non-NULL e inclusa in helper, de aceea a disparut de aici.
+        -- ⛔ helper de DOCUMENT (cere pointerul), NU predicatul de FLUX din flow-provenance.
+        AND ${dfAprobatSql('fd', 'f')}
       ORDER BY ${dosarKeyExpr('fd')}, fd.revizie_nr DESC
     `, [actor.orgId]);
     res.json({ ok: true, documents: rows });
@@ -152,8 +158,9 @@ router.get('/api/formulare-df/:id', async (req, res) => {
       SELECT fd.*,
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
-        CASE WHEN fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-             THEN true ELSE false END AS aprobat,
+        -- #166 — sursa unica; forma veche rata anularea OBISNUITA (status cancelled
+        -- fara soft-delete), fiindca verifica doar deleted_at.
+        COALESCE(${dfAprobatSql('fd', 'f')}, false) AS aprobat,
         CASE WHEN fd.flow_id IS NOT NULL
               AND f.deleted_at IS NULL              -- fluxul șters (soft-delete) nu mai e activ (fix D)
               AND (f.data->>'completed') IS DISTINCT FROM 'true'
@@ -221,8 +228,8 @@ router.get('/api/formulare-df/:id/xml', async (req, res) => {
     const params  = isGlobalAdmin ? [req.params.id] : [req.params.id, actor.orgId];
     const { rows } = await pool.query(`
       SELECT fd.*,
-        CASE WHEN fd.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-             THEN true ELSE false END AS aprobat
+        -- #166 — sursa unica (vezi detaliul de mai sus).
+        COALESCE(${dfAprobatSql('fd', 'f')}, false) AS aprobat
       FROM formulare_df fd
       LEFT JOIN flows f ON f.id = fd.flow_id
       WHERE fd.id = $1 ${orgCond} AND fd.deleted_at IS NULL
