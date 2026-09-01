@@ -1,5 +1,5 @@
 /**
- * server/services/df-aprobat-sql.mjs — CE INSEAMNA "DF APROBAT" (#134d)
+ * server/services/df-aprobat-sql.mjs — CE INSEAMNA "DOCUMENT APROBAT" (#134d, extins #166)
  *
  * Reconul #134a a gasit CINCI forme distincte, neechivalente, in arbore. Aceasta
  * e forma STRICTA (4), cea deja folosita pe caile care iau DECIZII DE RELEGARE.
@@ -16,13 +16,22 @@
  * ⛔ Nu adauga backtick-uri in acest fisier in interiorul sirurilor returnate:
  *    rezultatul se interpoleaza in template literal-e SQL.
  */
-export const dfAprobatSql = (fd = 'fd', f = 'f') => `(
+export const docAprobatSql = (fd = 'fd', f = 'f') => `(
   ${fd}.flow_id IS NOT NULL
   AND ${f}.deleted_at IS NULL
   AND (${f}.data->>'status') IS DISTINCT FROM 'cancelled'
   AND (${f}.data->>'status') IS DISTINCT FROM 'refused'
   AND ((${f}.data->>'status') = 'completed' OR (${f}.data->>'completed')::boolean = true)
 )`;
+
+/**
+ * #166 — ALIAS ISTORIC. Predicatul e identic pentru DF si ORD (aliasurile sunt parametri),
+ * dar numele `dfAprobatSql` a facut sa para specific DF-ului, iar ramura ORD si-a scris
+ * propria copie laxa. Numele canonic e `docAprobatSql`. Aliasul ramane exportat ca cele 8
+ * apeluri existente sa nu se atinga in acest lot; se retrage cand nu-l mai foloseste nimeni.
+ * ⛔ NU sunt doua implementari — e aceeasi referinta de functie.
+ */
+export const dfAprobatSql = docAprobatSql;
 
 /**
  * Varianta CORELATA, pentru interogari care NU au flows in FROM (ex. WHERE-ul de

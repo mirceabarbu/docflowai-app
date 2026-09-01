@@ -24,6 +24,7 @@ import {
 import { requireDb } from './_helpers.mjs';
 import { normalizeAngajamentRows } from '../../services/angajament-normalize.mjs';
 import { liveFlowSql } from '../../services/flow-provenance.mjs';
+import { docAprobatSql } from '../../services/df-aprobat-sql.mjs';
 import { blocuriDinOrd, pregatesteScriereBlocuri } from '../../services/ord-blocuri.mjs';
 import { serializeOrdnt } from '../../services/alop-xml/ordnt-serializer.mjs';
 import { ordRowToXsd } from '../../services/alop-xml/ord-to-xsd.mjs';
@@ -138,8 +139,9 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl,
-        CASE WHEN fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-             THEN true ELSE false END AS aprobat,
+        -- #166 — sursa unica; forma veche rata anularea OBISNUITA (status cancelled
+        -- fara soft-delete), fiindca verifica doar deleted_at.
+        COALESCE(${docAprobatSql('fo', 'f')}, false) AS aprobat,
         CASE WHEN fo.flow_id IS NOT NULL
               AND f.deleted_at IS NULL              -- fluxul șters (soft-delete) nu mai e activ (fix D)
               AND (f.data->>'completed') IS DISTINCT FROM 'true'
@@ -211,8 +213,8 @@ router.get('/api/formulare-ord/:id/xml', async (req, res) => {
     const params  = isGlobalAdmin ? [req.params.id] : [req.params.id, actor.orgId];
     const { rows } = await pool.query(`
       SELECT fo.*,
-        CASE WHEN fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-             THEN true ELSE false END AS aprobat
+        -- #166 — sursa unica (vezi detaliul de mai sus).
+        COALESCE(${docAprobatSql('fo', 'f')}, false) AS aprobat
       FROM formulare_ord fo
       LEFT JOIN flows f ON f.id = fo.flow_id
       WHERE fo.id = $1 ${orgCond} AND fo.deleted_at IS NULL

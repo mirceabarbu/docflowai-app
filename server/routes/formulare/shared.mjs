@@ -22,7 +22,7 @@ import { isPlatformAdmin } from '../../services/authz-scope.mjs';
 import { loadActorCompAndCab, isCabDept, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
 import { requireDb } from './_helpers.mjs';
 import { dosarKeyExpr } from '../../services/df-dosar-key.mjs';
-import { dfAprobatSql } from '../../services/df-aprobat-sql.mjs';
+import { dfAprobatSql, docAprobatSql } from '../../services/df-aprobat-sql.mjs';
 import { narrowCanDeleteRows } from '../../services/formular-capabilities.mjs';
 
 let PDFLibFormular = null;
@@ -738,7 +738,11 @@ router.get('/api/formulare/list', async (req, res) => {
       // Fragmente = EXACT condițiile din badge_status (COALESCE ~612-622) — sursă unică, fără drift.
       // Inversa algebrică a derivării badge (filtru ⟺ badge), identic cu blocul DF dar cu aliasul `fo`.
       const _foTransmis = `fo.status='completed' AND fo.flow_id IS NOT NULL AND f.deleted_at IS NULL AND (f.data->>'completed') IS DISTINCT FROM 'true' AND (f.data->>'status') IS DISTINCT FROM 'cancelled' AND (f.data->>'status') IS DISTINCT FROM 'refused'`;
-      const _foAprobat  = `fo.flow_id IS NOT NULL AND ((f.data->>'status')='completed' OR (f.data->>'completed')::boolean=true)`;
+      // #166 — sursa unica (`services/df-aprobat-sql.mjs`), identic cu ramura DF de la #165.
+      // Forma veche nu verifica nici fluxul soft-sters, nici anulat, nici refuzat, iar un flux
+      // anulat pastreaza `completed:true` in JSONB ⇒ ORD-ul ramanea „Aprobat" dupa anulare si
+      // `computeDocCapabilities` iesea devreme pe ramura aprobata (fara `can_reopen`).
+      const _foAprobat  = docAprobatSql('fo', 'f');
       // #132a — la ORD refuzul NU e scris NICĂIERI în coloana `status` (asimetrie față de DF,
       // unde signing.mjs:153 pune 'neaprobat'). Fără derivarea de mai jos, un ORD refuzat
       // rămâne afișat „Completat". Vezi FORMULAR_TYPES.ord.linkFlowSetsStatus = null.
@@ -802,12 +806,16 @@ router.get('/api/formulare/list', async (req, res) => {
                       AND f.deleted_at IS NULL
                       AND (f.data->>'status') IN ('refused','rejected')
                  THEN 'neaprobat' END,
-            CASE WHEN fo.flow_id IS NOT NULL
-                      AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-                 THEN 'aprobat' ELSE fo.status END
+            -- #166 — identic cu fragmentul de filtru _foAprobat de mai sus (paritate
+            -- filtru<=>badge). Aceeasi sursa unica ca la ramura DF (#165).
+            CASE WHEN ${_foAprobat} THEN 'aprobat' ELSE fo.status END
           ) AS badge_status,
-          CASE WHEN fo.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
-               THEN true ELSE false END AS aprobat,
+          -- #166 — coloana aprobat alimenteaza computeDocCapabilities (doc.aprobat), care are
+          -- return timpuriu pe ramura aprobata si conditioneaza can_reopen pe !aprobat.
+          -- COALESCE: predicatul poate da NULL cand fluxul nu are cheia de finalizare in
+          -- JSONB; coloana ramane boolean strict, ca la rutele de detaliu. Valoarea de
+          -- adevar e IDENTICA cu fragmentul de filtru, care trateaza NULL prin IS NOT TRUE.
+          COALESCE((${_foAprobat}), false) AS aprobat,
           -- #130 — valoarea ordonanțării = suma col.4 peste TOATE rândurile. După #128,
           -- rows conține rândurile tuturor blocurilor de furnizor (fiecare cu bloc_idx),
           -- deci suma e pe întreaga ordonanțare, nu pe primul furnizor. Expresie IDENTICĂ
