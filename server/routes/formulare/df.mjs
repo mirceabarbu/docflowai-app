@@ -130,8 +130,12 @@ router.get('/api/formulare-df/aprobate', async (req, res) => {
       JOIN flows f ON f.id = fd.flow_id
       WHERE fd.org_id = $1
         AND fd.deleted_at IS NULL
-        AND fd.flow_id IS NOT NULL
-        AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+        -- #167 — sursa unica. Forma veche nu verifica nici fluxul soft-sters, nici anulat,
+        -- nici refuzat, iar un flux anulat pastreaza cheia de finalizare in JSONB: un DF cu
+        -- aprobarea DESFACUTA ramanea in lista din care se alege DF-ul unei ordonantari noi.
+        -- Garda de pointer non-NULL e inclusa in helper, de aceea a disparut de aici.
+        -- ⛔ helper de DOCUMENT (cere pointerul), NU predicatul de FLUX din flow-provenance.
+        AND ${dfAprobatSql('fd', 'f')}
       ORDER BY ${dosarKeyExpr('fd')}, fd.revizie_nr DESC
     `, [actor.orgId]);
     res.json({ ok: true, documents: rows });

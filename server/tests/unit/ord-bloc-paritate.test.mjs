@@ -36,6 +36,11 @@ beforeAll(() => {
   const realSetInterval = globalThis.setInterval;
   globalThis.setInterval = () => 0;
   try { new Function(read('doc.js')).call(globalThis); } finally { globalThis.setInterval = realSetInterval; }
+  // #167 — list.js e acum o dependență de RULARE a lui populateOrd (`_renderDfSelect`, cross-modul
+  // ca `loadDfAprobate` de la doc.js:13). În producție ambele scripturi sunt încărcate, list.js
+  // înaintea lui doc.js (public/formular.html); fără el aici, populateOrd arunca ReferenceError.
+  // Aceeași ordine de încărcare ca în ord-bloc-comportamente-vii.test.mjs.
+  new Function(read('list.js')).call(globalThis);
 });
 
 // ── Fixture: structura ORD de producție, redusă la esențial ──────────────────
@@ -304,7 +309,9 @@ describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
  */
 const ANCORE_PERMISE = {
   'doc.js': {
-    'o-df-sel': [5, 'GLOBAL PRIN DESIGN — un singur DF per ORD (reconul #128a)'],
+    'o-df-sel': [3, 'GLOBAL PRIN DESIGN — un singur DF per ORD (reconul #128a). 5→3 la #167: ' +
+      'populateOrd și resetul din newDoc nu mai ating selectul direct, ci cheamă _renderDfSelect ' +
+      '(list.js), singurul loc care îl randează — vezi invariantul select⟷hidden'],
     'o-df-id': [5, 'GLOBAL PRIN DESIGN — id-ul DF-ului legat, unic pe document'],
     'o-tbody': [7, 'BLOCUL 0 — fallback pentru pagini/teste fără [data-bloc]. #128l a rezolvat ' +
       'ultimele două excepții reale (pre-checkul din showP2Modal și validateSecB); ce a rămas ' +
@@ -329,7 +336,8 @@ const ANCORE_PERMISE = {
   },
   'list.js': {
     'o-df-sel': [2, 'GLOBAL PRIN DESIGN — un singur DF per ORD'],
-    'o-df-id': [1, 'GLOBAL PRIN DESIGN — un singur DF per ORD'],
+    'o-df-id': [2, 'GLOBAL PRIN DESIGN — un singur DF per ORD. 1→2 la #167: _renderDfSelect ' +
+      'CITEȘTE hidden-ul ca să decidă opțiunea „lipicioasă" (nu scrie niciodată în el)'],
     'o-tbody': [1, 'BLOCUL 0 — onDfSelect repopulează blocul 0; blocurile 2+ prin addBlocOrd'],
   },
 };

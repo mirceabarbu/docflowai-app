@@ -33,7 +33,12 @@ describe('I-2: wrap captura 2 vizibil mereu + setModeP2Ord pe o-czone2', () => {
     // („display='' apare în populateOrd, nu oriunde în fișier") fără fragilitate la lungime.
     // #128k: ancorare pe DECLARAȚIA funcției, nu pe prima MENȚIUNE a numelui — un comentariu
     // care pomenește `populateOrd` mai sus în fișier muta fereastra pe text irelevant.
-    const m = src.match(/async function populateOrd\([\s\S]{0,3000}/);
+    // #167: fereastra fixă a fost lărgită deja de două ori (2000→3000) și a picat din nou la
+    // primul comentariu adăugat în capul funcției. Se ancorează acum pe CORPUL funcției, exact
+    // ca testul `setModeP2Ord` de mai jos: populateOrd e top-level, deci `\n}` la coloana 0 o
+    // închide. Aceeași intenție („display='' apare în populateOrd, nu oriunde în fișier"),
+    // fără cliches de lungime.
+    const m = src.match(/async function populateOrd\([\s\S]*?\n\}/);
     expect(m).toBeTruthy();
     expect(m[0]).toMatch(/_wrap2\.style\.display=''/);
   });

@@ -1045,7 +1045,15 @@ async function alopDeschideORD(alopId,btn){
         // explicit lista (idempotent, garantează și prospețime) și abia apoi setează.
         await loadDfAprobate();
         const s=document.getElementById('o-df-sel');
-        if(s){
+        // #167 — lista conține acum DOAR DF-uri cu aprobarea VIE. Dacă DF-ul dosarului lipsește,
+        // aprobarea lui a fost desfăcută. ORD-ul e NOU: nu există fapt istoric de protejat, deci
+        // nu inventăm opțiunea (asta ar crea o ordonanțare pe un DF neaprobat). Înainte, .value
+        // rămânea gol, selectDfAprobat golea #o-df-id și se salva df_id NULL — tăcut.
+        if(s&&![...s.options].some(o=>o.value===alop.df_id)){
+          alert('Documentul de Fundamentare al dosarului nu mai figurează ca aprobat '
+              + '(fluxul de semnare a fost anulat, refuzat sau șters). '
+              + 'Reluați semnarea DF-ului înainte de a crea ordonanțarea.');
+        }else if(s){
           s.value=alop.df_id;
           // dispatch 'change' ca să trigger-uim onchange="selectDfAprobat()" — set
           // programatic .value NU declanșează handler-ul, ceea ce împiedica
@@ -1077,7 +1085,12 @@ async function alopGoToORD(alopId,dfId){
   if(dfId){
     await loadDfAprobate();
     const s=document.getElementById('o-df-sel');
-    if(s){
+    // #167 — aceeași gardă ca în alopDeschideORD (vezi comentariul de acolo).
+    if(s&&![...s.options].some(o=>o.value===dfId)){
+      alert('Documentul de Fundamentare al dosarului nu mai figurează ca aprobat '
+          + '(fluxul de semnare a fost anulat, refuzat sau șters). '
+          + 'Reluați semnarea DF-ului înainte de a crea ordonanțarea.');
+    }else if(s){
       s.value=dfId;
       s.dispatchEvent(new Event('change'));
     }
