@@ -187,7 +187,10 @@ d('POST /flows/:flowId/admin-cancel — undo flux finalizat (#113a)', () => {
     const a = await getAlop(alopId);
     expect(a.df_flow_id).toBeNull();
     expect(a.df_completed_at).toBeNull();
-    expect(a.status).toBe('lichidare'); // DF nu schimbă statusul ALOP
+    // #164 — ramura DF readuce dosarul in `angajare` (lichidare neconfirmata, fara ORD),
+    // ca fluxul DF sa poata fi relansat. Inainte ramanea in `lichidare` si `df_action` nu
+    // se mai calcula ⇒ dosar blocat (incidentul DF 46149, 31.08.2026).
+    expect(a.status).toBe('angajare');
     expect((await getFlowRow(flowId)).deleted_at).not.toBeNull();
   });
 

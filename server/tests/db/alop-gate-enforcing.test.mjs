@@ -30,6 +30,7 @@ const VALID = [
   ['lichidare', 'ordonantare'], ['lichidare', 'cancelled'],
   ['ordonantare', 'plata'], ['ordonantare', 'cancelled'],
   ['plata', 'completed'], ['plata', 'cancelled'],
+  ['lichidare', 'angajare'], // #164 — admin-cancel pe DF (migrația 110)
 ];
 
 d('#138 — poarta ALOP blochează (migrarea 109)', () => {
@@ -117,8 +118,10 @@ d('#138 — poarta ALOP blochează (migrarea 109)', () => {
 
   // 5c — sărituri inventate, respinse una câte una (dovedesc că poarta n-a fost slăbită).
   it.each([
+    // #164 — `lichidare → angajare` a MIGRAT în VALID (migrația 110, admin-cancel pe DF).
+    // Restul rămân sărituri inventate: dovedesc că poarta n-a fost slăbită dincolo de ea.
     ['draft', 'completed'], ['plata', 'draft'], ['ordonantare', 'lichidare'],
-    ['lichidare', 'angajare'], ['completed', 'cancelled'],
+    ['completed', 'cancelled'], ['angajare', 'ordonantare'],
   ])('tranziție invalidă %s → %s ARUNCĂ', async (from, to) => {
     const id = await seedAlop({ orgId: 1, createdBy: 1, status: from });
     await expect(

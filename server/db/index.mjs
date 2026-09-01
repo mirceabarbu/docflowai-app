@@ -2591,6 +2591,54 @@ export const MIGRATIONS = [
       -- ⛔ Fără DROP/CREATE TRIGGER: trigger-ul trg_alop_status_guard (094) rămâne legat de
       -- această funcție (CREATE OR REPLACE păstrează legătura). alop_instances neatins.
     `
+  },
+  {
+    // #164 — `lichidare → angajare` devine tranziție LEGALĂ în matricea porții.
+    //
+    // MOTIV: `undoCompletedFlowLinks` (services/flow-undo.mjs, ramura DF) readuce dosarul
+    // din `lichidare` în `angajare` atunci când anularea administrativă desface aprobarea
+    // DF-ului pe care se sprijinea lichidarea (incidentul DF 46149, 31.08.2026) — altfel
+    // `df_action` nu se mai calculează (alop-capabilities.mjs îl dă doar în draft/angajare)
+    // și fluxul DF nu mai poate fi relansat. Fără această migrație, poarta (109, ENFORCING)
+    // ar arunca `check_violation`, ar face ROLLBACK la întreaga tranzacție de admin-cancel
+    // și ar întoarce 500: Etapa C fără Etapa D e o REGRESIE, nu o reparație.
+    //
+    // Corpul e IDENTIC cu 109 (poarta rămâne pe RAISE EXCEPTION — ⛔ NU o coborî la
+    // RAISE WARNING), cu O SINGURĂ modificare: 'angajare' adăugat la ieșirile din
+    // 'lichidare'. Simetric cu 'plata' → 'ordonantare' (legalizat de 103 pentru ramura ORD
+    // a aceluiași undo administrativ). Zero UPDATE/DELETE — migrația nu atinge date.
+    id: '110_alop_matrix_undo_df',
+    sql: `
+      CREATE OR REPLACE FUNCTION alop_status_guard() RETURNS TRIGGER AS $fn$
+      DECLARE
+        allowed TEXT[];
+      BEGIN
+        IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+          RETURN NEW;
+        END IF;
+
+        allowed := CASE OLD.status
+          WHEN 'draft'       THEN ARRAY['angajare','lichidare','cancelled']
+          WHEN 'angajare'    THEN ARRAY['lichidare','plata','cancelled']
+          WHEN 'lichidare'   THEN ARRAY['ordonantare','angajare','cancelled']
+          WHEN 'ordonantare' THEN ARRAY['plata','cancelled']
+          WHEN 'plata'       THEN ARRAY['completed','cancelled','ordonantare']
+          WHEN 'completed'   THEN ARRAY['lichidare']
+          WHEN 'cancelled'   THEN ARRAY[]::TEXT[]
+          ELSE ARRAY[]::TEXT[]
+        END;
+
+        IF NOT (NEW.status = ANY(allowed)) THEN
+          RAISE EXCEPTION 'ALOP transition violation: % -> % (alop_id=%)',
+            OLD.status, NEW.status, NEW.id
+            USING ERRCODE = 'check_violation';
+        END IF;
+
+        RETURN NEW;
+      END $fn$ LANGUAGE plpgsql;
+      -- ⛔ Fără DROP/CREATE TRIGGER: trigger-ul trg_alop_status_guard (094) rămâne legat de
+      -- această funcție (CREATE OR REPLACE păstrează legătura). alop_instances neatins.
+    `
   }
 ];
 

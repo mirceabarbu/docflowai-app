@@ -130,7 +130,9 @@ describe('cancel cu DF în transmis_flux → DF=completed, ALOP df_flow_id=NULL'
       !String(c[0]).includes('df_id=NULL')
     );
     expect(alopUpdate, 'ALOP update df_flow_id=NULL (păstrând df_id) lipsește').toBeDefined();
-    expect(alopUpdate[1]).toEqual([DF_R0_ID]);
+    // #164 — UPDATE-ul e acum SCOPED pe fluxul anulat (`AND df_flow_id=$2`), ca un al
+    // doilea flux al aceluiasi DF sa nu piarda pointerul catre primul.
+    expect(alopUpdate[1]).toEqual([DF_R0_ID, FLOW_ID]);
   });
 
   it('R1 cancel (revizie) → DF R1 completed, ALOP păstrează df_id=R1 (NU restore la parent)', async () => {
@@ -152,7 +154,7 @@ describe('cancel cu DF în transmis_flux → DF=completed, ALOP df_flow_id=NULL'
     );
     expect(alopUpdate).toBeDefined();
     // df_id rămâne R1 (NU parent R0 — cancel păstrează revizia curentă)
-    expect(alopUpdate[1]).toEqual([DF_R1_ID]);
+    expect(alopUpdate[1]).toEqual([DF_R1_ID, FLOW_ID]);  // #164 — scoped pe fluxul anulat
     // În contrast cu refuse, cancel NU caută parent_df_id
     // v3.9.746: SELECT-ul de părinte din refuse e acum derivat (formulare_df fd LEFT JOIN flows f)
     const parentSelect = dbModule.pool.query.mock.calls.find(c =>

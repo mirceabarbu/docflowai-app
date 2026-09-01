@@ -25,6 +25,7 @@ import {
 } from '../../services/formular-shared.mjs';
 import { requireDb } from './_helpers.mjs';
 import { dosarKeyExpr, dosarKeyOf } from '../../services/df-dosar-key.mjs';
+import { dfAprobatSql } from '../../services/df-aprobat-sql.mjs';
 import { codSsiBlockResponse } from '../../services/cod-ssi-validate.mjs';
 import { normalizeRowsCtrl } from '../../services/angajament-normalize.mjs';
 import { serializeNotafd } from '../../services/alop-xml/notafd-serializer.mjs';
@@ -575,7 +576,9 @@ router.post(['/api/formulare-df/:id/revizuieste', '/api/formulare-df/:id/revizie
   try {
     const { rows: origRows } = await pool.query(`
       SELECT fd.*,
-        (fd.flow_id IS NOT NULL AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)) AS aprobat
+        -- #165 — aici aprobat nu e afisare, ci POARTA: decide daca documentul poate fi
+        -- revizuit. Forma laxa considera aprobat un DF al carui flux fusese desfacut.
+        ${dfAprobatSql('fd', 'f')} AS aprobat
       FROM formulare_df fd
       LEFT JOIN flows f ON f.id = fd.flow_id
       WHERE fd.id=$1 AND fd.org_id=$2 AND fd.deleted_at IS NULL

@@ -1535,14 +1535,43 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
       return res.status(prov.status).json(prov.body);
     }
 
+    // #164 — gardă anti-deturnare, simetrică cu `crud.mjs` (#120) și cu flip-ul DF de mai
+    // sus: pointerul ORD se mută DOAR dacă e liber, dacă e deja al acestui flux
+    // (idempotent la retry/dublu-click), sau dacă fluxul pe care stă e MORT. Fără ea, al
+    // doilea flux al aceluiași ORD fura pointerul de pe primul, iar anularea ulterioară a
+    // unuia dintre ele rupea legătura către cel semnat (incidentul ORD 46055, 31.08.2026).
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET ord_flow_id=$1, updated_at=NOW(), updated_by=$4
       WHERE id=$2 AND org_id=$3
+        AND (
+          ord_flow_id IS NULL
+          OR ord_flow_id = $1
+          OR NOT EXISTS (
+            SELECT 1 FROM flows f
+             WHERE f.id::text = alop_instances.ord_flow_id
+               AND f.deleted_at IS NULL
+               AND f.data->>'status' IS DISTINCT FROM 'cancelled'
+               AND f.data->>'status' IS DISTINCT FROM 'refused'
+          )
+        )
       RETURNING *
     `, [flow_id, req.params.id, actor.orgId, actor.userId]);
 
-    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    // rowCount 0 NU înseamnă „ALOP inexistent" — existența lui a fost deja dovedită de
+    // `alopRows` mai sus. Înseamnă că garda a blocat deturnarea. Răspundem 200 cu starea
+    // reală (decizia de produs din #120: nu rupem fluxul apelantului), dar o logăm.
+    let alopRow = rows[0] || null;
+    if (!alopRow) {
+      logger.warn({ alopId: req.params.id, flowId: flow_id },
+        '[ALOP] link-ord-flow: pointer ORD deja pe un flux VIU — legare refuzata (posibil dublu-click)');
+      const { rows: cur } = await pool.query(
+        'SELECT * FROM alop_instances WHERE id=$1 AND org_id=$2',
+        [req.params.id, actor.orgId]
+      );
+      alopRow = cur[0] || null;
+      if (!alopRow) return res.status(404).json({ error: 'not_found' });
+    }
 
     // Copiază atașamentele ORD→flux pe calea ALOP (necondiționat). Complementar cu
     // linkFlowFormular (happy path), care dă 409 când docul nu e completed / e deja pe flux.
@@ -1553,7 +1582,7 @@ router.post('/api/alop/:id/link-ord-flow', _csrf, async (req, res) => {
       } catch (e) { logger.warn({ err: e, alopId: req.params.id }, '[ALOP] copiere atașamente ORD→flux non-fatal'); }
     }
 
-    res.json({ ok: true, alop: rows[0] });
+    res.json({ ok: true, alop: alopRow });
   } catch (e) {
     logger.error({ err: e }, 'alop link-ord-flow error');
     res.status(500).json({ error: 'server_error' });
