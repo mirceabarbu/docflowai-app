@@ -611,25 +611,7 @@
           <td style="cursor:grab; text-align:center; color:rgba(255,255,255,.35); user-select:none; font-size:18px;" class="dragHandle">⠿</td>
           <td>
             <select class="rol">
-              <option value="ÎNTOCMIT">ÎNTOCMIT</option>
-              <option value="VERIFICAT">VERIFICAT</option>
-              <option value="VIZAT">VIZAT</option>
-              <option value="AVIZAT">AVIZAT</option>
-              <option value="APROBAT">APROBAT</option>
-              <option value="VIZĂ CFPP">VIZĂ CFPP</option>
-              <option value="VIZĂ JURIDICĂ">VIZĂ JURIDICĂ</option>
-              <option value="VIZĂ TEHNICĂ">VIZĂ TEHNICĂ</option>
-              <option value="VIZĂ ECONOMICĂ">VIZĂ ECONOMICĂ</option>
-              <option value="CONTROLAT">CONTROLAT</option>
-              <option value="CERTIFICAT">CERTIFICAT</option>
-              <option value="CONTRASEMNAT">CONTRASEMNAT</option>
-              <option value="ÎNSUȘIT">ÎNSUȘIT</option>
-              <option value="ASUMAT">ASUMAT</option>
-              <option value="SEMNAT">SEMNAT</option>
-              <option value="LUAT LA CUNOȘTINȚĂ">LUAT LA CUNOȘTINȚĂ</option>
-              <option value="ÎNREGISTRAT">ÎNREGISTRAT</option>
-              <option value="CONFIRMAT">CONFIRMAT</option>
-              <option value="__alt__">Alt atribut...</option>
+              ${window.DFAtribute.buildOptions()}
             </select>
             <input class="rolCustom" type="text" placeholder="Scrie atributul (ex: AVIZAT SPECIAL)" style="display:none;" />
           </td>
