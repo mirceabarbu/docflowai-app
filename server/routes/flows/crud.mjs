@@ -13,6 +13,7 @@ import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-atta
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 import { normalizeRecipients } from '../../services/flow-transmit.mjs';
 import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
+import { liveFlowSql } from '../../services/flow-provenance.mjs';
 import { resolveActorOr } from '../../services/actor-identity.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
 
@@ -128,6 +129,79 @@ const createFlow = async (req, res) => {
         error: 'user_without_org',
         message: 'Contul tău nu este asociat unei instituții. Contactează administratorul.',
       });
+    }
+
+    // ── #170 — POARTA DE LANSARE: un document nu poate avea două fluxuri VII ──────────
+    // Măsurat pe producție (02.09.2026): 48 de documente cu 2+ fluxuri vii; 44 dintre ele
+    // la peste 10 s distanță (medie ~2,5 zile) ⇒ NU dublu-click, ci relansare deliberată
+    // fiindcă primul flux era greșit. Până acum fluxul al doilea se crea oricum, iar
+    // pointerul `formulare_X.flow_id` rămânea pe primul (blocul PASUL 3 de mai jos refuza
+    // mutarea) ⇒ la finalizare, `finalizeDfOnFlowCompleted` (WHERE flow_id=$1) găsea ZERO
+    // rânduri și documentul rămânea neaprobat, fără nicio eroare (DF 45749).
+    //
+    // DECIZIE DE PRODUS (Mircea, 02.09.2026): poarta se închide COMPLET. Anularea fluxului
+    // existent e SINGURA cale de a porni unul nou. ⛔ Nicio portiță „pornește oricum".
+    //
+    // ⛔ Poarta se așază ÎNAINTE de crearea fluxului — altfel ar rămâne fluxuri orfane în `flows`.
+    // ⛔ Predicatul e `liveFlowSql` din services/flow-provenance.mjs (SURSĂ UNICĂ) — un flux
+    //    `completed` E viu după această definiție și asta e INTENȚIONAT (ORD 44269 avea două
+    //    fluxuri amândouă finalizate). NU-l înlocui cu `validSignedFlowSql`, nu-l scrie de mână.
+    // ⛔ Cheia e `data->'meta'->>'dfId'`, NU `formulare_df.flow_id`: pointerul arată UN singur
+    //    flux, iar noi vrem să știm dacă EXISTĂ vreunul viu, inclusiv unul care n-a luat pointerul.
+    // Fail-CLOSED: dacă interogarea eșuează, refuzăm lansarea (503) în loc să o lăsăm să treacă.
+    const _fluxViuPeDoc = async (metaKey, docId) => {
+      const col = metaKey === 'dfId' ? 'dfId' : 'ordId'; // whitelist, nu interpolare liberă
+      const { rows } = await pool.query(
+        `SELECT f.id,
+                f.data->>'status' AS status,
+                f.created_at,
+                CASE WHEN jsonb_typeof(f.data->'signers')='array'
+                     THEN jsonb_array_length(f.data->'signers') ELSE 0 END AS total_semnatari,
+                (SELECT COUNT(*)::int FROM jsonb_array_elements(
+                    CASE WHEN jsonb_typeof(f.data->'signers')='array'
+                         THEN f.data->'signers' ELSE '[]'::jsonb END) s
+                  WHERE s->>'status' = 'signed')                          AS semnate
+           FROM flows f
+          WHERE f.org_id = $1
+            AND f.data->'meta'->>'${col}' = $2
+            AND (${liveFlowSql('f')})
+          ORDER BY f.created_at DESC
+          LIMIT 1`,
+        [orgId, String(docId)]
+      );
+      return rows[0] || null;
+    };
+    for (const [metaKey, formType, eticheta] of [
+      ['dfId',  'df',  'Documentul de Fundamentare'],
+      ['ordId', 'ord', 'Ordonanțarea de plată'],
+    ]) {
+      const docId = body.meta?.[metaKey];
+      if (!docId || !pool) continue;
+      let existent;
+      try {
+        existent = await _fluxViuPeDoc(metaKey, docId);
+      } catch (e) {
+        logger.error({ err: e, formType, formId: docId }, '[flux] poarta de lansare: interogare eșuată — fail-closed');
+        return res.status(503).json({
+          error: 'poarta_flux_indisponibila',
+          message: 'Nu am putut verifica dacă documentul are deja un flux de semnare. Încearcă din nou.',
+        });
+      }
+      if (existent) {
+        logger.warn({ formType, formId: docId, existingFlowId: existent.id, status: existent.status },
+          '[flux] poarta de lansare: documentul are deja un flux viu — lansare refuzata (409)');
+        return res.status(409).json({
+          error: 'document_are_flux_viu',
+          message: `${eticheta} are deja un flux de semnare pornit. Anulează fluxul existent, apoi pornește unul nou.`,
+          formType,
+          formId: String(docId),
+          existingFlowId: existent.id,
+          existingFlowStatus: existent.status || null,
+          existingFlowCreatedAt: existent.created_at ? new Date(existent.created_at).toISOString() : null,
+          semnate: Number(existent.semnate || 0),
+          totalSemnatari: Number(existent.total_semnatari || 0),
+        });
+      }
     }
 
     // preferredProvider — setat la inițiere, lock pentru toți semnatarii
@@ -450,10 +524,13 @@ const createFlow = async (req, res) => {
     // liber (flow_id NULL), dacă e deja al fluxului curent (idempotent la retry/dublu-POST), sau
     // dacă fluxul vechi e MORT (șters/anulat/refuzat). Condiția trăiește ÎN UPDATE — nu un SELECT
     // separat — ca să nu existe fereastra de cursă la dublu-click (ORD 42719: 3 fluxuri în 4s).
-    // rowCount===0 ⇒ documentul e pe un flux VIU → îl lăsăm acolo. DECIZIE DE PRODUS: fluxul nou
-    // se creează în continuare (fără rollback pe calea sensibilă de creare); clasa D din
-    // flow-link-audit.mjs face fluxul paralel vizibil imediat. NU atinge linkFlowFormular (garda
-    // lui de 409 rămâne).
+    // rowCount===0 ⇒ documentul e pe un flux VIU → îl lăsăm acolo. NU atinge linkFlowFormular
+    // (garda lui de 409 rămâne).
+    // #170: blocul RĂMÂNE, ca A DOUA linie de apărare. Poarta de lansare de mai sus refuză
+    // deja 409 orice document cu flux viu, deci rowCount===0 nu mai poate însemna „relansare
+    // deliberată" — înseamnă o CURSĂ reală: două cereri simultane care au trecut amândouă de
+    // poartă (fereastra dintre SELECT-ul porții și acest UPDATE). Condiția trăiește ÎN UPDATE
+    // tocmai ca să închidă acea fereastră atomic.
     if (body.meta?.dfId && pool) {
       try {
         const r = await pool.query(
@@ -475,7 +552,7 @@ const createFlow = async (req, res) => {
         );
         if (r.rowCount === 0) {
           logger.warn({ flowId, formType: 'df', formId: body.meta.dfId, rowCount: 0 },
-            '[flux] documentul e deja pe un flux activ — pre-setare flow_id refuzata (posibil dublu-click)');
+            '[flux] pre-setare flow_id refuzata: documentul e pe un flux viu — CURSA cu o cerere simultana (poarta #170 a fost trecuta de ambele)');
         }
       } catch (e) { logger.warn({ err: e }, 'formulare_df link flow_id non-fatal'); }
     }
@@ -500,7 +577,7 @@ const createFlow = async (req, res) => {
         );
         if (r.rowCount === 0) {
           logger.warn({ flowId, formType: 'ord', formId: body.meta.ordId, rowCount: 0 },
-            '[flux] documentul e deja pe un flux activ — pre-setare flow_id refuzata (posibil dublu-click)');
+            '[flux] pre-setare flow_id refuzata: documentul e pe un flux viu — CURSA cu o cerere simultana (poarta #170 a fost trecuta de ambele)');
         }
       } catch (e) { logger.warn({ err: e }, 'formulare_ord link flow_id non-fatal'); }
     }

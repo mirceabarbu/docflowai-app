@@ -2242,6 +2242,25 @@ async function signFromFluxuri(flowId) {
             body: JSON.stringify(payload),
           });
           const j = await r.json().catch(() => ({}));
+          // #170 — poarta de lansare: documentul are deja un flux VIU de semnare.
+          // Mesaj explicit (ce s-a întâmplat / starea fluxului existent / ce are de făcut),
+          // NU eroarea generică. Fără redirect automat — utilizatorul trebuie să citească.
+          if (r.status === 409 && j?.error === "document_are_flux_viu") {
+            const _dt = j.existingFlowCreatedAt
+              ? new Date(j.existingFlowCreatedAt).toLocaleString("ro-RO")
+              : "dată necunoscută";
+            const _st = j.existingFlowStatus === "completed" ? "finalizat" : "în curs";
+            const _lnk = j.existingFlowId
+              ? ` <a href="/flow.html?flow=${encodeURIComponent(j.existingFlowId)}" style="text-decoration:underline;color:inherit;">Vezi fluxul existent</a>.`
+              : "";
+            $("createResult").innerHTML =
+              `<div style="margin-top:10px;padding:12px 14px;border:1px solid var(--df-warning-bd);background:var(--df-warning-bg);border-radius:var(--df-radius-md);color:var(--df-warning);line-height:1.5;font-size:13px;">`
+              + `⚠️ <strong>Documentul are deja un flux de semnare pornit.</strong> Nu am creat un al doilea flux.`
+              + `<br>Fluxul existent (<span style="font-family:monospace;">${esc(String(j.existingFlowId || "?"))}</span>) e <strong>${_st}</strong>, pornit la ${esc(_dt)}, cu <strong>${Number(j.semnate || 0)} din ${Number(j.totalSemnatari || 0)}</strong> semnături puse.${_lnk}`
+              + `<br><strong>Ce ai de făcut:</strong> anulează fluxul existent, apoi pornește unul nou de aici.`
+              + `</div>`;
+            return;
+          }
           if (!r.ok) throw new Error(j?.error || "server_error");
 
           localStorage.setItem("lastInitName", $("initName").value.trim());
