@@ -16,7 +16,12 @@ import crypto from 'crypto';
 import { hashPassword, verifyPassword } from '../../middleware/auth.mjs';
 
 // ── hashPassword ──────────────────────────────────────────────────────────────
-
+//
+// #169: timeout de suită ridicat la 60s — PBKDF2 la 600k iterații (v2) poate depăși
+// testTimeout-ul global de 15s (vitest.config.mjs) sub sarcină (mai multe fișiere de
+// test rulând în paralel pe mașini lente/CI), deși codul e corect (trece izolat).
+// Cauza e reală (costul PBKDF2), nu o eroare de test. NU se modifică aici numărul de
+// iterații și nu se atinge codul de criptare din auth.mjs.
 describe('hashPassword', () => {
   it('generează hash cu prefix v2', async () => {
     const hash = await hashPassword('testPassword123');
@@ -53,10 +58,10 @@ describe('hashPassword', () => {
     expect(hash.startsWith('v2:')).toBe(true);
     expect((await verifyPassword(special, hash)).ok).toBe(true);
   });
-});
+}, 60_000);
 
 // ── verifyPassword ────────────────────────────────────────────────────────────
-
+// #169: aceeași ridicare de timeout la nivel de suită — vezi motivul de mai sus.
 describe('verifyPassword', () => {
   it('verifică corect o parolă cu hash v2 (PBKDF2 600k)', async () => {
     const pwd  = 'ParolaTest@2025';
@@ -141,4 +146,4 @@ describe('verifyPassword', () => {
       expect((await verifyPassword('altceva_gresit', hash)).ok, `Fals pozitiv pentru: "${pwd.slice(0, 20)}"`).toBe(false);
     }
   }, 60_000);
-});
+}, 60_000);

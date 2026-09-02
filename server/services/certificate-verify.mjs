@@ -73,7 +73,6 @@ const OID = {
   EXT_KEY_USAGE:   '2.5.29.37',
   BASIC_CONSTR:    '2.5.29.19',
   QC_STATEMENTS:   '1.3.6.1.5.5.7.1.3',
-  QC_COMPLIANCE:   '0.4.0.1862.1.1',
   QC_TYPE:         '0.4.0.1862.1.6',
   QC_TYPE_ESIGN:   '0.4.0.1862.1.6.1',
   TIMESTAMP:       '1.2.840.113549.1.9.16.2.14',

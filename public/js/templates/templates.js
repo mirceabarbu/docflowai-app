@@ -7,12 +7,9 @@ const $ = id => document.getElementById(id);
 function hdrs() { return { 'Content-Type': 'application/json' }; }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-const ATRIBUTE = [
-  'ÎNTOCMIT','VERIFICAT','VIZAT','AVIZAT','APROBAT',
-  'VIZĂ CFPP','VIZĂ JURIDICĂ','VIZĂ TEHNICĂ','VIZĂ ECONOMICĂ',
-  'CONTROLAT','CERTIFICAT','CONTRASEMNAT','ÎNSUȘIT','ASUMAT',
-  'SEMNAT','LUAT LA CUNOȘTINȚĂ','ÎNREGISTRAT','CONFIRMAT','__alt__'
-];
+// #168 — lista s-a mutat în public/js/shared/atribute.js (sursă unică, partajată cu
+// ecranul „Pornește flux"). templates.html o încarcă ÎNAINTE de acest fișier.
+const ATRIBUTE = window.DFAtribute.LIST;
 let signerCounter = 0;
 
 // BLOC 4.3: helper care setează value/dataset/textContent pe option,
@@ -46,11 +43,10 @@ function _tmplApplyUserToOption(opt, u) {
   }
 }
 
+// #168 — randarea s-a mutat în sursa unică. Numele funcției rămâne: e apelată din mai
+// multe locuri din acest fișier și nu are rost churn de call-site-uri.
 function buildAtribOptions(selected) {
-  return ATRIBUTE.map(a => {
-    const label = a === '__alt__' ? 'Alt atribut...' : a;
-    return `<option value="${a}"${a===selected?' selected':''}>${label}</option>`;
-  }).join('');
+  return window.DFAtribute.buildOptions(selected);
 }
 
 // Returnează valorile utilizatorilor deja selectați dintr-un tbody, excluzând rândul curent

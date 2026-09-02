@@ -1264,6 +1264,73 @@ Vezi `docs/incidents/2026-04-19-db-init-failure.md` pentru playbook:
 
 ---
 
+## P0-06 — închis prin absență (02.09.2026)
+
+Constatarea auditului viza `POST /flows/:flowId/upload-signed-pdf` (`signing.mjs`), unde
+singura verificare era `uploadedHash === uploadPayload.preHash`, gardă moartă în practică.
+
+Măsurat pe producție, `audit_log` grupat pe `payload->>'via'` pentru `SIGNED_PDF_UPLOADED`:
+**bulk-signing 7.692 evenimente / 1.968 fluxuri** (29.04→02.09), **sts-poll 1.918 / 1.027**
+(20.04→02.09), **upload-local: niciun rând, în tot istoricul**. `cloud-callback`: zero.
+
+Pe căile VII, PDF-ul semnat se produce pe SERVER: `cloud-signing.mjs:471` îl ia de la
+serviciul Java de PAdES (construit din CMS-ul întors de STS); fallback-ul face `injectCms`
+local; bulk la fel. Clientul nu furnizează niciodată PDF-ul semnat ⇒ amenințarea din P0-06
+nu are unde să se producă acolo.
+
+Evenimentele `P0_06_OBSERVED_UNSIGNED` sunt zero fiindcă **ruta instrumentată nu s-a executat
+niciodată**, nu fiindcă invariantul a ținut. Controlul pozitiv folosit în august era invalid:
+cele 463 de `SIGNED_PDF_UPLOADED` comparate atunci veneau din alte rute.
+
+**Întrebare deschisă pentru Mircea, de PRODUS:** dezactivarea rutei locale ar închide subiectul
+definitiv; întărirea ei ar proteja o ușă pe care nu intră nimeni. ⛔ NU comuta poarta din
+`signing.mjs:415-427` din observare în blocare fără decizie explicită — vezi #169.
+
+---
+
+## Index de loturi #144 → #168 (compact)
+
+Pentru detalii complete: `docs/archive/PROMPT-<n>-*.md` + commit-ul corespunzător
+(`git log --oneline | grep '#<n>'`).
+
+| # | Versiune | Ce a schimbat |
+|---|----------|----------------|
+| 144 | v3.9.802 | P0-05 — calificarea certificatului decisă pe DOVADĂ (qcStatements/politici OID), nu pe numele emitentului. Arhitectură nouă: `services/qc-evidence.mjs` (vezi subsecțiune dedicată mai jos). |
+| 145 | v3.9.803 | Verificatorul public alegea certificatul rădăcină în loc de semnatar (fals negativ) + fix ECDSA DER→raw. |
+| 146 | v3.9.804 | Verdictul verificatorului public e al documentului, nu al primei semnături; toate semnăturile afișate. |
+| 147 | v3.9.806 | Nucleu criptografic verificat în motorul Raportului de încredere + fail-closed. |
+| 149 | v3.9.805 | Fail-closed în ambele motoare de verificare; `null` nu mai devine valid. |
+| 150 | v3.9.807 | Diacritice în Raportul de încredere, etichete L4/L5 oneste, canar selecție semnatar. |
+| 151 | v3.9.808 | Lanțul de certificare construit prin emitent, nu prin ordinea CMS. |
+| 152 | v3.9.810 | Text încadrat pe linii în Raportul de încredere, înălțime de rând dinamică. |
+| 153 | v3.9.809 | Acces la conținutul fluxului derivat din DF/ORD pentru compartimentul CAB. |
+| 154 | v3.9.811 | Avertizare cont NU e de trezorerie pentru Responsabilul CAB (ORD). |
+| 155 | v3.9.812* | Diagnostic read-only P0-06 — fluxuri completed cu `signedPdfB64` fără ByteRange real (fără număr de versiune propriu, inclus în 156). |
+| 156 | v3.9.812 | P0-06 pasul 2 — mod OBSERVARE, invariantul „numărul de semnături crește". |
+| 157 | v3.9.813 | ALOP — subtext ORD consumă `ord_aprobat` + elimină cursa de timing DF pe ORD nou. |
+| 158 | v3.9.814 | Self-heal ALOP-DF avansează pointerul și de pe o revizie veche. |
+| 159 | v3.9.815 | P0 — material criptografic STS nu mai iese prin DTO-ul fluxului. |
+| 160 | v3.9.816 | Cheia privată STS nu mai e persistată în starea fluxului. |
+| 161 | v3.9.817 | Metoda de semnare pre-bifată pe STS Cloud QES la flux nou. |
+| 162 | **nedocumentat** | Nicio dovadă găsită — fără commit `#162`, fără `PROMPT-162-*.md` în `docs/archive/`. |
+| 163 | **nedocumentat** | Nicio dovadă găsită — fără commit `#163`, fără `PROMPT-163-*.md` în `docs/archive/`. |
+| 164 | v3.9.818 | Integritatea legăturilor document-flux la anulare și desfacere. |
+| 165 | v3.9.819 | Aprobarea derivată DF ține cont de fluxul desfăcut (badge, filtru, revizie). |
+| 166 | v3.9.820 | Aprobarea derivată ORD și rutele de detaliu trec pe sursa unică. |
+| 167 | v3.9.821 | `/aprobate` strict + invariant select-hidden pe referința DF din ORD. |
+| 168 | v3.9.822 | Atribut ÎNREGISTRAT CAB + lista de atribute pe sursa unică. |
+
+### `services/qc-evidence.mjs` — calificarea pe dovadă (#144)
+
+Modul PUR (fără importuri, fără I/O, fără DB) care decide dacă un certificat e „calificat"
+din CONȚINUT — OID-urile `qcStatements` (ETSI EN 319 412-5) și politicile de certificare
+(EN 319 411-2) — NU din numele QTSP-ului (etichetă de afișare, niciodată dovadă) și NU doar
+din prezența extensiei `1.3.6.1.5.5.7.1.3` (poate fi prezentă și GOALĂ). Ambele motoare de
+verificare (`services/certificate-verify.mjs` și `verify.mjs`) consumă de aici — o singură
+definiție a calificării, nu două copii care pot diverge.
+
+---
+
 ## Index migrații ALOP & Formulare
 
 Schema ALOP este împărțită între un fișier SQL inițial și migrații inline
