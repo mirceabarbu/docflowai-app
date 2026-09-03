@@ -1438,7 +1438,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const prefillSigners=(semnatari||[])
           .map(s=>({
             name:s.same_as_initiator?initiatorName:(s.name||''),
-            rol:ALOP_ROL[s.role]||'SEMNAT',
+            // #173 — atributul salvat pe rol are precădere: un rol PERSONALIZAT nu are
+            // intrare în ALOP_ROL și ar cădea altfel pe „SEMNAT" pe un document financiar.
+            rol:(s.atribut||ALOP_ROL[s.role]||'SEMNAT'),
             functie:s.functie||''
           }));
         if(prefillSigners.length){

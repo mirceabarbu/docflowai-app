@@ -23,6 +23,8 @@ import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { createRateLimiter } from '../middleware/rateLimiter.mjs';
 import { loadActorCompAndCab, isCabDept, canEditAlop, canDestroyOnly, loadOrgCabComp } from '../services/authz-formular.mjs';
+import { ALOP_ROLURI, ROLURI_OBLIGATORII, MAX_ROLURI_SABLON, esteRolCunoscut } from '../services/alop-roluri.mjs';
+import { esteAtributValid } from '../services/atribute.mjs';
 import { sendNotif } from '../services/formular-shared.mjs';
 import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { isPlatformAdmin } from '../services/authz-scope.mjs';
@@ -220,6 +222,53 @@ const ORD_DEFAULT_SEMNATARI = [
   { order: 4, role: 'ordonator_credite',  user_id: null, name: '' },
 ];
 
+// #173 — validarea șablonului. A ÎNLOCUIT verificarea de LUNGIME FIXĂ (6 la DF, 4 la ORD),
+// care apăra o formă, nu o regulă: nu există nicăieri acces pozițional la `df_semnatari[i]`,
+// totul caută după `role`. Ce apărăm de fapt:
+//   - `initiator` obligatoriu: primește `user_id` la crearea dosarului (vezi mai jos), iar
+//     `sef_compartiment.same_as_initiator` îl referă;
+//   - roluri unice: două rânduri cu același rol ar face ambiguă orice căutare după `role`;
+//   - rol necunoscut ⇒ `atribut` OBLIGATORIU și valid. Fără asta, un rol cu etichetă liberă
+//     ar ajunge pe o ordonanțare de plată cu atributul „SEMNAT", cu persoana corectă și fără
+//     nicio eroare nicăieri.
+// Întoarce `null` dacă e valid, altfel un mesaj pentru client.
+function _validSablonSemnatari(lista, eticheta) {
+  if (!Array.isArray(lista) || lista.length < 1) {
+    return `${eticheta}: lista de roluri e obligatorie (minim 1 rol).`;
+  }
+  if (lista.length > MAX_ROLURI_SABLON) {
+    return `${eticheta}: maximum ${MAX_ROLURI_SABLON} roluri.`;
+  }
+  const vazute = new Set();
+  for (const s of lista) {
+    if (!s || typeof s !== 'object' || Array.isArray(s)) {
+      return `${eticheta}: fiecare rol trebuie să fie un obiect.`;
+    }
+    const role = typeof s.role === 'string' ? s.role.trim() : '';
+    if (!role) return `${eticheta}: fiecare rol trebuie să aibă cheia "role".`;
+    if (role.length > 64) return `${eticheta}: cheia rolului e prea lungă (max 64).`;
+    if (vazute.has(role)) return `${eticheta}: rolul "${role}" apare de două ori.`;
+    vazute.add(role);
+    if (!esteRolCunoscut(role)) {
+      if (!esteAtributValid(s.atribut)) {
+        return `${eticheta}: rolul "${role}" e personalizat și cere un atribut de semnătură valid.`;
+      }
+      if (typeof s.eticheta !== 'string' || !s.eticheta.trim()) {
+        return `${eticheta}: rolul "${role}" e personalizat și cere o denumire.`;
+      }
+      if (s.eticheta.length > 120) return `${eticheta}: denumirea rolului "${role}" e prea lungă.`;
+    } else if (s.atribut !== undefined && !esteAtributValid(s.atribut)) {
+      return `${eticheta}: atributul ales pentru "${role}" nu e valid.`;
+    }
+  }
+  for (const oblig of ROLURI_OBLIGATORII) {
+    if (!vazute.has(oblig)) {
+      return `${eticheta}: rolul "${ALOP_ROLURI[oblig].eticheta}" nu poate lipsi din șablon.`;
+    }
+  }
+  return null;
+}
+
 // ── GET /api/alop/sablon — montat ÎNAINTE de /:id ────────────────────────────
 router.get('/api/alop/sablon', async (req, res) => {
   if (requireDb(res)) return;
@@ -229,11 +278,14 @@ router.get('/api/alop/sablon', async (req, res) => {
       'SELECT * FROM alop_sabloane WHERE org_id=$1',
       [actor.orgId]
     );
+    // #173 — forma de gol OGLINDEȘTE ce așteaptă POST-ul. Înainte întorcea chei LEGACY
+    // (`signatari_angajare` etc.), fără nicio legătură cu `df_semnatari_sablon`, deci un
+    // ecran construit pe răspunsul GET ar fi afișat gol și ar fi salvat greșit. Nu exista
+    // niciun consumator în `public/` (verificat), deci schimbarea nu rupe nimic.
     const defaultSablon = {
-      signatari_angajare:    [],
-      signatari_lichidare:   [],
-      signatari_ordonantare: [],
-      signatari_plata:       [],
+      df_semnatari_sablon:  DF_DEFAULT_SEMNATARI,
+      ord_semnatari_sablon: ORD_DEFAULT_SEMNATARI,
+      lichidare_sablon:     {},
     };
     res.json({ sablon: rows[0] || defaultSablon });
   } catch (e) {
@@ -256,12 +308,10 @@ router.post('/api/alop/sablon', _csrf, async (req, res) => {
       lichidare_sablon     = {},
     } = req.body;
 
-    if (!Array.isArray(df_semnatari_sablon) || df_semnatari_sablon.length !== 6) {
-      return res.status(400).json({ error: 'df_semnatari_sablon trebuie să conțină 6 roluri' });
-    }
-    if (!Array.isArray(ord_semnatari_sablon) || ord_semnatari_sablon.length !== 4) {
-      return res.status(400).json({ error: 'ord_semnatari_sablon trebuie să conțină 4 roluri' });
-    }
+    const _errDf = _validSablonSemnatari(df_semnatari_sablon, 'Document de Fundamentare');
+    if (_errDf) return res.status(400).json({ error: 'sablon_invalid', message: _errDf });
+    const _errOrd = _validSablonSemnatari(ord_semnatari_sablon, 'Ordonanțare de plată');
+    if (_errOrd) return res.status(400).json({ error: 'sablon_invalid', message: _errOrd });
 
     const { rows } = await pool.query(`
       INSERT INTO alop_sabloane
