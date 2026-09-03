@@ -162,11 +162,33 @@
         if (btnDef) { btnDef.disabled = !hasPdf; btnDef.style.opacity = hasPdf ? "1" : "0.4"; }
 
         const hasProvider = !!_selectedProvider;
-        const valid = hasPdf && hasProvider;
+        // #172 — al treilea criteriu: fiecare rând de semnatar trebuie să aibă o persoană.
+        // Înainte butonul era activ cu rânduri goale, iar refuzul venea de la SERVER
+        // (`crud.mjs`, `signer_name_required` cu un index) abia după clic. Cu prefill-ul
+        // care aduce acum setul complet de roluri, rândurile necompletate sunt REGULA la
+        // pornirea unui flux din ALOP ⇒ garda trebuie să fie vizibilă înainte de clic.
+        // ⛔ Aceasta e o gardă de UX. Validările din `crud.mjs` rămân sursa de adevăr.
+        const _randuri = [...tbody.querySelectorAll("tr")];
+        const _incomplet = _randuri.find(tr => {
+          const _sel = tr.querySelector(".name-select");
+          const _nume = (_sel ? _sel.value : tr.querySelector(".name")?.value) || "";
+          return !_nume.trim();
+        });
+        const hasSigners = _randuri.length > 0 && !_incomplet;
+        const valid = hasPdf && hasProvider && hasSigners;
         btn.disabled = !valid;
         btn.style.opacity = valid ? "1" : "0.4";
         if (!hasPdf)           btn.title = "Încarcă mai întâi PDF-ul";
         else if (!hasProvider) btn.title = "Alege metoda de semnare";
+        else if (!_randuri.length) btn.title = "Adaugă cel puțin un semnatar";
+        else if (_incomplet) {
+          const _poz = _randuri.indexOf(_incomplet) + 1;
+          const _rolSel = _incomplet.querySelector(".rol");
+          const _rol = (_rolSel && _rolSel.value === "__alt__")
+            ? (_incomplet.querySelector(".rolCustom")?.value || "").trim()
+            : (_rolSel ? _rolSel.value : "");
+          btn.title = `Rândul ${_poz}${_rol ? " (" + _rol + ")" : ""}: alege persoana sau șterge rândul`;
+        }
         else                   btn.title = "";
       }
 
@@ -867,6 +889,18 @@
 
       // Watch for DOM changes in tbody
       new MutationObserver(() => { updateIntocmitVisibility(); validateForm(); }).observe(tbody, { childList: true, subtree: true });
+
+      // #172 — MutationObserver-ul de mai sus vede DOAR adăugarea/ștergerea de rânduri.
+      // Alegerea unei persoane într-un `<select>` NU e o mutație DOM ⇒ fără delegarea de mai
+      // jos, garda de la `validateForm` ar rămâne blocată după ce utilizatorul completează
+      // tabelul. Delegare pe tbody (nu pe fiecare rând), ca rândurile create ulterior să fie
+      // acoperite automat.
+      tbody.addEventListener("change", (e) => {
+        if (e.target && e.target.closest("tr")) validateForm();
+      });
+      tbody.addEventListener("input", (e) => {
+        if (e.target && e.target.classList && e.target.classList.contains("rolCustom")) validateForm();
+      });
 
       // ── Drag & drop reorder ──────────────────────────────────────────────
       let dragSrc = null;

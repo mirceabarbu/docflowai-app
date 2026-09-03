@@ -1424,8 +1424,18 @@ document.addEventListener('DOMContentLoaded', function () {
       if(ctx){
         const semnatari=ft==='notafd'?ctx.dfSemnatari:ctx.ordSemnatari;
         const initiatorName=(ctx.dfSemnatari||[]).find(s=>s.role==='initiator')?.name||'';
+        // #172 — SETUL COMPLET de roluri, nu doar cele cu persoană atribuită.
+        // Înainte exista `.filter(s=>s.user_id||s.same_as_initiator)`. Cum `alop_sabloane`
+        // e gol, iar `alop.mjs` ștampilează `user_id` DOAR pe rândul `initiator`, filtrul
+        // lăsa un singur rând — iar aplicarea din semdoc-initiator GOLEȘTE tabelul înainte
+        // să-l pună. Rezultat: prefill-ul ștergea rolurile implicite în loc să le completeze.
+        // Acum trimitem toate rolurile șablonului, cu numele gol unde nu se știe cine e;
+        // utilizatorul completează persoanele, iar rândurile care nu se aplică documentului
+        // se șterg cu butonul „Șterge" al rândului.
+        // ⛔ NU aduce PERSOANA din șablon aici: `refreshAllDropdowns` restaurează selecția
+        //    după EMAIL, iar șablonul ține `user_id`+`name`. Aducerea persoanei cere
+        //    rezolvarea user_id→email din `_dbUsers` și selecție după email — lotul #173.
         const prefillSigners=(semnatari||[])
-          .filter(s=>s.user_id||s.same_as_initiator)
           .map(s=>({
             name:s.same_as_initiator?initiatorName:(s.name||''),
             rol:ALOP_ROL[s.role]||'SEMNAT',
