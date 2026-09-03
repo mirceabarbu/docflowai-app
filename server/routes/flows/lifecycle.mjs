@@ -15,6 +15,7 @@ import jwt from 'jsonwebtoken';
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
 import { sanitizeCancelledCompletion } from '../../services/flow-completion.mjs';
+import { documenteRevendicate } from '../../services/flow-doc-claim.mjs';
 
 const _largePdf = expressJson({ limit: '50mb' });
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
@@ -88,12 +89,27 @@ router.post('/flows/:flowId/reinitiate', async (req, res) => {
     // n-ar curăța ALOP-ul. Traseul corect după refuz e prin ALOP („Generează + Lansează
     // flux ORD" / „Completează DF"), care leagă formularul corect. A duplica logica de
     // legare aici ar crea o a doua cale divergentă (tipar eliminat în #111a).
+    //
+    // #171 — CHEIA S-A LĂRGIT DE LA POINTER LA `meta`. Garda întreba doar pointerul
+    // (`formulare_X.flow_id = $1`). Un flux ORFAN — creat înainte de poarta de lansare
+    // #170, care poartă `meta.dfId`/`meta.ordId` dar N-A LUAT pointerul (îl ține alt flux)
+    // — trecea de ea și primea un copil construit prin `{ ...data }`, deci cu ACELAȘI
+    // `meta` moștenit ⇒ al doilea flux viu pe același document, exact ce refuză poarta de
+    // la lansare. `reinitiate` era ULTIMA cale prin care se mai putea crea unul.
+    // Cheia e acum aceeași cu a porții #170; pointerul rămâne ca a doua condiție, pentru
+    // fluxurile vechi care n-au `meta`. Fluxurile obișnuite (fără DF/ORD) NU sunt atinse.
+    const revendicate = documenteRevendicate(data);
     const { rows: linkedOrd } = await pool.query('SELECT id FROM formulare_ord WHERE flow_id=$1', [flowId]);
     const { rows: linkedDf }  = await pool.query('SELECT id FROM formulare_df  WHERE flow_id=$1', [flowId]);
-    if (linkedOrd.length || linkedDf.length) {
+    const _areOrd = linkedOrd.length > 0 || revendicate.some(d => d.formType === 'ord');
+    const _areDf  = linkedDf.length  > 0 || revendicate.some(d => d.formType === 'df');
+    if (_areOrd || _areDf) {
+      logger.warn({ flowId, areOrd: _areOrd, areDf: _areDf,
+        prinPointer: linkedOrd.length + linkedDf.length, prinMeta: revendicate.length },
+        '[flux] reinitiere refuzata: fluxul revendica un formular');
       return res.status(409).json({
         error: 'formular_linked_flow',
-        message: linkedOrd.length
+        message: _areOrd
           ? 'Acest flux aparține unei Ordonanțări de Plată. Relansează-l din ALOP („Generează + Lansează flux ORD"), nu prin reinițiere.'
           : 'Acest flux aparține unui Document de Fundamentare. Relansează-l din ALOP („Completează DF"), nu prin reinițiere.'
       });
