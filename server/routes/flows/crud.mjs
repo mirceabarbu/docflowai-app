@@ -14,6 +14,7 @@ import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-sign
 import { normalizeRecipients } from '../../services/flow-transmit.mjs';
 import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
 import { liveFlowSql } from '../../services/flow-provenance.mjs';
+import { DOC_KINDS } from '../../services/flow-doc-claim.mjs';
 import { resolveActorOr } from '../../services/actor-identity.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
 
@@ -171,10 +172,10 @@ const createFlow = async (req, res) => {
       );
       return rows[0] || null;
     };
-    for (const [metaKey, formType, eticheta] of [
-      ['dfId',  'df',  'Documentul de Fundamentare'],
-      ['ordId', 'ord', 'Ordonanțarea de plată'],
-    ]) {
+    // #171 — lista de tipuri vine din services/flow-doc-claim.mjs (sursă unică, partajată
+    // cu garda de reinițiere din lifecycle.mjs). Comportamentul porții rămâne IDENTIC:
+    // aceleași două tipuri, aceeași ordine, aceeași citire din `body.meta`.
+    for (const { metaKey, formType, eticheta } of DOC_KINDS) {
       const docId = body.meta?.[metaKey];
       if (!docId || !pool) continue;
       let existent;
