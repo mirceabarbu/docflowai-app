@@ -29,8 +29,14 @@ describe('#172 prefill ALOP — set complet de roluri + gardă la lansare', () =
     expect(matches.length).toBe(1);
   });
 
-  it('3 vocabularul ALOP_ROL este subset al DFAtribute.LIST', () => {
-    const rolBlockMatch = alopSrc.match(/const ALOP_ROL\s*=\s*\{([\s\S]*?)\};/);
+  // #175 — harta s-a mutat din `public/js/formular/alop.js` în
+  // `public/js/shared/alop-roluri.js` (ca `ROL_ATRIBUT`). Aserțiunea e IDENTICĂ:
+  // fiecare atribut al unui rol trebuie să existe în `DFAtribute.LIST`, altfel
+  // rândul pre-completat ar purta un atribut pe care select-ul nu-l poate afișa.
+  // Se schimbă fișierul din care se citește, nu ce se verifică.
+  it('3 vocabularul ROL_ATRIBUT (shared/alop-roluri.js) este subset al DFAtribute.LIST', () => {
+    const roluriSrc = readFileSync(path.join(REPO, 'public/js/shared/alop-roluri.js'), 'utf8');
+    const rolBlockMatch = roluriSrc.match(/var ROL_ATRIBUT\s*=\s*\{([\s\S]*?)\};/);
     expect(rolBlockMatch).toBeTruthy();
     const rolValues = [...rolBlockMatch[1].matchAll(/:\s*'([^']+)'/g)].map(m => m[1]);
     expect(rolValues.length).toBeGreaterThan(0);

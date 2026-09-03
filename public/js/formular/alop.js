@@ -1099,42 +1099,11 @@ async function alopGoToORD(alopId,dfId){
 
 // ── Acțiuni ALOP ──────────────────────────────────────────────────────────────
 
-// #174 — SURSA UNICĂ pentru semnatarii pre-completați care pleacă spre ecranul de flux.
-// Înainte, construcția trăia DOAR în patch-ul mkFlow de la finalul fișierului, iar cele
-// două funcții de lansare din cardul ALOP navigau direct ⇒ două din trei căi nu trimiteau
-// nimic, și utilizatorul primea rândurile implicite ale ecranului în locul rolurilor
-// dosarului. Acum toate trei trec pe aici, iar cheia de sesiune se scrie într-un singur
-// loc din tot codul (test static ține invariantul).
-// Întoarce numărul de roluri scrise (0 = nimic de trimis).
-const ALOP_ROL={
-  initiator:'ÎNTOCMIT', sef_compartiment:'VIZAT', responsabil_cab:'VERIFICAT',
-  sef_cab:'VIZAT', director_economic:'VIZĂ ECONOMICĂ',
-  ordonator_credite:'APROBAT', cfp_propriu:'VIZĂ CFPP'
-};
-function _alopScriePrefill(alopId,ft){
-  const ctx=window._alopContext;
-  // Gardă de identitate: contextul poate fi al ALTUI dosar (rămas de la o navigare
-  // anterioară). Fără ea, am pre-completa fluxul dosarului A cu semnatarii dosarului B.
-  if(!ctx||!alopId||ctx.alopId!==alopId)return 0;
-  const semnatari=ft==='notafd'?ctx.dfSemnatari:ctx.ordSemnatari;
-  const initiatorName=(ctx.dfSemnatari||[]).find(s=>s.role==='initiator')?.name||'';
-  // Setul COMPLET de roluri (#172), cu numele gol unde nu se știe cine e.
-  // Atributul salvat pe rol are precădere (#173): un rol PERSONALIZAT nu are intrare în
-  // tabela de mapare și ar cădea altfel pe „SEMNAT" pe un document financiar.
-  // ⛔ NU aduce PERSOANA din șablon aici: refreshAllDropdowns restaurează selecția după
-  //    EMAIL, iar șablonul ține user_id+name — lot separat.
-  const prefillSigners=(semnatari||[])
-    .map(s=>({
-      name:s.same_as_initiator?initiatorName:(s.name||''),
-      rol:(s.atribut||ALOP_ROL[s.role]||'SEMNAT'),
-      functie:s.functie||''
-    }));
-  if(!prefillSigners.length)return 0;
-  try{
-    sessionStorage.setItem('docflow_prefill_signers',JSON.stringify(prefillSigners));
-  }catch(e){console.warn('ALOP prefill semnatari warn:',e);return 0;}
-  return prefillSigners.length;
-}
+// #175 — harta rolurilor și scriitorul de prefill de la #174 au fost ELIMINATE de aici.
+// Semnatarii dosarului nu se mai cară spre ecranul de flux prin sessionStorage:
+// `semdoc-initiator` îi CERE de la server (`GET /api/alop/:id`) pe baza lui `alop_id`,
+// pe care îl primește deja în URL pe toate cele trei căi de lansare. Harta rol→atribut
+// trăiește acum în `public/js/shared/alop-roluri.js`, accesibilă ambelor ecrane.
 
 async function alopLaunchDfFlow(alopId,dfId){
   // Pas 1: leagă df_id la ALOP ÎNAINTE de orice navigare (garantează df_id setat)
@@ -1150,10 +1119,7 @@ async function alopLaunchDfFlow(alopId,dfId){
       else console.warn('ALOP link-df warn:',j.error);
     }catch(e){console.warn('ALOP link-df error:',e);}
   }
-  // Pas 2 (#174): semnatarii dosarului, prin sursa unică. Trebuie ÎNAINTE de navigare —
-  // ecranul de flux citește cheia la încărcare.
-  _alopScriePrefill(alopId,'notafd');
-  // Pas 3: navighează la semdoc-initiator cu parametri în URL (nu sessionStorage)
+  // Pas 2: navighează la semdoc-initiator cu parametri în URL (nu sessionStorage)
   location.href = '/semdoc-initiator.html?action=new_flow_prefill'
     + '&alop_id=' + encodeURIComponent(alopId)
     + '&alop_doc_type=notafd'
@@ -1182,9 +1148,7 @@ async function alopLaunchOrdFlow(alopId,ordId){
       else console.warn('ALOP link-ord warn:',j.error);
     }catch(e){console.warn('ALOP link-ord error:',e);}
   }
-  // Pas 2 (#174): semnatarii dosarului, prin sursa unică. Trebuie ÎNAINTE de navigare.
-  _alopScriePrefill(alopId,'ordnt');
-  // Pas 3: navighează la semdoc-initiator cu parametri în URL (nu sessionStorage)
+  // Pas 2: navighează la semdoc-initiator cu parametri în URL (nu sessionStorage)
   location.href = '/semdoc-initiator.html?action=new_flow_prefill'
     + '&alop_id=' + encodeURIComponent(alopId)
     + '&alop_doc_type=ordnt'
@@ -1428,7 +1392,6 @@ async function alopRevizuiesteDF(alopId,dfId){
   window.alopGoToORD                = alopGoToORD;
   window.alopLaunchDfFlow           = alopLaunchDfFlow;
   window.alopLaunchOrdFlow          = alopLaunchOrdFlow;
-  window._alopScriePrefill          = _alopScriePrefill;   // #174 — folosit de patch-ul mkFlow (în afara IIFE)
   window.alopDfCompleted            = alopDfCompleted;
   window.openAlopConfirmLichidare   = openAlopConfirmLichidare;
   window.closeLichidareModal        = closeLichidareModal;
@@ -1458,11 +1421,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const ctx=window._alopContext;
     const alopId=new URLSearchParams(location.search).get('alop_id')||ctx?.alopId;
     if(alopId){
+      // #175 — rămâne DOAR rezerva pentru `alop_id` (URL-ul e sursa principală).
+      // Semnatarii nu se mai scriu de aici: ecranul de flux îi cere de la server.
       sessionStorage.setItem('alop_id_for_flow',alopId+'|'+ft);
-      // #174 — construcția s-a mutat în sursa unică din IIFE (vezi „Acțiuni ALOP").
-      // Comportament neschimbat pe această cale; ce se schimbă e că acum și butoanele
-      // din cardul ALOP trec prin aceeași funcție.
-      if(typeof window._alopScriePrefill==='function')window._alopScriePrefill(alopId,ft);
     }
     _orig(ft);
   };

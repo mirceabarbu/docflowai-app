@@ -43,11 +43,17 @@ describe('#173 — ALOP_ROLURI', () => {
     }
   });
 
-  it('4. paritate cu frontendul: ALOP_ROL + ROLE_LABEL din public/js/formular/alop.js', () => {
+  // #175 — atributele s-au mutat din `public/js/formular/alop.js` în
+  // `public/js/shared/alop-roluri.js` (ca `ROL_ATRIBUT`), fiindcă și `semdoc-initiator`
+  // are nevoie de ele. Aserțiunea rămâne IDENTICĂ (perechile rol→atribut coincid cu
+  // ALOP_ROLURI de pe server); se schimbă doar fișierul din care se parsează.
+  // `ROLE_LABEL` NU s-a mutat — rămâne citit din alop.js.
+  it('4. paritate cu frontendul: ROL_ATRIBUT (shared/alop-roluri.js) + ROLE_LABEL (formular/alop.js)', () => {
     const src = readSrc('public/js/formular/alop.js');
+    const srcRoluri = readSrc('public/js/shared/alop-roluri.js');
 
-    const mRol = src.match(/const ALOP_ROL\s*=\s*\{([\s\S]*?)\n\s*\};/);
-    expect(mRol, 'ALOP_ROL nu a fost găsit').toBeTruthy();
+    const mRol = srcRoluri.match(/var ROL_ATRIBUT\s*=\s*\{([\s\S]*?)\n\s*\};/);
+    expect(mRol, 'ROL_ATRIBUT nu a fost găsit').toBeTruthy();
     const feAtrib = {};
     for (const x of mRol[1].matchAll(/([a-z_]+)\s*:\s*'([^']+)'/g)) feAtrib[x[1]] = x[2];
 

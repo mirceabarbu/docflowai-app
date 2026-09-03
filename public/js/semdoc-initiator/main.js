@@ -800,16 +800,82 @@
       // Funcția e IDEMPOTENTĂ: prima chemare aplică și ridică steagul, a doua nu face nimic.
       // Steagul e separat de listă tocmai ca blocul Default load să poată deosebi
       // „nu a existat niciodată prefill" de „a fost aplicat deja".
-      function applyAlopPrefill() {
-        const lista = window._alopPrefillSigners;
-        if (!lista || !lista.length) return false;
+      // #175 — SURSA datelor s-a schimbat: nu mai vin cărate prin sessionStorage de pe
+      // pagina de formular, ci se CER de la server pe baza lui `alop_id` din URL.
+      // Lanțul vechi avea șapte verigi (context global, buton, scriitor, sesiune, citire,
+      // variabilă globală, aplicare în cursă cu alți trei scriitori de tbody) și a cedat pe
+      // rând la #172, #172b și #174; măsurat pe staging, `window._alopContext` era null.
+      // Aici rămâne o singură dependență: parametrul din URL, prezent pe toate căile.
+      // Structura idempotentă de la #172b se păstrează — steagul separat de date, ca blocul
+      // „Default load" să deosebească „n-a existat prefill" de „s-a aplicat deja".
+      function _alopIdDinUrl() {
+        const p = new URLSearchParams(location.search).get("alop_id");
+        if (p) return p;
+        const s = sessionStorage.getItem("alop_id_for_flow");
+        return s ? s.split("|")[0] : "";
+      }
+
+      // Leagă persoanele de rândurile deja randate, după ce `_dbUsers` e disponibil.
+      // Idempotentă: un rând legat nu se mai atinge. Necesară fiindcă rândurile se pot crea
+      // ÎNAINTE ca /users să răspundă, iar `refreshAllDropdowns` restaurează după email.
+      function _alopLeagaPersoane() {
+        const users = window._dbUsers || [];
+        if (!users.length) return;
+        tbody.querySelectorAll("tr[data-want-email]").forEach(tr => {
+          const email = tr.getAttribute("data-want-email");
+          const sel = tr.querySelector(".name-select");
+          if (!email || !sel || sel.value) return;
+          const u = users.find(x => x.email === email);
+          if (!u) return;
+          sel.value = u.nume || "";
+          if (sel.value) tr.removeAttribute("data-want-email");
+        });
+        validateForm();
+      }
+
+      async function applyAlopPrefill() {
+        if (window._alopPrefillApplied) return false;
+        const alopId = _alopIdDinUrl();
+        if (!alopId) return false;                      // flux normal, fără ALOP — no-op
         const _alTbody = $("signersTbody");
         if (!_alTbody) return false;
+        const ft = new URLSearchParams(location.search).get("alop_doc_type")
+          || (sessionStorage.getItem("alop_id_for_flow") || "").split("|")[1]
+          || "notafd";
+        let dosar = null;
+        try {
+          const r = await _apiFetch(`/api/alop/${encodeURIComponent(alopId)}`, { method: "GET" });
+          if (!r.ok) { console.warn("ALOP prefill: dosarul nu a putut fi citit", r.status); return false; }
+          const _j = await r.json();
+          // Ruta întoarce dosarul învelit: `{ alop: {...} }`. Fallback pe obiectul brut
+          // ca lotul să nu depindă de învelitoare dacă ea se schimbă.
+          dosar = (_j && _j.alop) ? _j.alop : _j;
+        } catch (e) { console.warn("ALOP prefill: eroare la citirea dosarului", e); return false; }
+        const sablon = (ft === "ordnt" ? dosar?.ord_semnatari : dosar?.df_semnatari) || [];
+        if (!Array.isArray(sablon) || !sablon.length) return false;
+        const users = window._dbUsers || [];
+        const initiator = sablon.find(s => s && s.role === "initiator");
+        const randuri = sablon.map(s => {
+          const uid = s && s.same_as_initiator ? (initiator && initiator.user_id) : (s && s.user_id);
+          const u = uid ? users.find(x => String(x.id) === String(uid)) : null;
+          return {
+            _uid: uid || "",
+            name: u ? (u.nume || "") : (s && s.same_as_initiator ? (initiator?.name || "") : (s?.name || "")),
+            email: u ? (u.email || "") : "",
+            rol: (window.DFAlopRoluri ? window.DFAlopRoluri.atribut(s) : "SEMNAT"),
+            functie: (s && s.functie) || (u && u.functie) || ""
+          };
+        });
         _alTbody.innerHTML = "";
-        lista.forEach(s => _alTbody.appendChild(signerRowTemplate(s)));
-        window._alopPrefillSigners = null;
+        randuri.forEach(r => {
+          const tr = signerRowTemplate(r);
+          // Emailul dorit rămâne pe rând până când există un utilizator de legat de el.
+          if (r.email) tr.setAttribute("data-want-email", r.email);
+          _alTbody.appendChild(tr);
+        });
         window._alopPrefillApplied = true;
         refreshAllDropdowns?.();
+        _alopLeagaPersoane();
         validateForm();
         return true;
       }
@@ -1702,7 +1768,10 @@ async function signFromFluxuri(flowId) {
             autoFillFromProfile();
             // ALOP: aplică semnatari pre-configurați dacă există prefill în așteptare.
             // #172b — logica s-a mutat în applyAlopPrefill (punct unic, idempotent).
-            applyAlopPrefill();
+            // #175 — acum e asincronă (citește dosarul de la server); aici e locul PREFERAT,
+            // fiindcă `_dbUsers` tocmai s-a populat, deci persoanele se pot lega direct.
+            await applyAlopPrefill();
+            _alopLeagaPersoane();
           }
         } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
       })();
@@ -1935,7 +2004,7 @@ async function signFromFluxuri(flowId) {
         // aceea încercăm întâi aplicarea (idempotentă): dacă loadDbUsers a apucat deja,
         // steagul oprește o a doua aplicare; dacă /users e lent sau eșuează, rândurile
         // dosarului apar de aici și nu se mai pierd.
-        const _prefillPus = applyAlopPrefill();
+        const _prefillPus = await applyAlopPrefill();
         if (!_restored && !_prefillPus && !window._alopPrefillApplied) {
           setDefaults();
         }
@@ -2491,12 +2560,10 @@ async function signFromFluxuri(flowId) {
           sessionStorage.removeItem("docflow_prefill_email");
           sessionStorage.removeItem("docflow_prefill_pdf");
           sessionStorage.removeItem("docflow_prefill_type");
-          // ALOP: stochează semnatari pentru aplicare după _dbUsers se încarcă
-          const _alopPS = sessionStorage.getItem("docflow_prefill_signers");
-          if (_alopPS) {
-            try { window._alopPrefillSigners = JSON.parse(_alopPS); } catch(_) {}
-            sessionStorage.removeItem("docflow_prefill_signers");
-          }
+          // #175 — semnatarii nu mai vin prin sesiune; se citesc de la server în
+          // applyAlopPrefill, pe baza lui `alop_id` din URL. Curățăm o eventuală cheie
+          // rămasă din sesiuni vechi, ca să nu ținem date moarte în browserul nimănui.
+          sessionStorage.removeItem("docflow_prefill_signers");
           showTab("init");
           return;
         }

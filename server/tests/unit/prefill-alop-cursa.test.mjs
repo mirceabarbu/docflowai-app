@@ -36,7 +36,11 @@ describe('#172b prefill ALOP — implicitele nu mai șterg prefill-ul', () => {
   });
 
   it('3 ⭐ setDefaults() din blocul Default load e gardat de !_prefillPus && !window._alopPrefillApplied', () => {
-    const m = codeSrc.match(/const _prefillPus = applyAlopPrefill\(\);\s*\n\s*if \(([^)]+)\) \{\s*\n\s*setDefaults\(\);/);
+    // #175 — applyAlopPrefill a devenit ASINCRONĂ (citește dosarul de la server), deci
+    // apelul poartă `await`. Invariantul păzit e NESCHIMBAT: rezultatul intră în
+    // `_prefillPus`, iar `setDefaults()` rămâne sub aceeași gardă triplă. `await?` face
+    // aserțiunea tolerantă la ambele forme, fără să slăbească nimic din ce urmează.
+    const m = codeSrc.match(/const _prefillPus = (?:await )?applyAlopPrefill\(\);\s*\n\s*if \(([^)]+)\) \{\s*\n\s*setDefaults\(\);/);
     expect(m).toBeTruthy();
     const cond = m[1];
     expect(cond).toContain('!_restored');

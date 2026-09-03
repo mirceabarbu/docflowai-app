@@ -1,14 +1,17 @@
 /**
- * #174 — o singură cale de lansare din ALOP: prefill-ul semnatarilor scris
- * într-un singur loc, chemat de toate cele trei căi (mkFlow patch,
- * alopLaunchDfFlow, alopLaunchOrdFlow).
+ * #174 → REORIENTAT la #175.
  *
- * Analiză statică pe sursă (grep pe forme exacte), pe modelul
- * prefill-alop-cursa.test.mjs (#172b).
+ * Testul păzea o cale unică de SCRIERE a prefill-ului din `alop.js` prin
+ * sessionStorage (`_alopScriePrefill`, `ALOP_ROL`, cheia `docflow_prefill_signers`).
+ * #175 a ÎNLOCUIT mecanismul: ecranul de flux CERE semnatarii de la server
+ * (`GET /api/alop/:id`) pe baza lui `alop_id` din URL, prezent pe toate cele trei
+ * căi de lansare. Nu mai există nimic de scris, deci nici o cale de scriere de păzit.
  *
- * ⚠️ Comentariile dictate în prompt conțin intenționat numele funcției
- * (_alopScriePrefill) — lecția de la #124i/#172/#172b/#173: filtrăm liniile
- * de comentariu înainte de a număra apelurile funcționale.
+ * Aserțiunile devin invariantul noii arhitecturi, mai TARE decât cel vechi:
+ * `alop.js` nu mai scrie prefill DELOC. Cazul 8 (previzualizarea din card) rămâne
+ * neschimbat — e regresia pe care lotul NU are voie s-o atingă.
+ *
+ * ⚠️ Filtrăm liniile de comentariu înainte de a număra (lecția #124i/#172/#172b/#173).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -21,57 +24,49 @@ const REPO = path.resolve(__dirname, '../../..');
 const alopSrc = readFileSync(path.join(REPO, 'public/js/formular/alop.js'), 'utf8');
 
 /** Sursa fără liniile de comentariu `//` (întregi, fără să atingă expresii inline). */
-const codeLines = alopSrc.split('\n').filter(l => !l.trim().startsWith('//'));
-const codeSrc = codeLines.join('\n');
+const codeSrc = alopSrc.split('\n').filter(l => !l.trim().startsWith('//')).join('\n');
 
-describe('#174 prefill ALOP — cale unică pentru toate căile de lansare', () => {
-  it('1 ⭐ sessionStorage.setItem(\'docflow_prefill_signers\' apare exact o dată în tot fișierul', () => {
-    const matches = codeSrc.match(/sessionStorage\.setItem\('docflow_prefill_signers'/g) || [];
-    expect(matches.length).toBe(1);
+describe('#175 — alop.js nu mai scrie prefill de semnatari', () => {
+  it('1 ⭐ `docflow_prefill_signers` a dispărut complet din alop.js', () => {
+    const matches = codeSrc.match(/docflow_prefill_signers/g) || [];
+    expect(matches.length).toBe(0);
   });
 
-  it('2 ⭐ alopLaunchDfFlow apelează _alopScriePrefill( înainte de location.href', () => {
+  it('2 ⭐ `_alopScriePrefill` nu mai există — nici definiție, nici apel, nici export', () => {
+    const matches = codeSrc.match(/_alopScriePrefill/g) || [];
+    expect(matches.length).toBe(0);
+  });
+
+  it('3 ⭐ harta `const ALOP_ROL=` s-a mutat în shared/alop-roluri.js', () => {
+    const matches = codeSrc.match(/const ALOP_ROL=/g) || [];
+    expect(matches.length).toBe(0);
+  });
+
+  it('4 alopLaunchDfFlow navighează cu alop_id + alop_doc_type=notafd în URL', () => {
     const fnBody = codeSrc.match(/async function alopLaunchDfFlow\([^)]*\)\s*\{[\s\S]*?\n\}/);
     expect(fnBody).toBeTruthy();
-    const body = fnBody[0];
-    const callIdx = body.indexOf('_alopScriePrefill(');
-    const navIdx = body.indexOf('location.href');
-    expect(callIdx).toBeGreaterThan(-1);
-    expect(navIdx).toBeGreaterThan(-1);
-    expect(callIdx).toBeLessThan(navIdx);
+    expect(fnBody[0]).toContain("'&alop_id=' + encodeURIComponent(alopId)");
+    expect(fnBody[0]).toContain("alop_doc_type=notafd");
   });
 
-  it('3 ⭐ alopLaunchOrdFlow apelează _alopScriePrefill( înainte de location.href', () => {
+  it('5 alopLaunchOrdFlow navighează cu alop_id + alop_doc_type=ordnt în URL', () => {
     const fnBody = codeSrc.match(/async function alopLaunchOrdFlow\([^)]*\)\s*\{[\s\S]*?\n\}/);
     expect(fnBody).toBeTruthy();
-    const body = fnBody[0];
-    const callIdx = body.indexOf('_alopScriePrefill(');
-    const navIdx = body.indexOf('location.href');
-    expect(callIdx).toBeGreaterThan(-1);
-    expect(navIdx).toBeGreaterThan(-1);
-    expect(callIdx).toBeLessThan(navIdx);
+    expect(fnBody[0]).toContain("'&alop_id=' + encodeURIComponent(alopId)");
+    expect(fnBody[0]).toContain("alop_doc_type=ordnt");
   });
 
-  it('4 const ALOP_ROL= apare exact o dată în fișier (mutat, nu duplicat)', () => {
-    const matches = codeSrc.match(/const ALOP_ROL=/g) || [];
-    expect(matches.length).toBe(1);
-  });
-
-  it('5 patch-ul mkFlow nu mai conține prefillSigners — construcția inline a dispărut', () => {
+  it('6 patch-ul mkFlow păstrează rezerva alop_id_for_flow și nu construiește semnatari', () => {
     const fnBody = codeSrc.match(/window\.mkFlow=function\(ft\)\s*\{[\s\S]*?\n {2}\};/);
     expect(fnBody).toBeTruthy();
+    expect(fnBody[0]).toContain("sessionStorage.setItem('alop_id_for_flow'");
     expect(fnBody[0]).not.toContain('prefillSigners');
   });
 
-  it('6 window._alopScriePrefill e exportat exact o dată în blocul de exporturi', () => {
-    const matches = codeSrc.match(/window\._alopScriePrefill\s*=\s*_alopScriePrefill;/g) || [];
-    expect(matches.length).toBe(1);
-  });
-
-  it('7 garda de identitate ctx.alopId!==alopId e prezentă în corpul funcției', () => {
-    const fnBody = codeSrc.match(/function _alopScriePrefill\([^)]*\)\s*\{[\s\S]*?\n\}/);
-    expect(fnBody).toBeTruthy();
-    expect(fnBody[0]).toContain('ctx.alopId!==alopId');
+  it('7 harta rol→atribut există în public/js/shared/alop-roluri.js', () => {
+    const shared = readFileSync(path.join(REPO, 'public/js/shared/alop-roluri.js'), 'utf8');
+    expect(shared).toContain('var ROL_ATRIBUT');
+    expect(shared).toContain('window.DFAlopRoluri');
   });
 
   it('8 regresie: filter(u=>u.user_id||u.same_as_initiator) (previzualizarea din card) există în continuare, exact 1 dată', () => {

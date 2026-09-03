@@ -67,8 +67,21 @@ describe('#173 C — alop-semnatari.js', () => {
 });
 
 describe('#173 D — prefill-ul respectă atributul configurat pe rol', () => {
-  it('formular/alop.js folosește s.atribut înaintea lui ALOP_ROL[s.role]', () => {
-    const src = faraComentarii(read('public/js/formular/alop.js'));
-    expect(src).toMatch(/s\.atribut\s*\|\|\s*ALOP_ROL\[s\.role\]/);
+  // #175 — precedența s-a mutat din `public/js/formular/alop.js` (unde trăia ca expresia
+  // `s.atribut||ALOP_ROL[s.role]`) în `DFAlopRoluri.atribut()` din
+  // `public/js/shared/alop-roluri.js`, ca să fie accesibilă și lui `semdoc-initiator`.
+  // GARANȚIA e aceeași: atributul salvat explicit pe rol (rol PERSONALIZAT) bate harta
+  // implicită, deci nu cade pe „SEMNAT" pe un document financiar. Se schimbă fișierul
+  // din care se citește, nu ce se verifică.
+  it('shared/alop-roluri.js folosește s.atribut înaintea hărții ROL_ATRIBUT[s.role]', () => {
+    const src = faraComentarii(read('public/js/shared/alop-roluri.js'));
+    const fn = src.match(/atribut:\s*function \(s\) \{([\s\S]*?)\n {4}\}/);
+    expect(fn, 'funcția atribut() nu a fost găsită').toBeTruthy();
+    const idxAtribut = fn[1].indexOf("s.atribut");
+    const idxHarta = fn[1].indexOf('ROL_ATRIBUT[s.role]');
+    expect(idxAtribut).toBeGreaterThan(-1);
+    expect(idxHarta).toBeGreaterThan(-1);
+    expect(idxAtribut, 's.atribut trebuie consultat ÎNAINTEA hărții').toBeLessThan(idxHarta);
+    expect(fn[1]).toMatch(/return s\.atribut\.trim\(\);/);
   });
 });
