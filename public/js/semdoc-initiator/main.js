@@ -792,6 +792,28 @@
         defaults.forEach(d => tbody.appendChild(signerRowTemplate(d)));
       }
 
+      // #172b — punct UNIC de aplicare a semnatarilor veniți dintr-un dosar ALOP.
+      // Motivul existenței: trei blocuri scriau în același tbody fără să se cunoască —
+      // handleUrlParams (sincron) stoca lista, loadDbUsers (după /users) o aplica, iar
+      // blocul „Default load" (după restoreFormState) punea implicitele. Ultimul sosit
+      // câștiga, deci pe staging implicitele au șters rândurile dosarului.
+      // Funcția e IDEMPOTENTĂ: prima chemare aplică și ridică steagul, a doua nu face nimic.
+      // Steagul e separat de listă tocmai ca blocul Default load să poată deosebi
+      // „nu a existat niciodată prefill" de „a fost aplicat deja".
+      function applyAlopPrefill() {
+        const lista = window._alopPrefillSigners;
+        if (!lista || !lista.length) return false;
+        const _alTbody = $("signersTbody");
+        if (!_alTbody) return false;
+        _alTbody.innerHTML = "";
+        lista.forEach(s => _alTbody.appendChild(signerRowTemplate(s)));
+        window._alopPrefillSigners = null;
+        window._alopPrefillApplied = true;
+        refreshAllDropdowns?.();
+        validateForm();
+        return true;
+      }
+
       // Hide ÎNTOCMIT option from rows where a previous row already uses it
       function updateIntocmitVisibility() {
         const rows = [...tbody.querySelectorAll("tr")];
@@ -1678,16 +1700,9 @@ async function signFromFluxuri(flowId) {
             renderTransmiteBlock?.();
             // Re-sincronizează ÎNTOCMIT după ce dropdown-urile sunt populate
             autoFillFromProfile();
-            // ALOP: aplică semnatari pre-configurați dacă există prefill în așteptare
-            if (window._alopPrefillSigners?.length) {
-              const _alTbody = $("signersTbody");
-              if (_alTbody) {
-                _alTbody.innerHTML = "";
-                window._alopPrefillSigners.forEach(s => _alTbody.appendChild(signerRowTemplate(s)));
-                refreshAllDropdowns?.();
-              }
-              window._alopPrefillSigners = null;
-            }
+            // ALOP: aplică semnatari pre-configurați dacă există prefill în așteptare.
+            // #172b — logica s-a mutat în applyAlopPrefill (punct unic, idempotent).
+            applyAlopPrefill();
           }
         } catch(e) { console.warn("Nu s-au putut încărca userii:", e); }
       })();
@@ -1915,7 +1930,13 @@ async function signFromFluxuri(flowId) {
           showTab("init");
         }
         const _restored = await restoreFormState();
-        if (!_restored) {
+        // #172b — implicitele se pun DOAR dacă nu există nici stare restaurată, nici
+        // semnatari veniți din dosar. Ordinea față de loadDbUsers e nedeterministă, de
+        // aceea încercăm întâi aplicarea (idempotentă): dacă loadDbUsers a apucat deja,
+        // steagul oprește o a doua aplicare; dacă /users e lent sau eșuează, rândurile
+        // dosarului apar de aici și nu se mai pierd.
+        const _prefillPus = applyAlopPrefill();
+        if (!_restored && !_prefillPus && !window._alopPrefillApplied) {
           setDefaults();
         }
         // Preluare PDF + meta din formular.html via sessionStorage (action=new_flow_prefill)
