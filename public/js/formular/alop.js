@@ -1098,6 +1098,13 @@ async function alopGoToORD(alopId,dfId){
 }
 
 // ── Acțiuni ALOP ──────────────────────────────────────────────────────────────
+
+// #175 — harta rolurilor și scriitorul de prefill de la #174 au fost ELIMINATE de aici.
+// Semnatarii dosarului nu se mai cară spre ecranul de flux prin sessionStorage:
+// `semdoc-initiator` îi CERE de la server (`GET /api/alop/:id`) pe baza lui `alop_id`,
+// pe care îl primește deja în URL pe toate cele trei căi de lansare. Harta rol→atribut
+// trăiește acum în `public/js/shared/alop-roluri.js`, accesibilă ambelor ecrane.
+
 async function alopLaunchDfFlow(alopId,dfId){
   // Pas 1: leagă df_id la ALOP ÎNAINTE de orice navigare (garantează df_id setat)
   if(dfId){
@@ -1410,31 +1417,13 @@ async function alopRevizuiesteDF(alopId,dfId){
 document.addEventListener('DOMContentLoaded', function () {
   const _orig=window.mkFlow;
   if(typeof _orig!=='function')return;
-  // Mapare rol ALOP → atribut semnătură în semdoc-initiator
-  const ALOP_ROL={
-    initiator:'ÎNTOCMIT', sef_compartiment:'VIZAT', responsabil_cab:'VERIFICAT',
-    sef_cab:'VIZAT', director_economic:'VIZĂ ECONOMICĂ',
-    ordonator_credite:'APROBAT', cfp_propriu:'VIZĂ CFPP'
-  };
   window.mkFlow=function(ft){
     const ctx=window._alopContext;
     const alopId=new URLSearchParams(location.search).get('alop_id')||ctx?.alopId;
     if(alopId){
+      // #175 — rămâne DOAR rezerva pentru `alop_id` (URL-ul e sursa principală).
+      // Semnatarii nu se mai scriu de aici: ecranul de flux îi cere de la server.
       sessionStorage.setItem('alop_id_for_flow',alopId+'|'+ft);
-      if(ctx){
-        const semnatari=ft==='notafd'?ctx.dfSemnatari:ctx.ordSemnatari;
-        const initiatorName=(ctx.dfSemnatari||[]).find(s=>s.role==='initiator')?.name||'';
-        const prefillSigners=(semnatari||[])
-          .filter(s=>s.user_id||s.same_as_initiator)
-          .map(s=>({
-            name:s.same_as_initiator?initiatorName:(s.name||''),
-            rol:ALOP_ROL[s.role]||'SEMNAT',
-            functie:s.functie||''
-          }));
-        if(prefillSigners.length){
-          sessionStorage.setItem('docflow_prefill_signers',JSON.stringify(prefillSigners));
-        }
-      }
     }
     _orig(ft);
   };
