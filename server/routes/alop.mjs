@@ -739,63 +739,22 @@ router.get('/api/alop/:id', async (req, res) => {
   const actor = requireAuth(req, res); if (!actor) return;
   try {
     const detailParams = [req.params.id, actor.orgId];
-    let extraWhere = '';
-    // #130: aceeași rundă DB (loadActorComp existentă) extinsă cu cab_compartiment-ul org-ului —
-    // folosită mai jos atât pentru filtrul de vizibilitate CÂT ȘI pentru computeAlopCapabilities,
-    // ca interfața și garda #126 B1 să folosească EXACT aceleași valori. Sărită pentru admin/
-    // org_admin (is_owner e deja true pentru ei, is_cab n-are efect) — păstrează numărul de
-    // query-uri identic cu înainte pe calea admin (contract mock-urilor de test existente).
-    let actorComp = '', cabComp = '';
-    if (actor.role !== 'admin' && actor.role !== 'org_admin') {
-      ({ actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId));
-      detailParams.push(actor.userId);
-      const userIdx = detailParams.length;
-      let compClause = '';
-      if (actorComp !== '') {
-        detailParams.push(actorComp);
-        const compIdx = detailParams.length;
-        compClause = `
-          OR (TRIM(a.compartiment) = $${compIdx} AND TRIM(a.compartiment) <> '')
-          OR EXISTS (
-            SELECT 1 FROM users uc
-            WHERE uc.id = a.created_by
-              AND TRIM(uc.compartiment) = $${compIdx}
-              AND TRIM(uc.compartiment) <> ''
-          )
-          OR EXISTS (
-            SELECT 1 FROM users u_p2
-            WHERE TRIM(u_p2.compartiment) = $${compIdx}
-              AND TRIM(u_p2.compartiment) <> ''
-              AND (
-                u_p2.id IN (
-                  SELECT fd.assigned_to FROM formulare_df fd WHERE fd.id = a.df_id AND fd.assigned_to IS NOT NULL
-                  UNION ALL
-                  SELECT fo.assigned_to FROM formulare_ord fo WHERE fo.id = a.ord_id AND fo.assigned_to IS NOT NULL
-                )
-                OR u_p2.id::text IN (
-                  SELECT s->>'user_id' FROM jsonb_array_elements(COALESCE(a.df_semnatari,'[]'::jsonb)) s
-                    WHERE s->>'role' = 'responsabil_cab' AND s->>'user_id' IS NOT NULL
-                  UNION ALL
-                  SELECT s->>'user_id' FROM jsonb_array_elements(COALESCE(a.ord_semnatari,'[]'::jsonb)) s
-                    WHERE s->>'role' = 'responsabil_cab' AND s->>'user_id' IS NOT NULL
-                )
-              )
-          )`;
-      }
-      extraWhere = ` AND (
-        a.created_by = $${userIdx}
-        OR EXISTS (
-          SELECT 1 FROM flows fl1
-          WHERE fl1.id = a.df_flow_id
-            AND fl1.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
-        )
-        OR EXISTS (
-          SELECT 1 FROM flows fl2
-          WHERE fl2.id = a.ord_flow_id
-            AND fl2.data->'signers' @> jsonb_build_array(jsonb_build_object('userId', $${userIdx}::text))
-        )${compClause}
-      )`;
-    }
+    // #178 — SURSA UNICĂ. Aici trăia o COPIE inline a lui `buildAlopVisibilityWhere`,
+    // identică caracter cu caracter — mai puțin ieșirea devreme pe CAB, adăugată ulterior
+    // DOAR în helper. Consecința, reprodusă în producție: un utilizator din compartimentul
+    // CAB vedea toate dosarele în listă (unde regula i se aplica) și primea 404 `not_found`
+    // la deschidere (unde nu). De aici înainte lista și detaliul răspund din același loc.
+    //
+    // Indicii `$n` se calculează în helper din `params.length` DUPĂ push ⇒ se adaptează
+    // singuri: în listă userId iese `$2`, aici `$3`. Nimic de ajustat manual.
+    // `out` se completează ÎNAINTE de ieșirea pe CAB, deci `actorComp`/`cabComp` rămân
+    // disponibile pentru `computeAlopCapabilities` de mai jos, ca înainte. Pentru admin/
+    // org_admin helperul iese fără să atingă baza ⇒ ambele rămân '' și numărul de query-uri
+    // pe calea admin nu se schimbă (contract al mock-urilor de test existente).
+    const _vis = {};
+    const extraWhere = await buildAlopVisibilityWhere(actor, detailParams, _vis);
+    const actorComp = _vis.actorComp || '';
+    const cabComp   = _vis.cabComp   || '';
     const { rows } = await pool.query(`
       SELECT
         a.*,
