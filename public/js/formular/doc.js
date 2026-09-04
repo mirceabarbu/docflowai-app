@@ -2122,7 +2122,11 @@ async function confirmReturn(){
 }
 
 // ── Audit per formular (admin / org_admin) ──────────────────────────────────────
-const _AUDIT_LABELS={creat:'Creat',trimis_p2:'Trimis la Responsabil CAB',completat:'Completat de Responsabil CAB',legat_alop:'Legat de ALOP',returnat:'Returnat',transmis_flux:'Transmis în flux',revizuit:'Revizuit',sters:'Șters'};
+// #179 — vocabularul vine din sursa unică partajată (public/js/shared/audit-labels.js).
+// Harta locală acoperea 8 din cele 11 evenimente care ajung în jurnal, iar cele 3 lipsă
+// (anularea administrativă, refuzul în flux, trecerea în neaprobat) se afișau ca
+// identificator tehnic. Rezerva pe numele brut rămâne, pentru un eveniment viitor.
+const _AUDIT_LABELS = (window.DFAuditLabels && window.DFAuditLabels.LABELS) || {};
 
 async function openFormAudit(type,docId){
   // Apelat per-rând din listă: openFormAudit('df'|'ord', uuid)

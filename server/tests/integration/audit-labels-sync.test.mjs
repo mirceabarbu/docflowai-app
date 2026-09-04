@@ -56,8 +56,17 @@ function extractEventTypesFromBackend() {
   return types;
 }
 
+// #179 — vocabularul DOCUMENTULUI (creat/trimis_p2/…/FLOW_ADMIN_CANCELLED) nu mai e scris
+// literal in cele doua fisiere de admin: vine din sursa unica partajata, incarcata de
+// admin.html inaintea lor. Garda de aici ramane IDENTICA in intentie (un event fara
+// traducere pica), doar ca citeste si locul in care s-a mutat vocabularul.
+const SHARED_LABELS_PATH = 'public/js/shared/audit-labels.js';
+
 function extractLabelsFromClient(relPath) {
-  const content = readFileSync(path.join(REPO, relPath), 'utf8');
+  const content = [
+    readFileSync(path.join(REPO, relPath), 'utf8'),
+    readFileSync(path.join(REPO, SHARED_LABELS_PATH), 'utf8'),
+  ].join('\n');
   const re = /['"]?([A-Za-z_][A-Za-z_.0-9]*)['"]?\s*:\s*['"][^'"]+['"]/g;
   const labels = new Set();
   let m;

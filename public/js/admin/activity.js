@@ -17,12 +17,15 @@
   // La adăugarea unui event type nou în backend, COMPLETEAZĂ AMBELE
   // dicționare — altfel apare neredus în UI ca tag raw.
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  const OP_LABELS_RO = {
+  // #179 — cele 11 chei ale vocabularului DOCUMENTULUI (creat/trimis_p2/…/FLOW_ADMIN_CANCELLED)
+  // NU mai sunt scrise aici: vin din sursa unică `public/js/shared/audit-labels.js`, pereche a
+  // lui `server/services/audit-labels.mjs`. Restul cheilor (flux, delegări, admin) rămâne local —
+  // sursa unică acoperă doar vocabularul documentului.
+  const OP_LABELS_RO = Object.assign({
     // ─── Ciclul de viață al fluxului ──────────────────────────────────
     FLOW_CREATED:                   'Flux inițiat',
     FLOW_COMPLETED:                 'Flux finalizat',
     FLOW_CANCELLED:                 'Flux anulat',
-    FLOW_ADMIN_CANCELLED:           'Flux finalizat desfăcut administrativ',
     FLOW_TRANSMITTED:               'Document repartizat intern',
     FLOW_ACKNOWLEDGED:              'Confirmare luare la cunoștință',
     FLOW_REINITIATED:               'Flux reinițiat după refuz',
@@ -83,18 +86,7 @@
     USER_LOGIN:                     'Autentificare',
     USER_LOGOUT:                    'Deconectare',
 
-    // ─── Formulare DF/ORD (audit per formular) ───────────────────────
-    creat:                          'Document creat',
-    trimis_p2:                      'Trimis la Responsabil CAB',
-    completat:                      'Completat de Responsabil CAB',
-    legat_alop:                     'Legat de ALOP',
-    returnat:                       'Returnat ca neconform',
-    transmis_flux:                  'Transmis în flux de semnare',
-    revizuit:                       'Revizuit',
-    sters:                          'Șters',
-    neaprobat:                      'Neaprobat de semnatar',
-    flux_refuzat:                   'Flux refuzat',
-  };
+  }, (window.DFAuditLabels && window.DFAuditLabels.LABELS) || {});
 
   const OP_COLORS = {
     FLOW_CREATED: '#7c5cff', SIGNED_PDF_UPLOADED: '#2dd4bf', REFUSED: '#ff5050',
