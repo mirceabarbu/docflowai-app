@@ -2006,10 +2006,40 @@ async function signFromFluxuri(flowId) {
       new MutationObserver(() => saveFormState()).observe(tbody, { childList: true });
 
       // Buton Renunta: reseteaza formularul si sterge starea
+      // #177 — „Renunță" rupe și LEGĂTURA CU DOCUMENTUL, nu doar PDF-ul.
+      // Înainte curăța starea, ancorele, PDF-ul și semnatarii, dar lăsa intacte
+      // `prefill_doc_id`/`prefill_doc_type` (în URL ȘI în sessionStorage) și `alop_id`.
+      // Consecința nu era cosmetică: fluxul creat DUPĂ renunțare primea `meta.dfId` al
+      // documentului vechi, iar `link-flow` muta pointerul `formulare_df.flow_id` al acelui
+      // document pe fluxul nou ⇒ un PDF fără nicio legătură devenea „fluxul semnat" al unui
+      // DF real. Cu poarta #170, cazul iese fie ca 409 derutant, fie — pe un flux vechi
+      // anulat/refuzat — ca legătură greșită TĂCUTĂ.
+      function _rupeLegaturaDocument() {
+        // 1. sessionStorage — sursa de rezervă, folosită pe calea mkFlow.
+        //    ⛔ Nu atinge cheile de la `:2508`/`:2512` mai devreme decât acolo pe calea
+        //       normală de creare; aici suntem pe calea de ABANDON, unde tocmai asta vrem.
+        sessionStorage.removeItem("docflow_prefill_doc_id");
+        sessionStorage.removeItem("docflow_prefill_doc_type");
+        sessionStorage.removeItem("alop_id_for_flow");
+        // 2. URL — sursa primară. Rămânea neschimbat, fiindcă nimic din fișier nu rescria
+        //    adresa. Păstrăm calea și eventualii parametri străini; scoatem doar prefill-ul.
+        try {
+          const _u = new URL(location.href);
+          ["action", "prefill_doc_id", "prefill_doc_type", "alop_id", "alop_doc_type"]
+            .forEach(k => _u.searchParams.delete(k));
+          history.replaceState(null, "", _u.pathname + (_u.search || "") + _u.hash);
+        } catch (e) { console.warn("Renunț: nu am putut curăța URL-ul", e); }
+        // 3. Atașamentele moștenite din formular — caseta e umplută o singură dată, la
+        //    încărcare, deci ascunderea e definitivă pentru sesiunea de pagină.
+        const _fa = $("formAttachPreview");
+        if (_fa) { _fa.innerHTML = ""; _fa.style.display = "none"; }
+      }
+
       $("btnRenunta").addEventListener("click", () => {
-        if (!confirm("Renunți la fluxul curent? PDF-ul și semnătarii configurați vor fi șterși.")) return;
+        if (!confirm("Renunți la fluxul curent? PDF-ul, semnătarii configurați și legătura cu documentul din formular vor fi șterse.")) return;
         clearFormState();
         resetAncoreState();
+        _rupeLegaturaDocument();
         pdfB64 = null;
         setPdfInfo("Nu ai selectat încă un PDF.");
         const clearBtn = $("btnClearPdf");
