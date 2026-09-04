@@ -67,14 +67,23 @@ describe('#175 — prefill ALOP citit de la server', () => {
     expect(bare, 'a rămas un apel fără await').toHaveLength(0);
   });
 
-  it('4 fără alop_id, applyAlopPrefill iese devreme — niciun apel de rețea pe fluxul normal', () => {
+  // #176 — INTENȚIA rămâne aceeași („fără dosar, niciun apel de rețea pe fluxul normal"),
+  // dar mecanismul s-a schimbat: `_alopIdDinUrl` a fost înlocuit de `_alopPentruPrefill`
+  // (cheia directă, apoi documentul). Garda din applyAlopPrefill e acum pe rezultatul
+  // rezolvării, iar `_alopDinDocument` iese ÎNAINTE de orice fetch când nu există document.
+  it('4 fără dosar, applyAlopPrefill iese devreme — niciun apel de rețea pe fluxul normal', () => {
     const body = mainSrc.match(/async function applyAlopPrefill\(\)\s*\{[\s\S]*?\n {6}\}/)[0];
-    const idxGuard = body.indexOf('if (!alopId) return false;');
+    const idxGuard = body.indexOf('if (!_sursa) return false;');
     const idxFetch = body.indexOf('_apiFetch');
     expect(idxGuard).toBeGreaterThan(-1);
     expect(idxFetch).toBeGreaterThan(idxGuard);
-    expect(body).toContain('_alopIdDinUrl()');
-    expect(mainSrc).toContain('function _alopIdDinUrl()');
+    expect(body).toContain('await _alopPentruPrefill()');
+
+    // Nici rezolvarea din document nu lovește rețeaua fără un id de document.
+    const dinDoc = mainSrc.match(/async function _alopDinDocument\(\)\s*\{[\s\S]*?\n {6}\}/)[0];
+    const idxDocGuard = dinDoc.indexOf('if (!docId || !dtype) return null;');
+    expect(idxDocGuard).toBeGreaterThan(-1);
+    expect(dinDoc.indexOf('_apiFetch')).toBeGreaterThan(idxDocGuard);
   });
 
   it('5 alop.js nu mai conține scriitorul, harta sau cheia de sesiune', () => {

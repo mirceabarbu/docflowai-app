@@ -808,11 +808,52 @@
       // Aici rămâne o singură dependență: parametrul din URL, prezent pe toate căile.
       // Structura idempotentă de la #172b se păstrează — steagul separat de date, ca blocul
       // „Default load" să deosebească „n-a existat prefill" de „s-a aplicat deja".
-      function _alopIdDinUrl() {
-        const p = new URLSearchParams(location.search).get("alop_id");
-        if (p) return p;
-        const s = sessionStorage.getItem("alop_id_for_flow");
-        return s ? s.split("|")[0] : "";
+      // #176 — CHEIA nu mai vine din contextul browserului, ci din DOCUMENT.
+      // #175 a mutat datele pe server, dar `alop_id` ajungea în URL doar dacă
+      // `window._alopContext` era populat (core.js:954) — iar el e null ori de câte ori
+      // documentul e deschis din lista de DF/ORD în loc de cardul ALOP. Documentul însă
+      // își știe dosarul: coloana `source_alop_id`, populată pe 166 din 166 de DF-uri în
+      // producție. Iar id-ul documentului e prezent pe TOATE căile de lansare (în URL pe
+      // cele două din card, în sessionStorage pe calea mkFlow, scris necondiționat).
+      // Ordinea: cheia directă, dacă există (un apel de rețea economisit), altfel documentul.
+      function _alopDirect() {
+        const up = new URLSearchParams(location.search);
+        const id = up.get("alop_id")
+          || (sessionStorage.getItem("alop_id_for_flow") || "").split("|")[0];
+        if (!id) return null;
+        const ft = up.get("alop_doc_type")
+          || (sessionStorage.getItem("alop_id_for_flow") || "").split("|")[1]
+          || up.get("prefill_doc_type")
+          || sessionStorage.getItem("docflow_prefill_doc_type")
+          || "notafd";
+        return { alopId: id, ft: ft === "ordnt" ? "ordnt" : "notafd" };
+      }
+
+      async function _alopDinDocument() {
+        const up = new URLSearchParams(location.search);
+        const docId = up.get("prefill_doc_id")
+          || sessionStorage.getItem("docflow_prefill_doc_id");
+        const dtype = up.get("prefill_doc_type")
+          || sessionStorage.getItem("docflow_prefill_doc_type");
+        if (!docId || !dtype) return null;
+        const ft = dtype === "ordnt" ? "ordnt" : "notafd";
+        const api = ft === "ordnt" ? "/api/formulare-ord" : "/api/formulare-df";
+        try {
+          const r = await _apiFetch(`${api}/${encodeURIComponent(docId)}`, { method: "GET" });
+          if (!r.ok) { console.warn("ALOP prefill: documentul nu a putut fi citit", r.status); return null; }
+          const _j = await r.json();
+          // Ruta întoarce `{ ok, document }`; fallback pe obiectul brut dacă învelitoarea
+          // se schimbă vreodată.
+          const doc = (_j && _j.document) ? _j.document : _j;
+          // `source_alop_id` e pe document și e populat integral; `alop_id` e derivat prin
+          // pointerul dosarului și poate arăta spre altă revizie ⇒ al doilea e doar rezervă.
+          const alopId = (doc && (doc.source_alop_id || doc.alop_id)) || "";
+          return alopId ? { alopId, ft } : null;
+        } catch (e) { console.warn("ALOP prefill: eroare la citirea documentului", e); return null; }
+      }
+
+      async function _alopPentruPrefill() {
+        return _alopDirect() || await _alopDinDocument();
       }
 
       // Leagă persoanele de rândurile deja randate, după ce `_dbUsers` e disponibil.
@@ -835,13 +876,11 @@
 
       async function applyAlopPrefill() {
         if (window._alopPrefillApplied) return false;
-        const alopId = _alopIdDinUrl();
-        if (!alopId) return false;                      // flux normal, fără ALOP — no-op
+        const _sursa = await _alopPentruPrefill();
+        if (!_sursa) return false;                      // flux normal, fără ALOP — no-op
+        const { alopId, ft } = _sursa;
         const _alTbody = $("signersTbody");
         if (!_alTbody) return false;
-        const ft = new URLSearchParams(location.search).get("alop_doc_type")
-          || (sessionStorage.getItem("alop_id_for_flow") || "").split("|")[1]
-          || "notafd";
         let dosar = null;
         try {
           const r = await _apiFetch(`/api/alop/${encodeURIComponent(alopId)}`, { method: "GET" });
@@ -877,6 +916,10 @@
         refreshAllDropdowns?.();
         _alopLeagaPersoane();
         validateForm();
+        // #176 — urmă de diagnostic: patru loturi au eșuat fiindcă nu se putea vedea din
+        // afară CE a găsit funcția. O singură linie, doar pe calea care chiar a aplicat.
+        console.info("[ALOP prefill]", { alopId, ft, roluri: randuri.length,
+          cuPersoana: randuri.filter(r => r.email).length });
         return true;
       }
 
