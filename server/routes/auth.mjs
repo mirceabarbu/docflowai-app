@@ -15,6 +15,7 @@ import {
   setAuthCookie, clearAuthCookie, setCsrfCookie,
 } from '../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, writeAuditEvent } from '../db/index.mjs';
+import { validatePassword } from '../services/password-policy.mjs';
 import { logger } from '../middleware/logger.mjs';
 
 const router = Router();
@@ -257,8 +258,11 @@ router.post('/auth/change-password', csrfMiddleware, async (req, res) => {
   if (!current_password || !new_password) return res.status(400).json({ error: 'missing_fields' });
   // Minim 10 caractere (era 6). 10, nu 12: generatePassword() produce `xxx-xxx-xxx` = 11 caractere;
   // un minim de 12 ar invalida parolele generate de admin. Fără reguli de compoziție (NIST 800-63B).
-  if (new_password.length < 10) return res.status(400).json({ error: 'password_too_short', message: 'Parola nouă trebuie să aibă minim 10 caractere.' });
-  if (new_password.length > 200) return res.status(400).json({ error: 'password_too_long', max: 200 });
+  // #181 — politica de lungime vine din services/password-policy.mjs (SURSĂ UNICĂ). Aceleași
+  // praguri și aceleași coduri de eroare ca înainte; se schimbă doar locul unde sunt definite.
+  // Motivul: aceeași regulă era scrisă în trei locuri, cu două valori diferite.
+  const _pol = validatePassword(new_password);
+  if (!_pol.ok) return res.status(400).json({ error: _pol.error, message: _pol.message, ...(_pol.max ? { max: _pol.max } : {}) });
   try {
     const { rows } = await pool.query('SELECT password_hash FROM users WHERE id=$1', [actor.userId]);
     if (!rows[0]) return res.status(404).json({ error: 'user_not_found' });

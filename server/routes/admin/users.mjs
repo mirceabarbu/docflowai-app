@@ -33,6 +33,7 @@ import { gwsIsConfigured, findAvailableEmail, provisionGwsUser, verifyGws, build
 import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, getAppUrl } from './_helpers.mjs';
 import { resolveActorOr } from '../../services/actor-identity.mjs';
+import { validatePassword } from '../../services/password-policy.mjs';
 
 const router = Router();
 
@@ -195,7 +196,15 @@ router.post('/admin/users', csrfMiddleware, async (req, res) => {
   // org_admin nu poate crea alt admin sau org_admin cu rol superior propriului rol
   const allowedRoles = actor.role === 'admin' ? ['admin', 'org_admin', 'user'] : ['user'];
   const validRole = allowedRoles.includes(role) ? role : 'user';
-  const plainPwd  = password && password.length >= 4 ? password : generatePassword();
+  // #181 — dacă adminul NU trimite parolă, platforma generează una (comportament neschimbat,
+  // câmpul din interfață e opțional: „generată automat dacă e gol"). Dacă trimite una care
+  // nu respectă politica, primește 400 — înainte îi era înlocuită tăcut cu una generată, iar
+  // el rămânea cu impresia că a setat parola pe care a scris-o.
+  if (password != null && String(password).length > 0) {
+    const _pol = validatePassword(password);
+    if (!_pol.ok) return res.status(400).json({ error: _pol.error, message: _pol.message, ...(_pol.max ? { max: _pol.max } : {}) });
+  }
+  const plainPwd  = (password != null && String(password).length > 0) ? password : generatePassword();
   const phoneValidation = validatePhone((phone || '').trim());
   if (!phoneValidation.valid) return res.status(400).json({ error: 'phone_invalid', message: phoneValidation.error });
   const phoneVal = phoneValidation.normalized || (phone || '').trim();
@@ -557,7 +566,12 @@ router.put('/admin/users/:id', csrfMiddleware, async (req, res) => {
   if (notif_email !== undefined) { updates.push(`notif_email=$${i++}`); vals.push(!!notif_email); }
   if (notif_whatsapp !== undefined) { updates.push(`notif_whatsapp=$${i++}`); vals.push(!!notif_whatsapp); }
   let newPlainPwd = null;
-  if (password && password.length >= 4) {
+  // #181 — o parolă trimisă și respinsă de politică întoarce acum 400, nu 200 tăcut.
+  // Înainte, o parolă sub prag nu intra în lista de updates: răspunsul era 200, iar adminul
+  // credea că a schimbat-o. Câmpul gol înseamnă în continuare „nu atinge parola".
+  if (password != null && String(password).length > 0) {
+    const _pol = validatePassword(password);
+    if (!_pol.ok) return res.status(400).json({ error: _pol.error, message: _pol.message, ...(_pol.max ? { max: _pol.max } : {}) });
     updates.push(`password_hash=$${i++}`); vals.push(await hashPassword(password));
     newPlainPwd = password;
   }
@@ -612,9 +626,18 @@ router.post('/admin/users/:id/reset-password', csrfMiddleware, async (req, res) 
     // Verifică că target aparține aceleiași organizații ca actorul
     const { rows: actorRows } = await pool.query('SELECT org_id FROM users WHERE id=$1', [actor.userId]);
     const actorOrgId = actorRows[0]?.org_id || null;
-    // FIX: role='admin' (super-admin) poate reseta parola oricărui user
-    if (actor.role === 'org_admin' && actorOrgId && target.org_id && actorOrgId !== target.org_id) {
-      return res.status(403).json({ error: 'forbidden_cross_tenant' });
+    // #181 — FAIL-CLOSED, aceeași formă ca sora ei de la PUT /admin/users/:id (P0-02).
+    // Forma veche refuza doar când putea DOVEDI că organizațiile diferă: dacă oricare dintre
+    // cele două org_id era NULL, condiția cădea și resetarea trecea. Un org_admin fără org_id
+    // e o stare invalidă, nu o permisiune — iar o resetare reușită înseamnă parolă nouă
+    // trimisă pe email, adică preluare de cont.
+    // Platform-adminul (role === 'admin') rămâne cross-org, deliberat, ca la surori.
+    if (actor.role === 'org_admin') {
+      if (!actorOrgId || actorOrgId !== target.org_id) {
+        logger.warn({ actorId: actor.userId, targetId, actorOrgId, targetOrgId: target.org_id },
+          '[SEC] POST /admin/users/:id/reset-password cross-tenant REFUZAT');
+        return res.status(403).json({ error: 'forbidden_cross_tenant' });
+      }
     }
     const newPwd = generatePassword();
     // SEC-04: increment token_version → invalidează JWT-urile active ale utilizatorului
