@@ -8,6 +8,7 @@ import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getU
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, actorCanAccessOrg } from '../../services/authz-scope.mjs';
+import { expeditorExtern } from '../../services/mail-from.mjs';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 
@@ -108,6 +109,23 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
     const MAIL_FROM = process.env.MAIL_FROM || 'DocFlowAI <noreply@docflowai.ro>';
     if (!RESEND_API_KEY) return res.status(503).json({ error: 'mail_not_configured', message: 'Email-ul nu este configurat pe server.' });
 
+    // #180 — expeditorul poartă numele INSTITUȚIEI, nu al platformei. Destinatarii externi
+    // nu cunosc platforma; un mail de la „DocFlowAI" pare de la un terț necunoscut.
+    // Adresa rămâne neschimbată (DKIM se semnează pe domeniul ei) — se schimbă doar numele
+    // afișat. Ancora e `data.orgId`, nu `actor.org_id`: documentul aparține instituției
+    // fluxului, iar un admin global poate trimite pentru altă instituție.
+    // O singură interogare pe cheie primară, ÎNAINTE de bucla pe destinatari (până la 20).
+    // Orice eșec e non-fatal: se cade pe MAIL_FROM, adică pe comportamentul de dinainte.
+    let _fromExtern = MAIL_FROM;
+    try {
+      if (data.orgId) {
+        const { rows: _org } = await pool.query('SELECT name FROM organizations WHERE id = $1', [data.orgId]);
+        _fromExtern = expeditorExtern(_org[0]?.name, MAIL_FROM);
+      }
+    } catch (e) {
+      logger.warn({ err: e, flowId }, 'send-email: nu am putut citi numele instituției; folosesc expeditorul implicit');
+    }
+
     // b97: template HTML din emailTemplates.mjs::emailSendExtern
     const signersForTemplate = (data.signers || []).map(s => ({
       name: s.name || s.email,
@@ -177,7 +195,7 @@ router.post('/flows/:flowId/send-email', async (req, res) => {
       // Tracking primar: click pe link DocFlowAI; tracking secundar: pixel 1x1
       const trackingPixelUrl = `${appBase}/p/${trackingId}`;
       const htmlWithTracking = html.replace('</body>', `<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;border:0;" alt="" /></body>`);
-      const payload = { from: MAIL_FROM, to: recipient, subject: subject.trim(), html: htmlWithTracking };
+      const payload = { from: _fromExtern, to: recipient, subject: subject.trim(), html: htmlWithTracking };
       if (attachments.length > 0) payload.attachments = attachments;
 
       try {

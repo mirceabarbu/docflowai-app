@@ -24,6 +24,7 @@ import { requireDb } from './_helpers.mjs';
 import { dosarKeyExpr } from '../../services/df-dosar-key.mjs';
 import { dfAprobatSql, docAprobatSql } from '../../services/df-aprobat-sql.mjs';
 import { narrowCanDeleteRows } from '../../services/formular-capabilities.mjs';
+import { AUDIT_LABELS, etichetaAudit } from '../../services/audit-labels.mjs';
 
 let PDFLibFormular = null;
 try { PDFLibFormular = await import('pdf-lib'); } catch (e) { logger.warn('⚠️ pdf-lib indisponibil pentru export audit formular PDF'); }
@@ -868,17 +869,11 @@ router.get('/api/formulare/list', async (req, res) => {
 // GET /api/formulare-audit/:type/:id?format=json|csv|pdf
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Etichete RO pentru event_type (folosite în timeline, CSV, PDF)
-const FORMULAR_AUDIT_LABELS = {
-  creat:         'CREAT',
-  trimis_p2:     'TRIMIS LA RESPONSABIL CAB',
-  completat:     'COMPLETAT DE RESPONSABIL CAB',
-  legat_alop:    'LEGAT DE ALOP',
-  returnat:      'RETURNAT',
-  transmis_flux: 'TRANSMIS ÎN FLUX',
-  revizuit:      'REVIZUIT',
-  sters:         'ȘTERS',
-};
+// #179 — etichetele RO vin din sursa unică `services/audit-labels.mjs` (partajată cu
+// clientul prin `public/js/shared/audit-labels.js`). Harta locală acoperea 8 din cele 11
+// evenimente care ajung în jurnalul unui formular, iar cele 3 lipsă apăreau în CSV/PDF ca
+// identificator tehnic — inclusiv anularea administrativă a unui flux finalizat.
+// Forma de MAJUSCULE a exportului se obține prin `{ upper: true }`, nu printr-o a doua listă.
 
 router.get('/api/formulare-audit/:type/:id', async (req, res) => {
   if (requireDb(res)) return;
@@ -922,7 +917,11 @@ router.get('/api/formulare-audit/:type/:id', async (req, res) => {
     };
 
     const fmtDate = iso => iso ? new Date(iso).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' }) : '—';
-    const evLabel = t => FORMULAR_AUDIT_LABELS[t] || (t || '').replace(/_/g, ' ').toUpperCase();
+    // Rezerva pentru un eveniment fără etichetă rămâne NESCHIMBATĂ (underscore → spațiu,
+    // majuscule), ca exportul să fie byte-identic pentru orice cheie necunoscută.
+    const evLabel = t => AUDIT_LABELS[t]
+      ? etichetaAudit(t, { upper: true })
+      : (t || '').replace(/_/g, ' ').toUpperCase();
     const typeLabel = type === 'ord' ? 'Ordonanțare de Plată' : 'Document de Fundamentare';
 
     // ── CSV ──────────────────────────────────────────────────────────────────
