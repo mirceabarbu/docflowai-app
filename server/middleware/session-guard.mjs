@@ -159,7 +159,31 @@ export function sessionGuard() {
       });
     }
 
-    // 10. Rândul validat se pune pe req ⇒ `resolveActor` îl refolosește, fără al doilea query.
+    // 10. #182 — schimbarea obligatorie a parolei. Steagul se pune la creare, la bulk-import,
+    //     la resetarea parolei și la retrimiterea credențialelor; se stinge EXCLUSIV la
+    //     POST /auth/change-password. Până acum era doar un banner desenat din localStorage,
+    //     adică o sugestie: contul putea opera nelimitat, inclusiv semna, cu o parolă generată
+    //     de administrator și cunoscută de el.
+    //
+    //     403, nu 401: sesiunea E validă, iar 401 ar declanșa deconectarea în frontend și l-ar
+    //     trimite pe om înapoi la logare, într-o buclă — se loghează, e deconectat, se loghează.
+    //     403 spune „ești cine zici că ești, dar nu poți face asta încă".
+    //
+    //     Nu e nevoie de listă albă: `/auth/` NU e printre GUARDED_PREFIXES, deci
+    //     change-password, /auth/me, /auth/csrf-token și ieșirea din cont trec pe lângă poartă.
+    //     Paginile HTML nu sunt nici ele guarded ⇒ omul își poate încărca pagina, vede
+    //     bannerul și își schimbă parola. Dacă adaugi vreodată `/auth/` la GUARDED_PREFIXES,
+    //     poarta asta devine o capcană fără ieșire.
+    if (row.force_password_change === true) {
+      logger.warn({ userId: payload.userId, path: req.path },
+        'sessionGuard: schimbarea parolei e obligatorie — acces refuzat (403)');
+      return res.status(403).json({
+        error: 'password_change_required',
+        message: 'Trebuie să îți schimbi parola înainte de a continua.',
+      });
+    }
+
+    // 11. Rândul validat se pune pe req ⇒ `resolveActor` îl refolosește, fără al doilea query.
     //     Astfel „fără cache" nu adaugă un query pe rutele care chemau deja resolveActor.
     req._actorRow = row;
     return next();
