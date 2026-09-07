@@ -19,19 +19,9 @@
   let bellBtn = null;
   let _refreshPromise = null; // deduplică cererile simultane de refresh
 
-  // SEC-88.3: coduri de eroare pe care sessionGuard (server/middleware/session-guard.mjs)
-  // le întoarce cu 401. TOATE înseamnă același lucru: serverul a decis că sesiunea nu mai e
-  // validă. NU se încearcă refreshToken() pentru ele — /auth/refresh (auth.mjs) validează DOAR
-  // deleted_at și token_version, NU rolul și NU organizația. Un refresh pe `session_org_stale`
-  // ar REUȘI și ar emite tăcut un token pentru org-ul NOU, lăsând UI-ul populat cu datele
-  // org-ului VECHI — exact scurgerea între instituții pe care prompturile 86-88 au închis-o.
-  // Listă SEPARATĂ de cea refreshabilă de mai jos: aici mergem direct la login.
-  const REVOKED_CODES = [
-    'session_revoked',    // cont dezactivat sau inexistent
-    'token_revoked',      // token_version bump-uit (reset parolă / dezactivare / schimbare rol)
-    'session_role_stale', // rolul din JWT nu mai corespunde celui din DB
-    'session_org_stale',  // organizația din JWT nu mai corespunde celei din DB
-  ];
+  // #183: REVOKED_CODES s-a mutat în public/js/shared/df-api.js (window.DFApi.REVOKED_CODES)
+  // împreună cu implementarea canonică de apiFetch — e o listă de coduri de eroare ale
+  // SERVERULUI, nu o preocupare a widget-ului de notificări.
 
   // ── CSS injectat ──────────────────────────────────────────
   const STYLE = `
@@ -125,8 +115,6 @@
    * Dacă eșuează → șterge sesiunea și redirectează la login.
    * Apelurile simultane sunt deduplicate (un singur request în zbor).
    */
-  let _lastCsrfToken = null; // stocat după refresh pentru retry imediat
-
   async function refreshToken() {
     if (_refreshPromise) return _refreshPromise;
     _refreshPromise = (async () => {
@@ -142,8 +130,10 @@
         });
         if (r.ok) {
           const d = await r.json();
-          // Stocăm csrfToken din body — disponibil imediat, fără să așteptăm cookie
-          if (d.csrfToken) _lastCsrfToken = d.csrfToken;
+          // Stocăm csrfToken din body — disponibil imediat, fără să așteptăm cookie.
+          // #183: publicat prin sursa unică (window._csrfToken rămâne contractul global),
+          // ca retry-ul de csrf_invalid din DFApi.fetch să-l vadă imediat după refresh.
+          if (d.csrfToken && window.DFApi) window.DFApi.setCsrf(d.csrfToken);
           // SEC-01: token-ul NU mai este stocat în localStorage
           // Actualizează datele user (non-sensibile) pentru UI
           const existing = JSON.parse(localStorage.getItem('docflow_user') || '{}');
@@ -183,68 +173,23 @@
    * apiFetch — înlocuitor pentru fetch() cu refresh automat la 401.
    * Folosit intern de widget; expus pe window.docflow.apiFetch pentru pagini.
    *
-   * La 401 token_invalid_or_expired: încearcă refresh, repetă request-ul o dată.
-   * La 401 după refresh eșuat: redirect login.
+   * #183: implementarea a fost MUTATĂ în public/js/shared/df-api.js (sursa unică).
+   * Aici rămâne doar delegarea — `window.docflow.apiFetch` e contractul pe care se
+   * bazează cele trei shim-uri și nu se schimbă.
+   *
+   * ⚠️ df-api.js TREBUIE încărcat ÎNAINTEA acestui fișier pe fiecare pagină
+   * (test de regresie: server/tests/unit/df-api-sursa-unica.test.mjs, cazul 11).
    */
-  async function apiFetch(url, options = {}) {
-    const headers = { ...(options.headers || {}) };
-    delete headers['Authorization'];
+  function apiFetch(url, options = {}) {
+    return window.DFApi.fetch(url, options);
+  }
 
-    const method = (options?.method || 'GET').toUpperCase();
-    const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method);
-
-    // getCsrf: preferinta window._csrfToken (setat la init pagina) > cookie
-    function getCsrf() {
-      if (window._csrfToken) return window._csrfToken;
-      const c = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-      return c ? c.split('=')[1] : null;
-    }
-
-    if (isMutation) { const t = getCsrf(); if (t) headers['x-csrf-token'] = t; }
-
-    let res = await fetch(url, { ...options, headers, credentials: 'include' });
-
-    // Refresh reactiv la 401
-    if (res.status === 401) {
-      let body = {};
-      try { body = await res.clone().json(); } catch(e) {}
-      const err = body?.error || '';
-      // SEC-88.3: sesiune revocată de sessionGuard → direct la login, FĂRĂ refresh (ar fi
-      // inutil pentru revoked/token_revoked și NOCIV pentru role/org_stale — vezi REVOKED_CODES).
-      if (REVOKED_CODES.includes(err)) {
-        redirectLogin();
-        return res;
-      }
-      if (err === 'token_invalid_or_expired' || err === 'unauthorized' || err === 'token_invalid') {
-        const ok = await refreshToken();
-        if (ok) res = await fetch(url, { ...options, headers, credentials: 'include' });
-      }
-    }
-
-    // Retry la 403 csrf_invalid — cere token nou de la /auth/csrf-token, apoi retry
-    if (res.status === 403 && isMutation) {
-      let body = {};
-      try { body = await res.clone().json(); } catch(e) {}
-      if (body?.error === 'csrf_invalid') {
-        let freshCsrf = null;
-        // Primul fallback: /auth/csrf-token (fara side effects, simplu si rapid)
-        try {
-          const rr = await fetch('/auth/csrf-token', { credentials: 'include' });
-          if (rr.ok) { const rd = await rr.json(); freshCsrf = rd.csrfToken || null; }
-        } catch(e) {}
-        // Al doilea fallback: /auth/refresh (reinnoire completa sesiune)
-        if (!freshCsrf) {
-          const ok = await refreshToken();
-          if (ok) freshCsrf = _lastCsrfToken || getCsrf();
-        }
-        if (freshCsrf) window._csrfToken = freshCsrf;
-        const newHeaders = { ...headers };
-        const t2 = getCsrf(); if (t2) newHeaders['x-csrf-token'] = t2;
-        res = await fetch(url, { ...options, headers: newHeaders, credentials: 'include' });
-      }
-    }
-
-    return res;
+  // Widget-ul își înregistrează cârligele în sursa unică: refresh-ul și redirectul
+  // rămân aici fiindcă țin de ciclul lui de viață (deduplicare, WebSocket, toast-uri).
+  // Gardat: notif-toast-xss.test.mjs importă acest fișier izolat, fără df-api.js.
+  if (window.DFApi) {
+    window.DFApi._setRefreshHook(refreshToken);
+    window.DFApi._setRedirectHook(redirectLogin);
   }
 
   // ── Refresh proactiv periodic (la fiecare 10 minute verifică dacă mai are < 20 min) ──

@@ -21,16 +21,23 @@ function showAlert(msg, type = 'err') {
 }
 function hideAlert() { $('alertBox').style.display = 'none'; }
 
+// SEC-88.3: bulk-signer.html nu încarcă notif-widget.js, deci nu beneficiază de handler-ul
+// global de refresh. URL canonic de login în toată aplicația: /login (NU /login.html). Plus
+// ?next=, ca utilizatorul să se întoarcă exact aici după reautentificare.
+//
+// #183: redirectul NU e șters, ci MUTAT în cârligul sursei unice. Fără widget nu există
+// cârlig de refresh, iar DFApi.fetch cheamă atunci cârligul de redirect pe orice 401 —
+// exact comportamentul de dinainte. Câștig colateral: apelurile de aici trimit acum și
+// antetul CSRF, pe care implementarea locală nu-l trimitea deloc.
+window.DFApi._setRedirectHook(function () {
+  try { localStorage.removeItem('docflow_user'); } catch (_) {}
+  location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
+});
+
 async function _apiFetch(url, opts = {}) {
-  const r = await fetch(url, { credentials: 'include', ...opts });
-  // SEC-88.3: bulk-signer.html nu încarcă notif-widget.js, deci nu beneficiază de handler-ul
-  // global. URL canonic de login în toată aplicația: /login (NU /login.html). Plus ?next=,
-  // ca utilizatorul să se întoarcă exact aici după reautentificare.
-  if (r.status === 401) {
-    try { localStorage.removeItem('docflow_user'); } catch (_) {}
-    location.href = '/login?next=' + encodeURIComponent(location.pathname + location.search);
-    throw new Error('401');
-  }
+  const r = await window.DFApi.fetch(url, opts);
+  // Redirectul l-a făcut deja cârligul; excepția oprește apelantul, ca înainte.
+  if (r.status === 401) throw new Error('401');
   return r;
 }
 

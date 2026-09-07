@@ -8,7 +8,7 @@
 // SEC-P0.1: bump obligatoriu — handler-ul `activate` șterge toate cache-urile
 // `docflowai-*` diferite de CACHE_STATIC curent, deci acest bump purjează automat
 // răspunsurile API autentificate cache-uite de versiunile anterioare.
-const CACHE_VERSION = 'docflowai-v303';
+const CACHE_VERSION = 'docflowai-v304';
 const CACHE_STATIC = `${CACHE_VERSION}-static`;
 
 // Assets de pre-cacheuit la install
@@ -19,6 +19,10 @@ const PRECACHE_ASSETS = [
   '/icon-192.png',
   '/icon-72.png',
   '/mobile.css',
+  // #183: dependență HARD a lui notif-widget.js (window.DFApi). Widget-ul e pre-cache-uit,
+  // deci sursa unică trebuie să fie și ea — altfel, offline, widget-ul se încarcă din cache
+  // fără DFApi și orice apiFetch aruncă.
+  '/js/shared/df-api.js',
   '/notif-widget.js',
   '/js/df-utils.js',
   '/js/df-entitlements.js',
