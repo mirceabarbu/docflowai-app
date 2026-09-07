@@ -273,6 +273,33 @@ max: 20, idleTimeoutMillis: 30_000
 - Webhook: HMAC-SHA256
 - Rate limiting in-memory (nu supraviețuiește restarturilor Railway)
 
+### Schimbarea obligatorie a parolei e o POARTĂ pe server (din v3.9.837, #182)
+
+`users.force_password_change` e **aplicat** în `server/middleware/session-guard.mjs`, imediat
+după verificările de revocare: rândul cu steagul pus primește **403 `password_change_required`**
+pe orice rută autentificată. Înainte era citit și nefolosit — singura consecință era un banner
+desenat din `localStorage`, adică o sugestie: contul putea opera nelimitat, inclusiv semna, cu
+parola generată de administrator și cunoscută de el.
+
+- **403, nu 401.** Sesiunea E validă; un 401 ar declanșa deconectarea în frontend și ar produce
+  o buclă de logare.
+- **Ieșirea din poartă e structurală, nu o listă albă:** `/auth/` NU e în `GUARDED_PREFIXES`,
+  deci `POST /auth/change-password` (singurul loc din tot codul care stinge steagul, `auth.mjs:277`)
+  rămâne accesibil, la fel `/auth/me`, `/auth/csrf-token`, logout și paginile HTML. ⛔ Dacă adaugi
+  vreodată `/auth/` la `GUARDED_PREFIXES`, poarta devine o capcană fără ieșire — conturile cu
+  steagul pus mor definitiv.
+- **Ordinea gărzilor e fixată prin test:** revocarea sesiunii (cont dezactivat, `token_version`,
+  rol/org învechit) are prioritate ⇒ 401, nu 403.
+- `ws/auth.mjs` NU citește steagul (oglindește doar verificările de revocare) ⇒ un cont cu steagul
+  pus își poate deschide WebSocket-ul de notificări. Intenționat: WS e push read-only.
+- **Frontendul nu tratează încă `password_change_required`** — lot separat, după consolidarea celor
+  patru definiții ale lui `_apiFetch` (`admin/core.js`, `df-apifetch-shim-full.js`,
+  `df-apifetch-shim.js`, `bulk-signer/bulk-signer.js`). Până atunci, bannerul de la logare și
+  butonul „Schimbă parola" din el sunt calea de ieșire.
+
+Teste: `server/tests/db/force-password-change-gate.test.mjs` (ciclul complet pe Postgres real) +
+`server/tests/unit/session-guard.test.mjs`.
+
 ---
 
 ## Frontend

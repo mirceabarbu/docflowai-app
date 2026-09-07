@@ -249,3 +249,85 @@ describe('sessionGuard — SEC-88.1: rute scăpate de startsWith', () => {
     });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #182 — force_password_change devine poartă reală pe server.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('#182 — IEȘIREA din poartă: rutele de /auth/ NU sunt păzite (poarta nu e capcană fără ieșire)', () => {
+  // Testul care ține poarta să nu blocheze omul definitiv. Dacă vreuna din căile de mai jos
+  // ajunge PĂZITĂ, un cont cu force_password_change=TRUE nu-și mai poate schimba parola
+  // NICIODATĂ: 403 la change-password, 403 la orice altceva, cont mort.
+  for (const path of ['/auth/change-password', '/auth/me', '/auth/csrf-token', '/auth/logout', '/auth/refresh']) {
+    it(`${path} → NEPĂZITĂ ⇒ rămâne accesibilă cu steagul pus`, async () => {
+      expect(isGuardedPath(path)).toBe(false);
+      // Chiar cu un cont care ar declanșa poarta, garda nici nu atinge DB-ul pe calea asta.
+      const { res, next } = await run({ path, token: sign(goodPayload()) });
+      expect(h.queryMock).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledOnce();
+      expect(res.statusCode).toBeNull();
+    });
+  }
+});
+
+describe('#182 — poarta force_password_change', () => {
+  for (const path of ['/api/x', '/flows', '/flows/1', '/admin/users', '/bulk-signing/initiate', '/my-flows']) {
+    it(`${path} cu force_password_change=true → 403 password_change_required, fără next`, async () => {
+      h.queryMock.mockResolvedValueOnce({ rows: [row({ force_password_change: true })] });
+      const { req, res, next } = await run({ path, token: sign(goodPayload()) });
+      expect(isGuardedPath(path)).toBe(true);
+      expect(res.statusCode).toBe(403);
+      expect(res.body).toMatchObject({ error: 'password_change_required' });
+      expect(next).not.toHaveBeenCalled();
+      expect(req._actorRow).toBeUndefined();   // nu ajunge la pasul 11
+    });
+  }
+
+  it('force_password_change=false → next (nedeteriorare)', async () => {
+    h.queryMock.mockResolvedValueOnce({ rows: [row({ force_password_change: false })] });
+    const { res, next } = await run({ path: '/api/x', token: sign(goodPayload()) });
+    expect(next).toHaveBeenCalledOnce();
+    expect(res.statusCode).toBeNull();
+  });
+
+  // `=== true` deliberat: dacă vreodată coloana devine nullable, `null`/`undefined` NU
+  // trebuie să blocheze pe nimeni.
+  for (const v of [null, undefined, 0, '']) {
+    it(`force_password_change=${JSON.stringify(v)} (falsy/absent) → next, NU 403`, async () => {
+      h.queryMock.mockResolvedValueOnce({ rows: [row({ force_password_change: v })] });
+      const { res, next } = await run({ path: '/api/x', token: sign(goodPayload()) });
+      expect(res.statusCode).toBeNull();
+      expect(next).toHaveBeenCalledOnce();
+    });
+  }
+
+  // ORDINEA GĂRZILOR — revocarea sesiunii are prioritate față de schimbarea parolei.
+  it('steag + token_version nepotrivit → 401 token_revoked (NU 403)', async () => {
+    h.queryMock.mockResolvedValueOnce({ rows: [row({ token_version: 9, force_password_change: true })] });
+    const { res, next } = await run({ path: '/api/x', token: sign(goodPayload({ tv: 3 })) });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toMatchObject({ error: 'token_revoked' });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('steag + cont dezactivat (rows:[]) → 401 session_revoked (NU 403)', async () => {
+    h.queryMock.mockResolvedValueOnce({ rows: [] });
+    const { res } = await run({ path: '/api/x', token: sign(goodPayload()) });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toMatchObject({ error: 'session_revoked' });
+  });
+
+  it('steag + rol învechit → 401 session_role_stale (NU 403)', async () => {
+    h.queryMock.mockResolvedValueOnce({ rows: [row({ role: 'user', force_password_change: true })] });
+    const { res } = await run({ path: '/admin/x', token: sign(goodPayload({ role: 'admin' })) });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toMatchObject({ error: 'session_role_stale' });
+  });
+
+  it('steag + DB indisponibil → 503 db_unavailable (fail-closed rămâne primul)', async () => {
+    h.dbReady = false;
+    const { res } = await run({ path: '/api/x', token: sign(goodPayload()) });
+    expect(res.statusCode).toBe(503);
+    expect(res.body).toMatchObject({ error: 'db_unavailable' });
+  });
+});
