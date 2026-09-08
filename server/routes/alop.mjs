@@ -31,6 +31,7 @@ import { isPlatformAdmin } from '../services/authz-scope.mjs';
 import { selfHealAlopDfLinkByAlop, backfillAlopFlowPointers } from '../services/alop-link.mjs';
 import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
+import { derivaCol3, sumaOrdonantataDosar, verificaPlafonOrdonantare } from '../services/ord-lant.mjs';
 import { dosarKeyExpr } from '../services/df-dosar-key.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
@@ -799,6 +800,12 @@ router.get('/api/alop/:id', async (req, res) => {
         ${sqlStingereTruthy('df')} AS df_stingere,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
          FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_valoare,
+        -- #186 — col.3 („Plăți anterioare") a ORD-ului CURENT. Cardul „Total plăți" se
+        -- calculează pe ea + plata confirmată a ciclului curent, NU pe Σ plăților istorice:
+        -- col.3 poartă deja tot ce s-a plătit înaintea acestui ciclu, inclusiv plăți din CAB
+        -- dinaintea dosarului (pe care aplicația nu le știe). Vezi services/ord-lant.mjs.
+        (SELECT COALESCE(SUM((r->>'plati_anterioare')::numeric),0)
+         FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_col3,
         a.plata_suma_efectiva AS op_valoare,
         COALESCE(a.suma_totala_platita,0) + COALESCE(a.plata_suma_efectiva,0) AS suma_platita_total,
         a.ciclu_curent,
@@ -1097,15 +1104,71 @@ router.get('/api/alop/:id', async (req, res) => {
     }
 
     // Calcul sumă rămasă de ordonanțat (pentru multi-ORD)
+    // #186 — disponibilul de ordonanțat se raportează la ce s-a ORDONANȚAT, nu la ce s-a plătit.
+    // Un ORD emis și încă nedecontat angajează suma; forma veche (df_valoare − suma_platita_total)
+    // îl ignora complet și afișa mai mult decât există. Poarta de la noua-lichidare (Σ col.4 pe
+    // creditele bugetare ale anului) plafona deja corect pe ordonanțat — deci UI-ul contrazicea
+    // serverul: butonul „Nouă ordonanțare" apărea, iar execuția era refuzată.
+    // ⚠️ FĂRĂ filtru pe an de exercițiu, spre deosebire de poarta de la noua-lichidare:
+    // `df_valoare` (Σ rows_val.valt_actualiz) e angajamentul MULTIANUAL. Noțiunea „pe an" e
+    // `ramas_an_curent` (sqlRamasAnExercitiu) — DIFERITĂ, nu se amestecă cu asta.
+    // Aceeași funcție e chemată și de poarta din noua-lichidare (acolo CU `anExercitiu`).
     const dfVal = parseFloat(alop.df_valoare || 0);
-    const sumaPlatita = parseFloat(alop.suma_platita_total || 0);
-    alop.ramas = dfVal > 0 ? Math.max(0, dfVal - sumaPlatita) : 0;
+    const { total: _sumaOrdonantata } = await sumaOrdonantataDosar(
+      req.params.id, { orgId: alop.org_id, anExercitiu: null, ordIdCurent: alop.ord_id }
+    );
+    alop.suma_ordonantata_total = _sumaOrdonantata;
+    alop.ramas = dfVal > 0 ? Math.max(0, dfVal - _sumaOrdonantata) : 0;
 
     alop.capabilities = computeAlopCapabilities(alop, actor, { actorComp, cabComp });
     res.json({ alop });
   } catch (e) {
     logger.error({ err: e }, 'alop get error');
     res.status(500).json({ error: e.message || 'server_error' });
+  }
+});
+
+const _ORD_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ── GET /api/alop/:id/ord-col3 — col.3 („Plăți anterioare") derivată din LANȚUL de ORD ─
+// #186. Sursa de adevăr a col.3 e ultima ORD APROBATĂ a dosarului (`col.3 + col.4` al ei),
+// NU plățile pe care le știe DocFlowAI. Vezi services/ord-lant.mjs pentru nuanța din ghid
+// (col.4 al predecesorului intră doar dacă plata lui e CONFIRMATĂ).
+// ⛔ `col3: null` + `sursa:'prima_ord'` = „nu se știe" (prima ordonanțare a dosarului) —
+// frontendul NU trebuie să scrie 0 în tabel pe cazul ăsta.
+// Autorizare: identică cu GET /api/alop/:id (aceeași `buildAlopVisibilityWhere`).
+router.get('/api/alop/:id/ord-col3', async (req, res) => {
+  if (!req.params.id || req.params.id === 'null' || req.params.id === 'undefined') {
+    return res.status(400).json({ error: 'id_invalid' });
+  }
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const params = [req.params.id, actor.orgId];
+    const extraWhere = await buildAlopVisibilityWhere(actor, params);
+    const { rows } = await pool.query(
+      `SELECT a.id, a.org_id FROM alop_instances a
+        WHERE a.id=$1 AND a.org_id=$2 AND a.cancelled_at IS NULL${extraWhere}`,
+      params
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+
+    const _q = String(req.query.ord_id || '');
+    const ordId = _ORD_UUID_RE.test(_q) ? _q : null;
+    const d = await derivaCol3(req.params.id, rows[0].org_id, { pentruOrdId: ordId });
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      ok: true,
+      col3: d.col3,
+      sursa: d.sursa,
+      plata_predecesor_confirmata: d.plata_predecesor_confirmata,
+      predecesor: d.predecesor
+        ? { nr_ord: d.predecesor.nr_ord, col3: d.predecesor.col3, col4: d.predecesor.col4 }
+        : null,
+    });
+  } catch (e) {
+    logger.error({ err: e }, 'alop ord-col3 error');
+    res.status(500).json({ error: 'server_error' });
   }
 });
 
@@ -1410,6 +1473,38 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
 
     const { notes, observatii, nr_factura, data_factura, nr_pv, data_pv, valoare_factura } = req.body;
 
+    // ── #186 ETAPA D — PORȚILE DE ORDONANȚARE la confirmarea lichidării ──────────
+    // Suma care se lichidează acum (valoarea facturii) e suma care urmează a fi ordonanțată.
+    // Două praguri DISTINCTE, decizie owner:
+    //   BLOCARE 400  — peste valoarea DF-ului aprobat (limita ANGAJAMENTULUI LEGAL).
+    //   AVERTISMENT  — sub DF dar peste DISPONIBILUL DIN RECEPȚII (col.2 − (col.3+col.4) de
+    //                  pe ultima ORD aprobată). NU blochează: recepția poate fi pur și simplu
+    //                  neînregistrată încă în CAB, iar responsabilul o poate adăuga imediat.
+    //                  Răspuns 200 cu `avertisment_plafon`, afișat explicit în UI.
+    // ⛔ Poarta de la noua-lichidare (credite bugetare col.10, per an) e SEPARATĂ și neatinsă.
+    let _avertismentPlafon = null;
+    const _sumaLich = (valoare_factura != null && Number.isFinite(Number(valoare_factura)))
+      ? Number(valoare_factura) : 0;
+    if (_sumaLich > 0) {
+      const { rows: aRow } = await pool.query(
+        'SELECT ord_id FROM alop_instances WHERE id=$1 AND org_id=$2 AND cancelled_at IS NULL',
+        [req.params.id, actor.orgId]
+      );
+      const plafon = await verificaPlafonOrdonantare({
+        alopId: req.params.id, orgId: actor.orgId,
+        suma: _sumaLich, excludeOrdId: aRow[0]?.ord_id || null,
+      });
+      if (plafon.blocat) {
+        logger.warn({ alopId: req.params.id, ...plafon }, '[ALOP] confirma-lichidare BLOCAT (peste DF)');
+        return res.status(400).json({
+          error: 'peste_valoare_df',
+          message: `Suma de lichidat (${_sumaLich.toFixed(2)} RON) depășește disponibilul din DF-ul aprobat (${(plafon.disponibil_df ?? 0).toFixed(2)} RON din ${(plafon.df_valoare ?? 0).toFixed(2)} RON, deja ordonanțat ${plafon.ordonantat.toFixed(2)} RON).`,
+          ...plafon,
+        });
+      }
+      if (plafon.avertisment) _avertismentPlafon = plafon;
+    }
+
     const { rows } = await pool.query(`
       UPDATE alop_instances
       SET lichidare_confirmed_by=$1,
@@ -1504,7 +1599,9 @@ router.post('/api/alop/:id/confirma-lichidare', _csrf, async (req, res) => {
       logger.warn({ err: notifErr, alopId: req.params.id }, '[Facturi] notificare CAB lichidare non-fatal');
     }
 
-    res.json({ alop: rows[0] });
+    // #186 — semnalizarea depășirii recepțiilor călătorește pe răspunsul de SUCCES (200):
+    // operația S-A EXECUTAT, dar UI-ul trebuie să arate ambele cifre, nu un console.warn.
+    res.json({ alop: rows[0], ...(_avertismentPlafon ? { avertisment_plafon: _avertismentPlafon } : {}) });
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-lichidare error');
     res.status(500).json({ error: e.message || 'server_error' });
@@ -1888,29 +1985,14 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
       // Suma ORDONANȚATĂ (NU plătită — distincție owner) în ACELAȘI an de exercițiu: ciclurile
       // arhivate (JOIN ord_id → SUM rows.suma_ordonantata_plata, fiindcă ciclul nu stochează
       // direct suma ordonanțată) filtrate pe an + ORD-ul curent (alop.ord_id, exercițiul în curs).
-      const { rows: [ordRow] } = await client.query(
-        `SELECT
-           COALESCE((
-             SELECT SUM(co.s)
-               FROM alop_ord_cicluri c
-               CROSS JOIN LATERAL (
-                 SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0) AS s
-                   FROM formulare_ord fo
-                   LEFT JOIN jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r ON true
-                  WHERE fo.id = c.ord_id
-               ) co
-              WHERE c.alop_id=$1
-                AND COALESCE(c.an_exercitiu, EXTRACT(YEAR FROM c.plata_data)::int, EXTRACT(YEAR FROM c.created_at)::int) = $2
-           ), 0) AS arhivat,
-           COALESCE((
-             SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
-               FROM formulare_ord fo
-               LEFT JOIN jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r ON true
-              WHERE fo.id=$3
-           ), 0) AS curent`,
-        [req.params.id, anExercitiu, alop.ord_id]
+      // #186 — aceeași interogare, mutată în services/ord-lant.mjs (`sumaOrdonantataDosar`)
+      // ca să existe O SINGURĂ definiție a lui „Σ col.4 pe dosar": aici CU `anExercitiu`
+      // (plafonul e pe creditele bugetare ale anului), în GET /api/alop/:id FĂRĂ (disponibilul
+      // se raportează la angajamentul MULTIANUAL din DF). ⛔ Poarta de mai jos rămâne
+      // neschimbată ca semantică — doar sursa numărului e acum partajată.
+      const { total: sumaOrdonantata } = await sumaOrdonantataDosar(
+        req.params.id, { orgId: actor.orgId, anExercitiu, ordIdCurent: alop.ord_id }, client
       );
-      const sumaOrdonantata = parseFloat(ordRow?.arhivat || 0) + parseFloat(ordRow?.curent || 0);
 
       // Suma PLĂTITĂ în ACELAȘI an (cumul per an) — pentru suma_totala_platita (audit plăți),
       // NU pentru plafon. Păstrată separat de suma ordonanțată.

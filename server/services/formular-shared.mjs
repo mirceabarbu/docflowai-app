@@ -27,6 +27,19 @@ import { dfAprobatSql } from './df-aprobat-sql.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
+/**
+ * #186 — SINGURA convenție de parsare a banilor pe traseul DF/ORD.
+ * Era duplicată ca `_num` local în `validateOrdCol5` și `validateOrdBugetAnCurent`; acum
+ * amândouă o aliasează, iar `services/ord-lant.mjs` o IMPORTĂ (nu-și scrie a doua copie).
+ * getOR()/getNC() (core.js) trimit valorile ca String(pMR(...)) — număr JS normalizat
+ * (punct zecimal, fără separator de mii), ex: "1234.56". NU format RO.
+ */
+export function numMoney(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  const n = Number(String(v).trim().replace(/\s/g, ''));
+  return isNaN(n) ? 0 : n;
+}
+
 /** Trimite notificare in-app corect (user_email + data JSONB) */
 export async function sendNotif(userId, type, title, message, data) {
   try {
@@ -230,13 +243,7 @@ export const FORMULAR_TYPES = {
 // Întoarce `{ status, body }` dacă există rânduri invalide, altfel `null`.
 function validateOrdCol5(rows) {
   if (!Array.isArray(rows)) return null;
-  const _num = v => {
-    if (v === null || v === undefined || v === '') return 0;
-    // getOR() (core.js) trimite valorile ca String(pMR(...)) — număr JS normalizat
-    // (punct zecimal, fără separator de mii), ex: "1234.56" / "1500". NU format RO.
-    const n = Number(String(v).trim().replace(/\s/g,''));
-    return isNaN(n) ? 0 : n;
-  };
+  const _num = numMoney;   // #186 — o singură convenție de parsare a banilor
   const bad = [];
   rows.forEach((r, i) => {
     const c2 = _num(r.receptii);
@@ -373,11 +380,7 @@ export async function computeOrdBudgetContext({ dfId, orgId, ordId = null }) {
 // `df_id` — fără DF legat nu există buget de verificat.
 async function validateOrdBugetAnCurent({ ordDoc, newRows, orgId }) {
   if (!ordDoc || !ordDoc.df_id) return null;
-  const _num = v => {
-    if (v === null || v === undefined || v === '') return 0;
-    const n = Number(String(v).trim().replace(/\s/g, ''));
-    return isNaN(n) ? 0 : n;
-  };
+  const _num = numMoney;   // #186 — o singură convenție de parsare a banilor
   const ctx = await computeOrdBudgetContext({ dfId: ordDoc.df_id, orgId, ordId: ordDoc.id });
   if (!ctx) return null; // DF inexistent — nimic de verificat
   const { anExercitiu, bugetAnCurent, cicluriArhivate } = ctx;

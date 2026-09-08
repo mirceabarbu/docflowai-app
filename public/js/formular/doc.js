@@ -123,6 +123,56 @@ function applyPlatiAntPrefill(blocEl,opts){
 window.applyPlatiAntPrefill=applyPlatiAntPrefill;
 window._platiAntReset=_platiAntReset;
 
+// ── #186 — nota „prima ordonanțare a dosarului" + avertismentul de plafon ─────
+// Ambele se montează lângă `#ord-buget-warn` (blocul 0). Sunt afirmații despre DOSAR,
+// nu despre furnizor ⇒ un singur exemplar, niciodată clonat în blocurile 2+
+// (`_sablonBloc` construiește din șablon, nu clonează DOM-ul de aici).
+function _ordNotaEl(id,culoare){
+  let el=document.getElementById(id);
+  if(el)return el;
+  const host=document.getElementById('ord-buget-warn');
+  if(!host||!host.parentNode)return null;
+  el=document.createElement('div');
+  el.id=id;
+  el.className='secb-buget-warn';
+  el.style.display='none';
+  el.style.borderColor=culoare;
+  host.parentNode.insertBefore(el,host);
+  return el;
+}
+/**
+ * `j` = răspunsul lui GET /api/alop/:id/ord-col3, sau null ca să ascundă nota.
+ * ⛔ Se afișează DOAR pe `sursa === 'prima_ord'`: dosarul nu are ORD anterioară aprobată,
+ * deci col.3 NU se poate deriva și se completează din sistemul CAB. „Nu se știe" (`col3
+ * null`) NU e „zero lei" — de aceea nu scriem 0 în tabel, ci spunem de ce e gol.
+ */
+function _ordCol3Nota(j){
+  const el=_ordNotaEl('ord-col3-nota','rgba(93,202,165,.35)');
+  if(!el)return;
+  if(!j||j.sursa!=='prima_ord'){el.style.display='none';el.innerHTML='';return;}
+  el.innerHTML='ℹ️ Prima ordonanțare a dosarului — coloana 3 („Plăți anterioare") '
+    +'nu se poate deriva dintr-o ordonanțare anterioară. Se completează din sistemul CAB.';
+  el.style.display='';
+}
+/**
+ * #186 Etapa D — avertismentul de plafon (răspuns 200, operația S-A EXECUTAT).
+ * Se afișează EXPLICIT, cu AMBELE cifre, ca omul să știe exact ce ignoră.
+ * ⛔ Nu-l ascunde într-un console.warn: e singura urmă a unei ordonanțări peste recepții.
+ */
+function _ordPlafonAvertisment(av){
+  const el=_ordNotaEl('ord-plafon-warn','rgba(245,158,11,.45)');
+  if(!el)return;
+  if(!av){el.style.display='none';el.innerHTML='';return;}
+  const f=v=>v==null?'—':new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v)+' RON';
+  el.innerHTML='⚠️ Suma ordonanțată ('+f(av.suma)+') depășește disponibilul din RECEPȚII ('
+    +f(av.disponibil_receptii)+'), dar se încadrează în DF-ul aprobat (disponibil '
+    +f(av.disponibil_df)+' din '+f(av.df_valoare)+'). Operația a fost executată — '
+    +'verificați dacă recepția e înregistrată în sistemul CAB.';
+  el.style.display='';
+}
+window._ordCol3Nota=_ordCol3Nota;
+window._ordPlafonAvertisment=_ordPlafonAvertisment;
+
 // ── Status label ─────────────────────────────────────────────────────────────
 function stLabel(s,aprobat){
   if(aprobat)return['aprobat','✔ Aprobat'];
@@ -250,13 +300,15 @@ async function populateOrd(doc){
   // #128n — al treilea traseu: capturile blocurilor 2+ de furnizor (per bloc, ambele sloturi).
   await fetchCapturiBlocuri(doc.id||ST.docId.ordnt);
   upTot();
-  // Ciclu 2+: prefill plati_anterioare — #128k: TOATE blocurile, garda de aici (suprascriere
-  // necondiționată) NESCHIMBATĂ.
-  const _sumaAnt=window._alopSumaPlataAnterioara||0;
-  if(_sumaAnt>0){
-    _platiAntSet(doc.alop_id||window._alopContext?.alopId||null,_sumaAnt);
-    applyPlatiAntPrefill(null,{val:_sumaAnt,force:true});
-  }
+  // #186 — AICI NU SE MAI PREFILL-EAZĂ NIMIC. ⛔ INVARIANT: deschiderea unui ORD EXISTENT
+  // nu are voie să schimbe nicio cifră din tabel — un document aprobat și semnat trebuie să
+  // arate exact ce s-a semnat. Codul șters scria col.3 cu `force:true` din
+  // `window._alopSumaPlataAnterioara` (= `suma_platita_total` al ALOP-ului), adică din
+  // PLĂȚILE știute de DocFlowAI, nu din lanțul ORD-urilor — și suprascria NECONDIȚIONAT
+  // valoarea salvată, inclusiv pe un ORD deja aprobat. Pe ORD 43759 asta a înlocuit
+  // 300.424,95 (cifra corectă, derivată din ciclul 1) cu o valoare internă.
+  // Derivarea corectă trăiește ACUM într-un singur loc: newDoc → GET /api/alop/:id/ord-col3.
+  _ordCol3Nota(null);
 }
 function populateDf(doc){
   sv('n-cif',doc.cif);sv('n-den',doc.den_inst_pb);sv('n-subtitlu',doc.subtitlu_df);
@@ -862,20 +914,9 @@ async function openDoc(ft,id){
     if(ft==='ordnt')populateOrd(doc);else populateDf(doc);
     updateRevizieHeaderBadge(ft, doc);
 
-    // Prefill plati_anterioare ciclu 2+ — suma din cicluri finalizate anterior
-    if(ft==='ordnt'){
-      const _ctx=window._alopContext;
-      const _alopId=doc.alop_id||_ctx?.alopId||new URLSearchParams(location.search).get('alop_id');
-      if(_alopId){
-        const _ra=await DFApi.fetch(`/api/alop/${encodeURIComponent(_alopId)}`).then(r=>r.json()).catch(()=>null);
-        const _totalAnt=(_ra?.alop?.cicluri_istorice||[]).reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
-        if(_totalAnt>0){
-          // #128k — TOATE blocurile; garda „doar dacă primul rând e 0" NESCHIMBATĂ.
-          _platiAntSet(_alopId,_totalAnt);
-          applyPlatiAntPrefill(null,{val:_totalAnt});
-        }
-      }
-    }
+    // #186 — al doilea prefill (Σ `cicluri_istorice[].plata_suma_efectiva`) a fost ȘTERS.
+    // Aceeași sursă greșită ca la populateOrd: PLĂȚILE știute de aplicație, nu lanțul de
+    // ordonanțări. ⛔ Pe un document EXISTENT nu se mai scrie nimic în tabel.
 
     _dfSetAlopCtx(ft);
 
@@ -1107,24 +1148,32 @@ function newDoc(ft){
     lockDfSelectIfLinked(); // ORD nou fără DF → select-ul rămâne selectabil (enabled)
     lockOrdIdentityCols(); // ORD nou fără DF → coloanele de identitate editabile
     _resetOrdBuget(); // fără DF selectat → fără context de plafon (se încarcă la DF-select)
-    // v3.9.500 (Issue I-1): prefill plati_anterioare la creare ord nou pe ciclu 2+
-    // Înainte: prefill rula doar în loadDoc (existing ord) → P1 vedea 0,00, P2 vedea valoarea
+    // #186 — SINGURUL loc în care se mai prefill-ează col.3 („Plăți anterioare").
+    // Sursa e LANȚUL DE ORDONANȚĂRI al dosarului, nu plățile știute de aplicație:
+    // `col.3 + col.4` de pe ultima ORD APROBATĂ (serverul aplică nuanța din ghid — col.4
+    // intră doar dacă plata acelui ciclu e CONFIRMATĂ; vezi services/ord-lant.mjs).
+    // Trei condiții CUMULATIVE: (a) document NOU — suntem în newDoc, pe un ORD existent nu
+    // se prefill-ează NIMIC; (b) rândul are col.3 la 0 — garda implicită a lui
+    // applyPlatiAntPrefill fără `force`; (c) `sursa === 'lant'`.
+    // ⛔ `col3 === null` + `sursa === 'prima_ord'` = „nu se știe", NU „zero lei": nu scriem
+    // nimic și afișăm nota. Col.3 rămâne EDITABILĂ — derivarea e sugestie, nu garanție.
     // #128k — document NOU ⇒ valoarea memoizată a documentului precedent NU se moștenește.
     _platiAntReset();
+    _ordCol3Nota(null);
     const _ctx=window._alopContext;
     const _alopId=_ctx?.alopId||new URLSearchParams(location.search).get('alop_id');
     if(_alopId){
-      DFApi.fetch(`/api/alop/${encodeURIComponent(_alopId)}`)
+      DFApi.fetch(`/api/alop/${encodeURIComponent(_alopId)}/ord-col3`)
         .then(r=>r.ok?r.json():null).catch(()=>null)
-        .then(_ra=>{
-          if(!_ra?.alop)return;
-          const _totalAnt=(_ra.alop.cicluri_istorice||[])
-            .reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
-          if(_totalAnt>0){
-            // #128k — TOATE blocurile; garda „doar dacă primul rând e 0" NESCHIMBATĂ.
-            _platiAntSet(_alopId,_totalAnt);
-            applyPlatiAntPrefill(null,{val:_totalAnt});
-          }
+        .then(j=>{
+          if(!j)return;
+          _ordCol3Nota(j);
+          if(j.sursa!=='lant')return;
+          const _c3=parseFloat(j.col3);
+          if(!(_c3>0))return;
+          // #128k — TOATE blocurile; garda „doar dacă primul rând e 0" NESCHIMBATĂ.
+          _platiAntSet(_alopId,_c3);
+          applyPlatiAntPrefill(null,{val:_c3});
         });
     }
   }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');
@@ -1214,8 +1263,14 @@ async function saveDoc(ft){
     }
     if(!r.ok||!j.ok){
       if(r.status===400&&_handleCodSsi400(j))return;
+      // #186 Etapa D — BLOCARE: suma ordonanțată depășește valoarea DF-ului aprobat
+      // (limita angajamentului legal). Mesajul serverului conține ambele cifre.
+      if(r.status===400&&j.error==='peste_valoare_df'){setS(j.message||'Suma depășește valoarea DF-ului aprobat.','err');return;}
       setS(j.error||'Eroare la salvare','err');return;
     }
+    // #186 Etapa D — AVERTISMENT (200): sub DF, peste recepții. Operația s-a executat;
+    // banner explicit cu ambele cifre, nu console.warn.
+    if(ft==='ordnt')_ordPlafonAvertisment(j.avertisment_plafon||null);
 
     // v3.9.499: upload ambele sloturi (slot 1 pentru DF/ORD, slot 2 doar ORD)
     if(ST.docId[ft]){
