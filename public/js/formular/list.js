@@ -37,10 +37,10 @@ async function _autoSaveDb(ft){
   const body=ft==='ordnt'?collectOrdDb():(ST.docRole[ft]==='p2'?collectDfP2Db():collectDfP1Db());
   _draftShowBadge(ft,'⏳');
   try{
-    const hdrs={'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()};
+    const hdrs={'Content-Type':'application/json'};
     let r,j;
     if(!docId){
-      r=await fetch(ftApi(ft),{method:'POST',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
+      r=await DFApi.fetch(ftApi(ft),{method:'POST',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
       if(r.ok&&j.ok){
         ST.docId[ft]=j.document.id;ST.docStatus[ft]='draft';ST.docRole[ft]='p1';
@@ -56,7 +56,7 @@ async function _autoSaveDb(ft){
         window._alopLinkDoc?.(ft,j.document.id);
       }
     }else{
-      r=await fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
+      r=await DFApi.fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
       if(r.ok&&j.ok){
         ST.docStatus[ft]=j.document.status;
@@ -136,7 +136,7 @@ function _showSessionExpiredBanner(){
 let _dfAprobate=[];
 async function loadDfAprobate(){
   try{
-    const r=await fetch('/api/formulare-df/aprobate',{credentials:'include'});
+    const r=await DFApi.fetch('/api/formulare-df/aprobate');
     const j=await r.json();
     if(!r.ok||!j.ok)return;
     _dfAprobate=j.documents||[];
@@ -194,7 +194,7 @@ async function selectDfAprobat(){
 async function onDfSelect(dfId){
   if(!dfId)return;
   try{
-    const r=await fetch(`/api/formulare-df/${encodeURIComponent(dfId)}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/formulare-df/${encodeURIComponent(dfId)}`);
     const j=await r.json();
     if(!r.ok||!j.document)return;
     const doc=j.document;
@@ -261,7 +261,7 @@ async function _searchBenef(target){
   const q=(_bFld(bloc,'beneficiar')?.value||'').trim();
   if(q.length<2){drop.style.display='none';return;}
   try{
-    const r=await fetch('/api/beneficiari?q='+encodeURIComponent(q),{credentials:'include'});
+    const r=await DFApi.fetch('/api/beneficiari?q='+encodeURIComponent(q));
     const j=await r.json();
     const list=j.beneficiari||[];
     if(!list.length){drop.style.display='none';return;}
@@ -323,7 +323,7 @@ async function _lookupByCif(target){
 
   // 1. Caută local întâi (după CIF exact match)
   try{
-    const r=await fetch('/api/beneficiari?q='+encodeURIComponent(cif),{credentials:'include'});
+    const r=await DFApi.fetch('/api/beneficiari?q='+encodeURIComponent(cif));
     if(r.ok){
       const j=await r.json();
       const match=(j.beneficiari||[]).find(b=>String(b.cif||'')===cif);
@@ -335,7 +335,7 @@ async function _lookupByCif(target){
         resolved=true;
         // DB nu are starea ANAF — verifică starea separat (non-blocant, fail-open)
         const _cifSnapshot = cif;
-        fetch('/api/verify/cui?cui='+encodeURIComponent(cif),{credentials:'include'})
+        DFApi.fetch('/api/verify/cui?cui='+encodeURIComponent(cif))
           .then(r=>r.ok?r.json():null)
           .then(j=>{
             // Garda de cursă compară cu câmpul BLOCULUI, nu cu #o-cifb.
@@ -352,7 +352,7 @@ async function _lookupByCif(target){
   if(!resolved){
     _setS('Verificare CIF la ANAF...','info');
     try{
-      const r=await fetch('/api/verify/cui?cui='+encodeURIComponent(cif),{credentials:'include'});
+      const r=await DFApi.fetch('/api/verify/cui?cui='+encodeURIComponent(cif));
       if(r.ok){
         const j=await r.json();
         if(j.ok&&j.data&&j.data.name){
@@ -407,7 +407,7 @@ async function _lookupByIban(target){
   const showSpin=v=>{if(spin)spin.style.display=v?'inline-block':'none';};
   showSpin(true);
   try{
-    const r=await fetch('/api/verify/iban?iban='+encodeURIComponent(iban),{credentials:'include'});
+    const r=await DFApi.fetch('/api/verify/iban?iban='+encodeURIComponent(iban));
     const j=await r.json();
 
     // Garda de cursă: recitește câmpul blocului, ignoră dacă s-a schimbat între timp.
@@ -597,9 +597,9 @@ async function _saveBeneficiarIfNew(){
     const den=v('beneficiar');
     if(!den)continue;
     try{
-      await fetch('/api/beneficiari',{
-        method:'POST',credentials:'include',
-        headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+      await DFApi.fetch('/api/beneficiari',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
         body:JSON.stringify({denumire:den,cif:v('cif_beneficiar'),iban:v('iban_beneficiar'),banca:v('banca_beneficiar')}),
       });
     }catch(_){}
@@ -861,7 +861,7 @@ async function loadList(){
   if(pg)pg.style.display='none';
   _setLstCount(null);   // ascuns cât se încarcă — nu lăsăm o cifră veche peste o listă nouă
   try{
-    const r=await fetch('/api/formulare/list?'+_lstQuery(),{credentials:'include'});
+    const r=await DFApi.fetch('/api/formulare/list?'+_lstQuery());
     if(ld)ld.style.display='none';
     if(!r.ok){if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}_setLstCount(null);return;}
     const j=await r.json();
@@ -996,9 +996,8 @@ async function stergeDoc(type,id){
   const eticheta=type==='ord'?'ordonanțare':'document de fundamentare';
   if(!confirm(`Ștergeți acest ${eticheta}? Operațiunea nu poate fi inversată.`))return;
   try{
-    const r=await fetch(`/api/formulare-${type}/${id}/sterge`,{
-      method:'POST',credentials:'include',
-      headers:{'X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/formulare-${type}/${id}/sterge`,{
+      method:'POST',
     });
     const j=await r.json();
     if(!r.ok||!j.ok){
@@ -1044,7 +1043,7 @@ async function exportLista(){
   const orig=btn?btn.innerHTML:'';
   if(btn){btn.disabled=true;btn.textContent='⏳ Se pregătește…';}
   try{
-    const r=await fetch('/api/formulare/list?'+_lstQuery({all:true}),{credentials:'include'});
+    const r=await DFApi.fetch('/api/formulare/list?'+_lstQuery({all:true}));
     const j=await r.json();
     if(!r.ok||!j.ok){alert('Eroare la pregătirea exportului.');return;}
     const rows=j.rows||[];
