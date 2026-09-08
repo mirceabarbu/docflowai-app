@@ -14,11 +14,9 @@
   }
 
   function _vfFetch(url, opts) {
-    const jwt = localStorage.getItem('docflow_token') || localStorage.getItem('jwt') || '';
-    return fetch(url, {
+    return DFApi.fetch(url, {
       ...opts,
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', ...(jwt ? { 'Authorization': 'Bearer ' + jwt } : {}), ...((opts && opts.headers) || {}) },
+      headers: { 'Content-Type': 'application/json', ...((opts && opts.headers) || {}) },
     });
   }
 
@@ -334,7 +332,7 @@
     content.innerHTML = '<div style="color:var(--df-text-4);padding:20px;text-align:center;">Se încarcă...</div>';
 
     try {
-      const r = await fetch(`/api/formulare-oficiale?form_type=${formType}&limit=50`, { credentials: 'include' });
+      const r = await DFApi.fetch(`/api/formulare-oficiale?form_type=${formType}&limit=50`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
       const items = Array.isArray(data.items) ? data.items : [];
