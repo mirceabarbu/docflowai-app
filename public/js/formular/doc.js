@@ -225,7 +225,7 @@ async function populateOrd(doc){
   if(_wrap2)_wrap2.style.display='';  // mereu vizibil
   clrImg('o-cimg2','o-cph2');  // resetare default (placeholder vizibil)
   try{
-    const capR2=await fetch(`/api/formulare-capturi/ord/${doc.id||ST.docId.ordnt}?slot=2`,{credentials:'include'});
+    const capR2=await DFApi.fetch(`/api/formulare-capturi/ord/${doc.id||ST.docId.ordnt}?slot=2`);
     if(capR2.ok&&capR2.headers.get('content-type')?.startsWith('image')){
       const blob=await capR2.blob();
       const reader=new FileReader();
@@ -316,7 +316,7 @@ function _resetSecBBuget(){
 async function _loadBugetDisponibil(docId){
   try{
     const qs=docId?`?exclude_df=${encodeURIComponent(docId)}`:'';
-    const r=await fetch(`/api/clasa8/buget/disponibil${qs}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/clasa8/buget/disponibil${qs}`);
     if(!r.ok){_bugetDisponibil=new Map();_checkSecBBuget();return;}
     const j=await r.json();
     _bugetDisponibil=new Map();
@@ -420,7 +420,7 @@ function _resetOrdBuget(){
 async function _loadOrdBuget(dfId){
   if(!dfId){_ordBugetCtx=null;_checkOrdBuget();return;}
   try{
-    const r=await fetch(`/api/formulare-ord/buget-context?df_id=${encodeURIComponent(dfId)}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/formulare-ord/buget-context?df_id=${encodeURIComponent(dfId)}`);
     const j=await r.json();
     _ordBugetCtx=(r.ok&&j.ok&&j.context)?j.context:null;
   }catch(e){
@@ -835,7 +835,7 @@ function setLockedBar(ft,msg,type=''){
 // ── Open document ─────────────────────────────────────────────────────────────
 async function openDoc(ft,id){
   try{
-    const r=await fetch(`${ftApi(ft)}/${id}`,{credentials:'include'});
+    const r=await DFApi.fetch(`${ftApi(ft)}/${id}`);
     const j=await r.json();
     if(!r.ok||!j.ok){setS(j.error||'Eroare la încărcare','err');return;}
     const doc=j.document;
@@ -867,7 +867,7 @@ async function openDoc(ft,id){
       const _ctx=window._alopContext;
       const _alopId=doc.alop_id||_ctx?.alopId||new URLSearchParams(location.search).get('alop_id');
       if(_alopId){
-        const _ra=await fetch(`/api/alop/${encodeURIComponent(_alopId)}`,{credentials:'include'}).then(r=>r.json()).catch(()=>null);
+        const _ra=await DFApi.fetch(`/api/alop/${encodeURIComponent(_alopId)}`).then(r=>r.json()).catch(()=>null);
         const _totalAnt=(_ra?.alop?.cicluri_istorice||[]).reduce((s,c)=>s+parseFloat(c.plata_suma_efectiva||0),0);
         if(_totalAnt>0){
           // #128k — TOATE blocurile; garda „doar dacă primul rând e 0" NESCHIMBATĂ.
@@ -897,7 +897,7 @@ async function openDoc(ft,id){
     const _capIid=ft==='ordnt'?'o-cimg':'n-cimg',_capPh=ft==='ordnt'?'o-cph':'n-cph';
     clrImg(_capIid,_capPh);
     try{
-      const capR=await fetch(`/api/formulare-capturi/${ftType(ft)}/${id}`,{credentials:'include'});
+      const capR=await DFApi.fetch(`/api/formulare-capturi/${ftType(ft)}/${id}`);
       if(capR.ok&&capR.headers.get('content-type')?.startsWith('image')){
         const blob=await capR.blob();
         const reader=new FileReader();
@@ -986,7 +986,7 @@ async function refreshDocs(ft){
   const list=document.getElementById('docs-list-'+ft);
   if(list)list.innerHTML='<div class="docs-empty">Se încarcă...</div>';
   try{
-    const r=await fetch(ftApi(ft),{credentials:'include'});
+    const r=await DFApi.fetch(ftApi(ft));
     const j=await r.json();
     if(!r.ok||!j.ok){if(list)list.innerHTML='<div class="docs-empty">Eroare la încărcare.</div>';return;}
     renderDocsList(ft,j.documents||[]);
@@ -1026,7 +1026,7 @@ function renderDocsList(ft,docs){
 // 403 nu are fallback: /pdf trece prin ACEEAȘI poartă (isFlowAccessAllowed) și ar da tot 403.
 async function viewFlowPdf(flowId){
   try{
-    const r=await fetch(`/flows/${encodeURIComponent(flowId)}/signed-pdf`,{credentials:'include'});
+    const r=await DFApi.fetch(`/flows/${encodeURIComponent(flowId)}/signed-pdf`);
     if(!r.ok){
       if(r.status===403){
         setS('Nu aveți drept de acces la acest document.','err');
@@ -1037,7 +1037,7 @@ async function viewFlowPdf(flowId){
         return;
       }
       try{
-        const r2=await fetch(`/flows/${encodeURIComponent(flowId)}/pdf`,{credentials:'include'});
+        const r2=await DFApi.fetch(`/flows/${encodeURIComponent(flowId)}/pdf`);
         if(r2.ok){
           const blob2=await r2.blob();
           const url2=URL.createObjectURL(blob2);
@@ -1060,7 +1060,7 @@ async function viewFlowPdf(flowId){
 async function exportFormularXml(type,id){
   clrS();setS('Se generează XML-ul...','info');
   try{
-    const r=await fetch(`/api/formulare-${type}/${encodeURIComponent(id)}/xml`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/formulare-${type}/${encodeURIComponent(id)}/xml`);
     if(!r.ok){
       let msg='Export XML eșuat.';
       try{const j=await r.json();
@@ -1114,7 +1114,7 @@ function newDoc(ft){
     const _ctx=window._alopContext;
     const _alopId=_ctx?.alopId||new URLSearchParams(location.search).get('alop_id');
     if(_alopId){
-      fetch(`/api/alop/${encodeURIComponent(_alopId)}`,{credentials:'include'})
+      DFApi.fetch(`/api/alop/${encodeURIComponent(_alopId)}`)
         .then(r=>r.ok?r.json():null).catch(()=>null)
         .then(_ra=>{
           if(!_ra?.alop)return;
@@ -1188,12 +1188,12 @@ async function saveDoc(ft){
   const docId=ST.docId[ft];
   const body=ft==='ordnt'?collectOrdDb()
     :(ST.docRole[ft]==='p2'?collectDfP2Db():collectDfP1Db());
-  const hdrs={'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()};
+  const hdrs={'Content-Type':'application/json'};
   try{
     setS('Se salvează...','info');
     let r,j;
     if(!docId){
-      r=await fetch(ftApi(ft),{method:'POST',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
+      r=await DFApi.fetch(ftApi(ft),{method:'POST',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
       if(r.status===409&&_handleDup409(j))return;
       if(r.ok&&j.ok){
@@ -1201,7 +1201,7 @@ async function saveDoc(ft){
         _alopLinkDoc(ft,j.document.id);
       }
     }else{
-      r=await fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',credentials:'include',headers:hdrs,body:JSON.stringify(body)});
+      r=await DFApi.fetch(`${ftApi(ft)}/${docId}`,{method:'PUT',headers:hdrs,body:JSON.stringify(body)});
       j=await r.json();
       if(r.status===409&&_handleDup409(j))return;
       if(r.ok&&j.ok){
@@ -1261,9 +1261,9 @@ async function uploadCaptura(ft, slot){
     const bin=atob(b64);const arr=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
     const blob=new Blob([arr],{type:mime});
-    await fetch(`/api/formulare-capturi/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':mime,'X-CSRF-Token':df.getCsrf(),'X-Filename':`captura_${ft}_${_slot}.png`},
+    await DFApi.fetch(`/api/formulare-capturi/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`,{
+      method:'POST',
+      headers:{'Content-Type':mime,'X-Filename':`captura_${ft}_${_slot}.png`},
       body:blob,
     });
   }catch(_){}
@@ -1284,9 +1284,9 @@ async function uploadCapturaBlocuri(ft){
         const bin=atob(b64);const arr=new Uint8Array(bin.length);
         for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
         const blob=new Blob([arr],{type:mime});
-        await fetch(`/api/formulare-capturi/ord/${ST.docId[ft]}?slot=${slot}&bloc=${b}`,{
-          method:'POST',credentials:'include',
-          headers:{'Content-Type':mime,'X-CSRF-Token':df.getCsrf(),'X-Filename':`captura_ord_${slot}_bloc${b}.png`},
+        await DFApi.fetch(`/api/formulare-capturi/ord/${ST.docId[ft]}?slot=${slot}&bloc=${b}`,{
+          method:'POST',
+          headers:{'Content-Type':mime,'X-Filename':`captura_ord_${slot}_bloc${b}.png`},
           body:blob,
         });
       }catch(_){}
@@ -1303,7 +1303,7 @@ async function fetchCapturiBlocuri(docId){
     for(const slot of [1,2]){
       capSetBloc(el,slot,null);
       try{
-        const r=await fetch(`/api/formulare-capturi/ord/${docId}?slot=${slot}&bloc=${b}`,{credentials:'include'});
+        const r=await DFApi.fetch(`/api/formulare-capturi/ord/${docId}?slot=${slot}&bloc=${b}`);
         if(!r.ok||!r.headers.get('content-type')?.startsWith('image'))continue;
         const blob=await r.blob();
         const dataUrl=await new Promise(res=>{const rd=new FileReader();rd.onload=e=>res(e.target.result);rd.onerror=()=>res(null);rd.readAsDataURL(blob);});
@@ -1362,11 +1362,10 @@ async function uploadAttachments(ft, slot = 1, bloc = 0){
       const bin = atob(b64); const arr = new Uint8Array(bin.length);
       for (let j = 0; j < bin.length; j++) arr[j] = bin.charCodeAt(j);
       const blob = new Blob([arr], { type: mime });
-      const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}${_blocQs}`, {
-        method: 'POST', credentials: 'include',
+      const r = await DFApi.fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}${_blocQs}`, {
+        method: 'POST',
         headers: {
           'Content-Type': mime,
-          'X-CSRF-Token': df.getCsrf(),
           'X-Filename': encodeURIComponent(item.name || 'atasament'),
         },
         body: blob,
@@ -1414,7 +1413,7 @@ async function fetchAttachments(ft, slot = 1, bloc = 0){
   const _slot = slot === 2 ? 2 : 1;
   const _blocQs = _bloc > 0 ? `&bloc=${_bloc}` : '';
   try {
-    const r = await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}${_blocQs}`, { credentials: 'include' });
+    const r = await DFApi.fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}${_blocQs}`);
     if (!r.ok) {
       // v3.9.554 (B2): la 403/500 lista nu mai dispare tăcut — indicator discret de eroare
       const jErr = await r.json().catch(() => null);
@@ -1495,9 +1494,8 @@ async function remAttServer(idx,lid,did,attId,btn){
     return;
   }
   try{
-    const r=await fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}/${encodeURIComponent(attId)}`,{
-      method:'DELETE',credentials:'include',
-      headers:{'X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/formulare-atasamente/${ftType(ft)}/${ST.docId[ft]}/${encodeURIComponent(attId)}`,{
+      method:'DELETE',
     });
     if(!r.ok){
       const j=await r.json().catch(()=>null);
@@ -1724,7 +1722,7 @@ async function showP2Modal(ft){
   document.getElementById('modal-p2').classList.add('show');
   if(!ST.orgUsers.length){
     try{
-      const r=await fetch('/api/formulare/utilizatori-org',{credentials:'include'});
+      const r=await DFApi.fetch('/api/formulare/utilizatori-org');
       const j=await r.json();
       if(r.ok&&j.ok){
         ST.orgUsers=j.users||[];
@@ -1889,9 +1887,9 @@ async function confirmP2(){
   closeModal();
   try{
     setS('Se trimite la Responsabil CAB...','info');
-    const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/submit`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`${ftApi(ft)}/${ST.docId[ft]}/submit`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify(_peComp?{assigned_comp:ST.selectedP2Comp}:{assigned_to:ST.selectedP2Id}),
     });
     const j=await r.json();
@@ -2015,9 +2013,9 @@ async function completeAsP2(ft){
   await uploadAttachmentsBlocuri(ft);  // #128m
   try{
     setS('Se finalizează...','info');
-    const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/complete`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`${ftApi(ft)}/${ST.docId[ft]}/complete`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body),
     });
     const j=await r.json();
@@ -2059,9 +2057,9 @@ async function resetDocToP1(ft){
   // astfel de gardă. Vechiul câmp dummy `{cif: g(...)||' '}` scria un SPAȚIU peste `cif` gol.
   const body={};
   try{
-    const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}`,{
-      method:'PUT',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`${ftApi(ft)}/${ST.docId[ft]}`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body),
     });
     const j=await r.json();
@@ -2100,9 +2098,9 @@ async function confirmReturn(){
   const btn=document.getElementById('return-confirm');
   if(btn)btn.disabled=true;
   try{
-    const r=await fetch(`${ftApi(ft)}/${ST.docId[ft]}/returneaza`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`${ftApi(ft)}/${ST.docId[ft]}/returneaza`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({motiv}),
     });
     const j=await r.json();
@@ -2147,7 +2145,7 @@ async function openFormAudit(type,docId){
   if(csvBtn)csvBtn.onclick=()=>{window.open(base+'?format=csv','_blank');closeFormAudit();};
   if(pdfBtn)pdfBtn.onclick=()=>{window.open(base+'?format=pdf','_blank');closeFormAudit();};
   try{
-    const r=await fetch(base,{credentials:'include'});
+    const r=await DFApi.fetch(base);
     const j=await r.json();
     if(!r.ok){if(tl)tl.innerHTML=`<div class="err" style="font-size:.84rem">${esc(j.error||'Eroare la încărcare')}</div>`;return;}
     const esc2=window.df?.esc||(s=>(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
