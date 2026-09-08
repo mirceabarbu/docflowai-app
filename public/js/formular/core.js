@@ -736,7 +736,7 @@ async function _getOrdDfCtrlRows(){
   const dfId=(document.getElementById('o-df-id')?.value||'').trim();
   if(!dfId)return[];
   try{
-    const r=await fetch(`/api/formulare-df/${encodeURIComponent(dfId)}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/formulare-df/${encodeURIComponent(dfId)}`);
     const j=await r.json();
     if(!r.ok||!j.document)return[];
     const rows=Array.isArray(j.document.rows_ctrl)?j.document.rows_ctrl:JSON.parse(j.document.rows_ctrl||'[]');
@@ -909,7 +909,7 @@ async function genPdf(ft){
   try{
     const data=ft==='ordnt'?colO():colN();
     const docId=ST.docId?.[ft]||null;
-    const r=await fetch('/api/formulare/generate',{method:'POST',credentials:'include',
+    const r=await DFApi.fetch('/api/formulare/generate',{method:'POST',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({formType:ft,data,docId}),
       signal:ctrl.signal});
     clearTimeout(timeout);
@@ -964,7 +964,7 @@ function mkFlow(ft){
   // ── Datalist Cod SSI — populat din bugetul importat ─────────────────────
   async function loadBugetCodes() {
     try {
-      const r = await fetch('/api/clasa8/buget/coduri', { credentials: 'include' });
+      const r = await DFApi.fetch('/api/clasa8/buget/coduri');
       if (!r.ok) return;
       const j = await r.json();
       const dl = document.getElementById('ssi-codes-list');
