@@ -37,6 +37,9 @@ beforeAll(() => {
     }
     return Promise.reject(new Error('fetch dezactivat în test'));
   };
+  // #184 — df-api.js e incarcat de pagina INAINTEA modulelor formular/ (formular.html:1516);
+  // fara el, apelurile migrate pe DFApi.fetch arunca ReferenceError in harness.
+  new Function(readFileSync(join(__dir, '../../../public/js/shared/df-api.js'), 'utf8')).call(globalThis);
   new Function(coreSrc).call(globalThis);
   new Function(listSrc).call(globalThis);
 });
