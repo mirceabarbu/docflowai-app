@@ -33,7 +33,7 @@
     if(tfoot) tfoot.style.display='none';
     tbody.innerHTML = '<tr><td colspan="11" style="padding:20px;text-align:center;color:var(--df-text-3)">Se încarcă…</td></tr>';
     try {
-      const r = await fetch('/api/alop/facturi', { credentials:'include' });
+      const r = await DFApi.fetch('/api/alop/facturi');
       const j = await r.json();
       if(!r.ok || !j.ok) throw new Error(j.error || 'Eroare la încărcare');
       _allFacturi = j.facturi || [];

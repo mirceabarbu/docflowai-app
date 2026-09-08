@@ -6,7 +6,7 @@
 
 (async()=>{
   try{
-    const r=await fetch('/auth/me',{credentials:'include'});
+    const r=await DFApi.fetch('/auth/me');
     if(!r.ok){location.href='/login.html';return;}
     ST.user=await r.json();
 
@@ -17,7 +17,7 @@
       const label=u.nume||u.email||'';
       bar.innerHTML=(label?`<span>Conectat: <strong>${label}</strong></span>`:'')
         +((u.role==='admin'||u.role==='org_admin')?`<a href="/admin">⚙ Admin</a>`:'')
-        +`<button onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';})">Ieșire</button>`;
+        +`<button onclick="DFApi.fetch('/auth/logout',{method:'POST'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';})">Ieșire</button>`;
     }
   }catch{location.href='/login.html';return;}
 
@@ -25,7 +25,7 @@
   // Dacă utilizatorul nu are org (ex: admin super-user), org va fi null —
   // câmpurile rămân editabile fără eroare; nu e nevoie de fallback în JWT.
   try{
-    const orgR=await fetch('/api/org/profile',{credentials:'include'});
+    const orgR=await DFApi.fetch('/api/org/profile');
     if(orgR.ok){
       const body=await orgR.json();
       const org=body?.org||null;

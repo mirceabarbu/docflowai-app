@@ -74,8 +74,7 @@
     _showLoading();
 
     try {
-      const r = await fetch(`/api/trasabilitate/${type}/${encodeURIComponent(id)}`,
-                            { credentials: 'include' });
+      const r = await DFApi.fetch(`/api/trasabilitate/${type}/${encodeURIComponent(id)}`);
       // SEC-88.3: URL canonic de login (nu homepage), cu ?next= pentru revenire.
       if (r.status === 401) {
         closeTrasabilitate();

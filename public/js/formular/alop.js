@@ -34,9 +34,9 @@ async function _alopLinkDoc(ft, docId){
   const body=ft==='notafd'?{df_id:docId}:{ord_id:docId};
   console.log(`ALOP ${endpoint}: ${alopId} → ${docId}`);
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/${endpoint}`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(alopId)}/${endpoint}`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body),
     });
     const j=await r.json();
@@ -114,7 +114,7 @@ function _alopFazaLabel(status){
 
 async function loadAlopStats(){
   try{
-    const r=await fetch('/api/alop/stats',{credentials:'include'});
+    const r=await DFApi.fetch('/api/alop/stats');
     if(!r.ok)return;
     const d=await r.json();
     const e=id=>document.getElementById(id);
@@ -137,7 +137,7 @@ let _canImportOpmeCache = null;
 async function _canImportOpme(){
   if (_canImportOpmeCache !== null) return _canImportOpmeCache;
   try {
-    const r = await fetch('/api/me/can-import-opme', { credentials: 'include' });
+    const r = await DFApi.fetch('/api/me/can-import-opme');
     if (!r.ok) return false;
     const j = await r.json();
     _canImportOpmeCache = !!j.can;
@@ -178,7 +178,7 @@ function openOpmeLinesForAlop(alopId){
   // afișăm doar lista liniilor în cardul Plată (deja prezent).
   // Implementare simplă: dacă există linii cu opme_import_id, deschide primul
   // import distinct (cel mai vechi).
-  fetch(`/api/opme/lines/by-alop/${encodeURIComponent(alopId)}`,{credentials:'include'})
+  DFApi.fetch(`/api/opme/lines/by-alop/${encodeURIComponent(alopId)}`)
     .then(r=>r.json())
     .then(d=>{
       const lines=d?.lines||[];
@@ -256,7 +256,7 @@ async function loadAlop(){
   try{
     _populateAlopCompartimente();
     const qs=_alopQuery();
-    const r=await fetch(`/api/alop?${qs.toString()}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/alop?${qs.toString()}`);
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
     const rows=data.alop||[];
@@ -338,7 +338,7 @@ async function exportAlop(){
   if(btn){btn.disabled=true;btn.textContent='⏳ Se pregătește…';}
   try{
     const qs=_alopQuery({all:true});
-    const r=await fetch(`/api/alop?${qs.toString()}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/alop?${qs.toString()}`);
     const j=await r.json();
     if(!r.ok)throw new Error(j.error||'server_error');
     const alop=j.alop||[];
@@ -403,9 +403,9 @@ async function createAlop(){
   const notes=(document.getElementById('alop-notes')?.value||'').trim();
   if(!titlu){alert('Titlul este obligatoriu.');return;}
   try{
-    const r=await fetch('/api/alop',{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch('/api/alop',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({titlu,compartiment,valoare_totala:valoare,notes}),
     });
     const data=await r.json();
@@ -428,7 +428,7 @@ async function openAlop(id){
   if(detailPanel)detailPanel.style.display='';
   if(content)content.innerHTML='<div style="text-align:center;padding:32px;color:var(--df-text-3)">Se încarcă...</div>';
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(id)}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(id)}`);
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'not_found');
     renderAlopDetail(data.alop,content);
@@ -468,9 +468,9 @@ async function alopSaveTitlu(id){
   const titlu=(input?.value||'').trim();
   if(!titlu){setS('Titlul nu poate fi gol.','err');return;}
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/titlu`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(id)}/titlu`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({titlu}),
     });
     const j=await r.json();
@@ -530,7 +530,7 @@ function _fetchOpmeLinesAndRenderCicluri(a, container, isCompleted, isCancelled,
   // Default fără OPME — render imediat pentru a evita flicker; după fetch
   // re-randăm cu lista de OP-uri.
   _renderAlopCicluri(a, container, { active: [], byCiclu: {} }, isCompleted, isCancelled, fmtV, fmtDate);
-  fetch(`/api/opme/lines/by-alop/${encodeURIComponent(a.id)}`,{credentials:'include'})
+  DFApi.fetch(`/api/opme/lines/by-alop/${encodeURIComponent(a.id)}`)
     .then(r=>{ if(!r.ok) return null; return r.json(); })
     .then(d=>{
       if(!d) return;
@@ -921,7 +921,7 @@ function renderAlopDetail(a,container){
       if(!alopSec||alopSec.style.display==='none')return;
       if(!detailP||detailP.style.display==='none')return;
       try{
-        const r=await fetch(`/api/alop/${encodeURIComponent(a.id)}`,{credentials:'include'});
+        const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(a.id)}`);
         if(!r.ok)return;
         const d=await r.json();
         if(d.alop&&d.alop.status!==a.status){openAlop(a.id);loadAlop();loadAlopStats();}
@@ -936,9 +936,9 @@ async function startNouaLichidare(alopId){
   if(!confirm('Pornești un nou ciclu Lichidare → Ordonanțare → Plată pentru valoarea rămasă din DF?'))return;
   try{
     const fmtRON=v=>v!=null?new Intl.NumberFormat('ro-RO',{style:'currency',currency:'RON'}).format(v):'—';
-    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/noua-lichidare`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()}
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(alopId)}/noua-lichidare`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'}
     });
     const data=await r.json();
     if(!r.ok){alert(data.message||data.error||'Eroare');return;}
@@ -958,7 +958,7 @@ async function alopDeschideDF(alopId,btn){
     // capturat ÎNAINTE ca _alopContext să fie suprascris mai jos.
     const _prevCtxAlop = window._alopContext && window._alopContext.alopId;
     // FIX 3: citim starea curentă din server — singura sursă de adevăr pentru df_id
-    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(alopId)}`);
     if(!r.ok)return;
     const {alop}=await r.json();
     if(!alop)return;
@@ -987,9 +987,9 @@ async function alopDeschideDF(alopId,btn){
         newDocFromList();
       }else{
         // Re-leagă imediat (link-df e idempotent) și deschide documentul
-        fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
-          method:'POST',credentials:'include',
-          headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+        DFApi.fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
           body:JSON.stringify({df_id:ST.docId['notafd']}),
         }).then(r=>r.json()).then(j=>{
           if(j.ok)console.log('ALOP re-link-df:',alopId,'→',ST.docId['notafd']);
@@ -1017,7 +1017,7 @@ async function alopDeschideORD(alopId,btn){
   if(btn)btn.disabled=true;   // 4b: dezactivează butonul cât timp deschiderea e în curs
   try{
     // Citim starea curentă din server — singura sursă de adevăr pentru ord_id
-    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(alopId)}`);
     if(!r.ok)return;
     const {alop}=await r.json();
     if(!alop)return;
@@ -1109,9 +1109,9 @@ async function alopLaunchDfFlow(alopId,dfId){
   // Pas 1: leagă df_id la ALOP ÎNAINTE de orice navigare (garantează df_id setat)
   if(dfId){
     try{
-      const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
-        method:'POST',credentials:'include',
-        headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+      const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(alopId)}/link-df`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
         body:JSON.stringify({df_id:dfId}),
       });
       const j=await r.json();
@@ -1138,9 +1138,9 @@ async function alopLaunchOrdFlow(alopId,ordId){
   // Pas 1: leagă ord_id la ALOP ÎNAINTE de orice navigare
   if(ordId){
     try{
-      const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}/link-ord`,{
-        method:'POST',credentials:'include',
-        headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+      const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(alopId)}/link-ord`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ord_id:ordId}),
       });
       const j=await r.json();
@@ -1159,8 +1159,8 @@ async function alopLaunchOrdFlow(alopId,ordId){
 async function alopDfCompleted(id){
   if(!confirm('Marchezi DF-ul ca semnat complet? Dosarul trece în faza Lichidare.'))return;
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/df-completed`,{
-      method:'POST',credentials:'include',headers:{'X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(id)}/df-completed`,{
+      method:'POST',
     });
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
@@ -1206,9 +1206,9 @@ async function confirmLichidare(){
     valoare_factura: _parseValoareFactura(document.getElementById('lich-valoare-factura')?.value),
   };
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(_lichidareAlopId)}/confirma-lichidare`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(_lichidareAlopId)}/confirma-lichidare`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body),
     });
     const data=await r.json();
@@ -1222,8 +1222,8 @@ async function confirmLichidare(){
 async function alopOrdCompleted(id){
   if(!confirm('Marchezi ORD-ul ca semnat complet? Dosarul trece în faza Plată.'))return;
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/ord-completed`,{
-      method:'POST',credentials:'include',headers:{'X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(id)}/ord-completed`,{
+      method:'POST',
     });
     const data=await r.json();
     if(!r.ok)throw new Error(data.error||'server_error');
@@ -1266,9 +1266,9 @@ async function confirmPlata(){
     observatii:(document.getElementById('plata-observatii')?.value||'').trim(),
   };
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(_plataAlopId)}/confirma-plata`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(_plataAlopId)}/confirma-plata`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body),
     });
     const data=await r.json();
@@ -1283,8 +1283,8 @@ async function confirmPlata(){
 async function cancelAlop(id){
   if(!confirm('Ștergeți acest ALOP? Operațiunea nu poate fi inversată.'))return;
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(id)}/cancel`,{
-      method:'POST',credentials:'include',headers:{'X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(id)}/cancel`,{
+      method:'POST',
     });
     const data=await r.json();
     if(!r.ok){
@@ -1324,9 +1324,9 @@ async function confirmRevizie(){
   if(!motiv){if(errEl) errEl.textContent='Motivul este obligatoriu.';return;}
   if(errEl) errEl.textContent = '';
   try{
-    const r=await fetch(`/api/formulare-df/${encodeURIComponent(_revizieTargetId)}/revizuieste`,{
-      method:'POST',credentials:'include',
-      headers:{'Content-Type':'application/json','X-CSRF-Token':df.getCsrf()},
+    const r=await DFApi.fetch(`/api/formulare-df/${encodeURIComponent(_revizieTargetId)}/revizuieste`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({motiv}),
     });
     const j=await r.json();
@@ -1350,7 +1350,7 @@ async function alopRevizuiesteDF(alopId,dfId){
   if(!dfId){alert('Niciun DF legat de acest ALOP.');return;}
   // Reîncarcă contextul ALOP cu date proaspete
   try{
-    const r=await fetch(`/api/alop/${encodeURIComponent(alopId)}`,{credentials:'include'});
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(alopId)}`);
     const d=await r.json();
     if(d.alop){
       window._alopContext={

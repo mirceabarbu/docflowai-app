@@ -31,6 +31,7 @@ import { isPlatformAdmin } from '../services/authz-scope.mjs';
 import { selfHealAlopDfLinkByAlop, backfillAlopFlowPointers } from '../services/alop-link.mjs';
 import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
+import { dosarKeyExpr } from '../services/df-dosar-key.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import {
@@ -1187,7 +1188,43 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
       RETURNING *
     `, [df_id, req.params.id, actor.orgId, actor.userId]);
 
-    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    if (!rows[0]) {
+      // #185 — UPDATE-ul n-a atins niciun rând. Două cauze posibile, cu verdicte diferite:
+      //   (a) ALOP-ul pointează spre o ALTĂ REVIZIE A ACELUIAȘI DOSAR — caz NORMAL.
+      //       #134f a decis că pointerul se mută EXCLUSIV la aprobare, prin
+      //       selfHealAlopDfLink. Frontendul cheamă totuși link-df la fiecare salvare
+      //       (doc.js → _alopLinkDoc), deci fiecare salvare a unei revizii producea o
+      //       bandă roșie care sfătuia utilizatorul să relege manual — adică exact
+      //       acțiunea care ar muta pointerul de pe revizia aprobată pe una în lucru.
+      //       Răspundem 200 și NU atingem nimic.
+      //   (b) ALOP-ul pointează spre un DF din ALT DOSAR — deturnare. Rămâne 404.
+      const { rows: cur } = await pool.query(
+        'SELECT * FROM alop_instances WHERE id=$1 AND org_id=$2',
+        [req.params.id, actor.orgId]
+      );
+      const curDfId = cur[0]?.df_id || null;
+      if (curDfId && curDfId !== df_id) {
+        // Cheia e DOSARUL, nu numărul de înregistrare — în producție există
+        // nr_unic_inreg duplicate între dosare diferite (docs/incidents/DF-NR-DUPLICAT.md).
+        const { rows: same } = await pool.query(
+          `SELECT EXISTS (
+             SELECT 1
+               FROM formulare_df fd_cur, formulare_df fd_new
+              WHERE fd_cur.id = $1 AND fd_new.id = $2
+                AND fd_cur.org_id = $3 AND fd_new.org_id = $3
+                AND fd_cur.deleted_at IS NULL AND fd_new.deleted_at IS NULL
+                AND ${dosarKeyExpr('fd_cur')} = ${dosarKeyExpr('fd_new')}
+           ) AS same_dosar`,
+          [curDfId, df_id, actor.orgId]
+        );
+        if (same[0]?.same_dosar) {
+          logger.info({ alopId: req.params.id, curDfId, newDfId: df_id },
+            '[ALOP] link-df: revizie a aceluiasi dosar — pointerul ramane pe revizia in vigoare (#134f)');
+          return res.json({ ok: true, noop: 'revizie_in_lucru', alop: cur[0] });
+        }
+      }
+      return res.status(404).json({ error: 'not_found' });
+    }
     res.json({ ok: true, alop: rows[0] });
   } catch (e) {
     logger.error({ err: e }, 'alop link-df error');

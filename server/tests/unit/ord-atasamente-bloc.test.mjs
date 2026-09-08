@@ -23,6 +23,9 @@ beforeAll(() => {
   globalThis.df.esc = (s) => String(s ?? '');
   globalThis.df.getCsrf = () => 'csrf-test';
   // Componenta partajată de chip-uri (window.renderFileItem) — folosită de randarea listelor.
+  // #184 — df-api.js e incarcat de pagina INAINTEA modulelor formular/ (formular.html:1516);
+  // fara el, apelurile migrate pe DFApi.fetch arunca ReferenceError in harness.
+  new Function(readShared('df-api.js')).call(globalThis);
   new Function(readShared('file-item.js')).call(globalThis);
   new Function(read('core.js')).call(globalThis);
   const realSetInterval = globalThis.setInterval;

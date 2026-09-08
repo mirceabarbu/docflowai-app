@@ -59,7 +59,7 @@
       if (_state.filters.compartiment) params.set('compartiment', _state.filters.compartiment);
       if (_state.filters.q)            params.set('q', _state.filters.q);
 
-      const r = await fetch('/api/clasa8?' + params.toString(), { credentials: 'include' });
+      const r = await DFApi.fetch('/api/clasa8?' + params.toString());
       // SEC-88.3: URL canonic de login (nu homepage), cu ?next= pentru revenire.
       if (r.status === 401) {
         try { localStorage.removeItem('docflow_user'); } catch (_) {}
@@ -235,7 +235,7 @@
   // ── Buget meta ──────────────────────────────────────────────────────────────
   async function _refreshBugetMeta() {
     try {
-      const r = await fetch('/api/clasa8/buget/meta', { credentials: 'include' });
+      const r = await DFApi.fetch('/api/clasa8/buget/meta');
       if (!r.ok) return;
       const j = await r.json();
       const metaEl  = document.getElementById('clasa8-buget-meta');
@@ -415,10 +415,9 @@
     const filename  = fileInput?.files?.[0]?.name || null;
 
     try {
-      const r = await fetch('/api/clasa8/buget/import', {
+      const r = await DFApi.fetch('/api/clasa8/buget/import', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.df?.getCsrf?.() || '' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows: _parsedRows, filename }),
       });
       const j = await r.json();
@@ -438,10 +437,8 @@
   async function _clearBuget() {
     if (!confirm('Vrei să ștergi bugetul activ? Versiunile anterioare rămân în istoric.')) return;
     try {
-      const r = await fetch('/api/clasa8/buget', {
+      const r = await DFApi.fetch('/api/clasa8/buget', {
         method: 'DELETE',
-        credentials: 'include',
-        headers: { 'X-CSRF-Token': window.df?.getCsrf?.() || '' },
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       clasa8CloseImport();
