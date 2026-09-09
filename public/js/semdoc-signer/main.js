@@ -35,7 +35,7 @@
           (label ? `<span style="color:#cdd8ff;font-size:.82rem;">Conectat: <strong>${label}</strong></span>` : '') +
           ((u.role === 'admin' || u.role === 'org_admin') ? `<a href="/admin" style="color:#9db0ff;text-decoration:none;border:1px solid rgba(255,255,255,.15);padding:5px 12px;border-radius:8px;font-size:.8rem;">⚙ Admin</a>` : '') +
           `<button class="df-action-btn sm" onclick="openChangePwdModal()"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-key"/></svg>Parolă</button>` +
-          `<button class="df-action-btn sm danger" onclick="fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-log-out"/></svg>Ieșire</button>`;
+          `<button class="df-action-btn sm danger" onclick="DFApi.fetch('/auth/logout',{method:'POST'}).finally(()=>{localStorage.removeItem('docflow_user');location.href='/login';});"><svg class="df-ic" viewBox="0 0 24 24"><use href="/icons.svg?v=3.9.475#ico-log-out"/></svg>Ieșire</button>`;
         if (localStorage.getItem("docflow_force_pwd") === "1") {
           const banner = document.getElementById("forcePwdBanner");
           if (banner) banner.style.display = "block";
@@ -1316,7 +1316,7 @@
           if (_stsPending === '1') return; // deja pornit prin redirect normal
           try {
             const url = `/flows/${encodeURIComponent(flow)}/signer-status?token=${encodeURIComponent(token)}`;
-            const r = await fetch(url, { credentials: 'include' });
+            const r = await DFApi.fetch(url);
             if (!r.ok) return;
             const d = await r.json();
             if (d.shouldResumePoll) {
