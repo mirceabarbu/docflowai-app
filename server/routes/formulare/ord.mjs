@@ -29,6 +29,7 @@ import { blocuriDinOrd, pregatesteScriereBlocuri } from '../../services/ord-bloc
 import { serializeOrdnt } from '../../services/alop-xml/ordnt-serializer.mjs';
 import { ordRowToXsd } from '../../services/alop-xml/ord-to-xsd.mjs';
 import { serveFormularXml } from '../../services/alop-xml/serve.mjs';
+import { sumaColoana, verificaPlafonOrdonantare } from '../../services/ord-lant.mjs';
 
 const router = Router();
 const _csrf  = csrfMiddleware;
@@ -319,6 +320,35 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
     if (rowsCuBloc !== undefined) data.rows = rowsCuBloc;   // bloc_idx, DUPĂ derivarea de identitate
     Object.assign(data, oglinda);                           // intră pe traseul ORD_P1_FIELDS de mai jos
 
+    // ── #186 ETAPA D — PORȚILE DE ORDONANȚARE la crearea unei ORD noi ────────────
+    // Aceleași două praguri ca la `confirma-lichidare` (services/ord-lant.mjs):
+    //   BLOCARE 400 `peste_valoare_df` — Σ col.4 ar depăși valoarea DF-ului aprobat
+    //                                    (limita angajamentului legal);
+    //   AVERTISMENT — sub DF dar peste disponibilul din RECEPȚII; răspuns 200 cu
+    //                 `avertisment_plafon`, operația SE EXECUTĂ.
+    // Se aplică DOAR când documentul are context de dosar (`source_alop_id`) și o sumă > 0 —
+    // la autosalvarea de creare rândurile sunt de regulă goale, deci poarta e transparentă.
+    // ⛔ NU înlocuiește `validateOrdBugetAnCurent` (creditele bugetare col.10 la submit/
+    // complete) și nici poarta de la `noua-lichidare`. Se ADAUGĂ.
+    let _avertismentPlafon = null;
+    if (srcAlopId) {
+      const _sumaOrd = sumaColoana(data.rows, 'suma_ordonantata_plata');
+      if (_sumaOrd > 0) {
+        const plafon = await verificaPlafonOrdonantare({
+          alopId: srcAlopId, orgId: actor.orgId, suma: _sumaOrd, dfId: body.df_id || null,
+        });
+        if (plafon.blocat) {
+          logger.warn({ srcAlopId, ...plafon }, 'formulare-ord: creare BLOCATĂ (peste valoarea DF)');
+          return res.status(400).json({
+            error: 'peste_valoare_df',
+            message: `Suma ordonanțată (${_sumaOrd.toFixed(2)} RON) depășește disponibilul din DF-ul aprobat (${(plafon.disponibil_df ?? 0).toFixed(2)} RON din ${(plafon.df_valoare ?? 0).toFixed(2)} RON, deja ordonanțat ${plafon.ordonantat.toFixed(2)} RON).`,
+            ...plafon,
+          });
+        }
+        if (plafon.avertisment) _avertismentPlafon = plafon;
+      }
+    }
+
     const cols = ['org_id', 'created_by'];
     const vals = [actor.orgId, actor.userId];
 
@@ -345,7 +375,8 @@ router.post('/api/formulare-ord', _csrf, requireModule('alop'), requireModule('o
     await recordFormularAudit({ orgId: actor.orgId, formType: 'ord', formId: rows[0].id,
       actorId: actor.userId, actorEmail: actor.email, eventType: 'creat', toStatus: 'draft' });
     rows[0].capabilities = computeDocCapabilities(rows[0], actor, 'ordnt');
-    res.json({ ok: true, document: rows[0] });
+    res.json({ ok: true, document: rows[0],
+      ...(_avertismentPlafon ? { avertisment_plafon: _avertismentPlafon } : {}) });
   } catch (e) {
     logger.error({ err: e }, 'formulare-ord create error');
     res.status(500).json({ error: 'server_error' });

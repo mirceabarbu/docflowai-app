@@ -116,14 +116,28 @@ const flush = async (n = 6) => { for (let i = 0; i < n; i++) await Promise.resol
 beforeEach(() => { mountOrdForm(); vi.restoreAllMocks(); });
 
 // ═════════════════════════════════════════════════════════════════════════════
+// #186 — SURSA prefill-ului s-a schimbat: nu mai e `suma_platita_total` / Σ
+// `cicluri_istorice[].plata_suma_efectiva` (PLĂȚILE știute de aplicație), ci LANȚUL de
+// ordonanțări, derivat server-side: `GET /api/alop/:id/ord-col3` → `{col3, sursa}`.
+// PARITATEA blocurilor (obiectul acestui fișier) rămâne NESCHIMBATĂ — se schimbă doar de
+// unde vine numărul, și faptul că traseul 2 (redeschidere) nu mai prefill-ează deloc.
+const okJson = (obj) => ({ ok: true, json: () => Promise.resolve(obj) });
+// #187 — răspunsul endpointului e o HARTĂ PE CHEIE, nu un scalar `col3`. Fixture-ul de aici
+// e cazul REAL de azi: predecesorul are o SINGURĂ cheie distinctă ⇒ `cheie_unica` setat ⇒
+// comportamentul vizibil (prefill în toate blocurile) rămâne EXACT ca înainte.
+const CHEIE_1 = 'A1||I1||||';
+const col3Resp = (col3) => okJson({
+  ok: true, sursa: 'lant', plata_predecesor_confirmata: true,
+  chei: { [CHEIE_1]: { col3: Number(col3), sursa: 'lant',
+    componente: { cod_angajament: 'A1', indicator_angajament: 'I1', program: '', cod_SSI: '' } } },
+  cheie_unica: CHEIE_1,
+});
+
 describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
-  // ── Traseul 1: CREARE (newDoc → fetch /api/alop/:id) ───────────────────────
+  // ── Traseul 1: CREARE (newDoc → fetch /api/alop/:id/ord-col3) ──────────────
   it('⭐ NON-REGRESIE — creare, UN singur bloc: valoarea ajunge pe primul rând, col.5 recalculată', async () => {
     globalThis.window._alopContext = { alopId: 'A1' };
-    const spy = vi.fn(() => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ alop: { cicluri_istorice: [{ plata_suma_efectiva: '1200.50' }] } }),
-    }));
+    const spy = vi.fn(() => Promise.resolve(col3Resp(1200.50)));
     globalThis.fetch = spy;
 
     try { window.newDoc('ordnt'); } catch { /* restul lui newDoc nu ne interesează aici */ }
@@ -137,16 +151,15 @@ describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
     // 5 = col.2 − col.3 − col.4 = 2000 − 1200,50 − 0
     expect(c5Input(bl).value).toBe('799,50');
     expect(spy).toHaveBeenCalledTimes(1);
+    // #186 — sursa e endpointul de LANȚ, nu GET-ul de ALOP
+    expect(String(spy.mock.calls[0][0])).toMatch(/\/ord-col3/);
   });
 
   // La CREARE există prin construcție un singur bloc (newDoc → resetOrdBlocuri). Acoperirea
   // multi-bloc pe traseul de creare vine prin addBlocOrd (testul ⭐ de mai jos), nu prin newDoc.
   it('creare: newDoc revine la UN singur bloc — multi-bloc se acoperă prin addBlocOrd', async () => {
     globalThis.window._alopContext = { alopId: 'A1' };
-    globalThis.fetch = vi.fn(() => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ alop: { cicluri_istorice: [{ plata_suma_efectiva: '300' }] } }),
-    }));
+    globalThis.fetch = vi.fn(() => Promise.resolve(col3Resp(300)));
     const b1 = mountBloc(1);
     window.addOR(b1);
     try { window.newDoc('ordnt'); } catch { /* noop */ }
@@ -157,15 +170,21 @@ describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
   });
 
   // ── Traseul 2: SALVARE / REDESCHIDERE (populateOrd) ────────────────────────
-  it('⭐ redeschidere cu DOUĂ blocuri: fiecare bloc primește valoarea pe primul rând al lui', async () => {
-    globalThis.window._alopSumaPlataAnterioara = 4321;
+  // ⛔ #186 — INVARIANTUL CEL MAI IMPORTANT: deschiderea unui ORD EXISTENT nu are voie să
+  // schimbe NICIO cifră din tabel. Un document aprobat și semnat trebuie să arate exact ce
+  // s-a semnat. Până la #186, `populateOrd` scria col.3 cu `force:true` din
+  // `window._alopSumaPlataAnterioara` (= `suma_platita_total`) — pe ORD 43759 asta a
+  // înlocuit 300.424,95 (derivat corect din ciclul 1) cu o valoare internă.
+  // Testele de mai jos păstrează fixture-urile de dinainte, dar asertează CONTRARIUL.
+  it('⭐ #186 redeschidere cu DOUĂ blocuri: cifrele salvate rămân NEATINSE', async () => {
+    globalThis.window._alopSumaPlataAnterioara = 4321;   // reziduu — nimeni nu-l mai citește
     globalThis.fetch = vi.fn(() => Promise.reject(new Error('fără capturi')));
 
     await window.populateOrd({
       id: 'O1', cif: '1', den_inst_pb: 'X', nr_ordonant_pl: '7',
       blocuri: [{ beneficiar: 'Unu' }, { beneficiar: 'Doi' }],
       rows: [
-        { bloc_idx: 0, receptii: '10000', plati_anterioare: '0', suma_ordonantata_plata: '0' },
+        { bloc_idx: 0, receptii: '10000', plati_anterioare: '300424.95', suma_ordonantata_plata: '0' },
         { bloc_idx: 1, receptii: '9000', plati_anterioare: '0', suma_ordonantata_plata: '0' },
       ],
     });
@@ -173,45 +192,43 @@ describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
 
     const bls = blocuri();
     expect(bls).toHaveLength(2);
-    expect(antInput(bls[0]).value).toBe('4.321,00');
-    expect(antInput(bls[1]).value).toBe('4.321,00');
+    expect(antInput(bls[0]).value).toBe('300.424,95');   // exact ce s-a salvat
+    expect(antInput(bls[1]).value).toBe('0,00');         // zero salvat rămâne zero
   });
 
-  it('NON-REGRESIE — redeschidere cu UN bloc: comportament identic cu cel de azi', async () => {
+  it('⭐ #186 redeschidere cu UN bloc: col.3 salvată nu e suprascrisă, col.5 se păstrează', async () => {
     globalThis.window._alopSumaPlataAnterioara = 500;
     globalThis.fetch = vi.fn(() => Promise.reject(new Error('fără capturi')));
     await window.populateOrd({
       id: 'O1', blocuri: [{ beneficiar: 'Unu' }],
-      rows: [{ bloc_idx: 0, receptii: '1200', plati_anterioare: '0', suma_ordonantata_plata: '200' }],
+      rows: [{ bloc_idx: 0, receptii: '1200', plati_anterioare: '700', suma_ordonantata_plata: '200', receptii_neplatite: '300' }],
     });
     await flush();
     const bl = blocuri()[0];
-    expect(antInput(bl).value).toBe('500,00');
-    expect(c5Input(bl).value).toBe('500,00'); // 1200 − 500 − 200
+    expect(antInput(bl).value).toBe('700,00');
+    expect(c5Input(bl).value).toBe('300,00'); // 1200 − 700 − 200, din cifrele SALVATE
   });
 
-  it('⭐ col.5 se recalculează corect în BLOCUL 2 după prefill', async () => {
+  it('⭐ #186 col.3 la 0 pe un ORD existent RĂMÂNE 0 (nu se „completează" din plăți)', async () => {
     globalThis.window._alopSumaPlataAnterioara = 1000;
     globalThis.fetch = vi.fn(() => Promise.reject(new Error('fără capturi')));
     await window.populateOrd({
       id: 'O1', blocuri: [{ beneficiar: 'Unu' }, { beneficiar: 'Doi' }],
       rows: [
-        { bloc_idx: 0, receptii: '5000', plati_anterioare: '0', suma_ordonantata_plata: '0' },
-        { bloc_idx: 1, receptii: '8000', plati_anterioare: '0', suma_ordonantata_plata: '500' },
+        { bloc_idx: 0, receptii: '5000', plati_anterioare: '0', suma_ordonantata_plata: '0', receptii_neplatite: '5000' },
+        { bloc_idx: 1, receptii: '8000', plati_anterioare: '0', suma_ordonantata_plata: '500', receptii_neplatite: '7500' },
       ],
     });
     await flush();
     const bls = blocuri();
-    expect(c5Input(bls[1]).value).toBe('6.500,00'); // 8000 − 1000 − 500
+    expect(antInput(bls[1]).value).toBe('0,00');
+    expect(c5Input(bls[1]).value).toBe('7.500,00'); // 8000 − 0 − 500
   });
 
   // ── Traseul 3: BLOC ADĂUGAT ULTERIOR (addBlocOrd) ──────────────────────────
   it('⭐ bloc adăugat DUPĂ prefill: îl primește, FĂRĂ un al doilea fetch', async () => {
     globalThis.window._alopContext = { alopId: 'A1' };
-    const spy = vi.fn(() => Promise.resolve({
-      ok: true,
-      json: () => Promise.resolve({ alop: { cicluri_istorice: [{ plata_suma_efectiva: '777' }] } }),
-    }));
+    const spy = vi.fn(() => Promise.resolve(col3Resp('777')));
     globalThis.fetch = spy;
 
     try { window.newDoc('ordnt'); } catch { /* noop */ }
@@ -256,13 +273,14 @@ describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
   });
 
   it('newDoc invalidează cache-ul: documentul nou nu moștenește valoarea celui anterior', async () => {
-    globalThis.window._alopSumaPlataAnterioara = 2500;
-    globalThis.fetch = vi.fn(() => Promise.reject(new Error('fără capturi')));
-    await window.populateOrd({ id: 'O1', blocuri: [{}], rows: [{ bloc_idx: 0, receptii: '5000' }] });
+    // #186 — cache-ul se încarcă acum pe traseul de CREARE (singurul care mai prefill-ează).
+    globalThis.window._alopContext = { alopId: 'A1' };
+    globalThis.fetch = vi.fn(() => Promise.resolve(col3Resp(2500)));
+    try { window.newDoc('ordnt'); } catch { /* noop */ }
     await flush();
     expect(antInput(blocuri()[0]).value).toBe('2.500,00');
 
-    globalThis.window._alopSumaPlataAnterioara = 0;
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('fără alop')));
     globalThis.window._alopContext = null;
     try { window.newDoc('ordnt'); } catch { /* noop */ }
     await flush();

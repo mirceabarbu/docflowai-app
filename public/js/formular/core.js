@@ -200,6 +200,17 @@ function addOR(target){const i=window.oI++;const tr=document.createElement('tr')
   const oang=tr.querySelector('[data-f="cod_angajament"]');
   const oind=tr.querySelector('[data-f="indicator_angajament"]');
   [oang,oind].forEach(el=>{if(el)el.addEventListener('blur',()=>_upperAng(el));});
+  // #187 — col.3 se derivă PER CHEIE a coloanei 1. Pe un ORD NOU rândul poate porni fără
+  // cheie (înainte de selecția DF-ului); pe măsură ce omul completează coloana 1, rândul își
+  // poate primi valoarea care i se cuvine. ⛔ Doar dacă col.3 e ÎNCĂ 0, și doar cât timp
+  // există hartă pe cheie (traseul de creare) — pe un ORD EXISTENT e no-op prin construcție.
+  ORD_IDENT_FLDS.forEach(f=>{
+    const el=tr.querySelector(`[data-f="${f}"]`);
+    if(!el)return;
+    el.addEventListener('blur',()=>{
+      if(typeof window.applyPlatiAntPrefillRand==='function')window.applyPlatiAntPrefillRand(tr);
+    });
+  });
   // Col.4 (suma ordonanțată) editabilă pentru P1 DOAR în pending_p2 (anticipare).
   // În draft/returnat P1 are deja lockAll(false) global. În completed/aprobat: blocat.
   if(ST.docRole?.ordnt==='p1'&&ST.docStatus?.ordnt==='pending_p2'){

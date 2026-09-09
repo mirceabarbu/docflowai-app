@@ -620,10 +620,19 @@ function _renderAlopCicluri(a, container, opmeGroups, isCompleted, isCancelled, 
       </div>
     </div>`;
   });
+  // #186 — „Total plăți" = col.3 al ORD-ului CURENT + plata confirmată a ciclului curent.
+  // Înainte era Σ `plata_suma_efectiva` peste cicluri, adică DOAR plățile pe care le știe
+  // DocFlowAI; col.3 a ordonanțării curente poartă însă tot istoricul de plăți al
+  // angajamentului, inclusiv cele din sistemul CAB dinaintea dosarului. Pe dosarul de test
+  // („Iluminat public", ciclul 2) forma veche dădea 99.308,88 în loc de 353.688,51.
+  // FALLBACK documentat: fără ORD curent (`ord_id` null — ciclu nou încă în lichidare) col.3
+  // nu există, deci se revine la Σ plăților istorice ca să nu afișăm o cifră mai mică decât
+  // ce s-a plătit deja.
   const _totalIst = _istorice.reduce((s,c) => s + parseFloat(c.plata_suma_efectiva || 0), 0);
   const _totalCurentPlatit = parseFloat(a.plata_suma_efectiva || 0);
-  const _totalGlobal = _totalIst + _totalCurentPlatit;
-  _html += `<div style="text-align:right;font-size:.8rem;color:var(--df-text-3);padding:4px 4px 8px">Total plătit (toate ciclurile): <strong style="color:var(--df-text)">${fmtV(_totalGlobal)}</strong></div></div>`;
+  const _col3Curent = a.ord_id ? parseFloat(a.ord_col3 || 0) : null;
+  const _totalGlobal = (_col3Curent != null ? _col3Curent : _totalIst) + _totalCurentPlatit;
+  _html += `<div style="text-align:right;font-size:.8rem;color:var(--df-text-3);padding:4px 4px 8px">Total plăți: <strong style="color:var(--df-text)">${fmtV(_totalGlobal)}</strong></div></div>`;
   const _vBlock = container.querySelector('[data-valori]');
   if (_vBlock) {
     const _d = document.createElement('div');
@@ -634,8 +643,10 @@ function _renderAlopCicluri(a, container, opmeGroups, isCompleted, isCancelled, 
 
 function renderAlopDetail(a,container){
   if(!a||!a.id)return;
-  // Suma plătită în ciclurile anterioare — folosită de populateOrd pentru prefill plati_anterioare
-  window._alopSumaPlataAnterioara=parseFloat(a.suma_platita_total||0)||0;
+  // #186 — `window._alopSumaPlataAnterioara` A FOST RETRASĂ. Era sursa (greșită) a
+  // prefill-ului col.3 din `populateOrd`: PLĂȚILE știute de aplicație, nu lanțul de
+  // ordonanțări. Col.3 se derivă acum EXCLUSIV server-side (GET /api/alop/:id/ord-col3),
+  // o singură dată, la crearea unui ORD NOU. ⛔ Nu o reintroduce.
   // FIX 1: Resetează contextul DF/ORD din sesiunea anterioară când ALOP-ul se schimbă
   const _prevAlopId=window._alopContext?.alopId;
   if(_prevAlopId&&_prevAlopId!==a.id){
@@ -899,7 +910,7 @@ function renderAlopDetail(a,container){
     ${caps.can_start_noua_ordonantare?`
       <div style="background:rgba(108,79,240,.08);border:1px solid rgba(108,79,240,.2);border-radius:8px;padding:10px 14px;font-size:.82rem;margin-top:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
         <div style="display:flex;flex-direction:column;gap:4px">
-          <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))})</span>
+          <span>💰 Rămas de ordonanțat: <strong style="color:#b0a0ff">${fmtRON(a.ramas)}</strong> din DF aprobat (${fmtRON(parseFloat(a.df_valoare||0))}), deja ordonanțat ${fmtRON(parseFloat(a.suma_ordonantata_total||0))}</span>
           <span style="font-size:.78rem;color:var(--df-text-2)">📅 Rămas de ordonanțat (exercițiu ${new Date().getFullYear()}): <strong style="color:#b0a0ff">${a.ramas_an_curent==null?'—':fmtRON(a.ramas_an_curent)}</strong>${a.ramas_an_curent==null?'':` din credite bugetare exercitiu curent (${fmtRON(parseFloat(a.credite_bugetare_an_curent||0))})`}</span>
         </div>
         <button class="df-action-btn primary" onclick="startNouaLichidare('${esc(a.id)}')">🔄 Nouă ordonanțare parțială</button>
@@ -1212,7 +1223,22 @@ async function confirmLichidare(){
       body:JSON.stringify(body),
     });
     const data=await r.json();
-    if(!r.ok){alert(data.error||'Eroare confirmare lichidare');return;}
+    if(!r.ok){
+      // #186 Etapa D — BLOCARE (400): suma de lichidat depășește valoarea DF-ului aprobat.
+      // `message` conține deja ambele cifre (disponibil DF / deja ordonanțat).
+      if(r.status===400&&data.error==='peste_valoare_df'){alert(data.message||'Suma depășește valoarea DF-ului aprobat.');return;}
+      alert(data.error||'Eroare confirmare lichidare');return;
+    }
+    // #186 Etapa D — AVERTISMENT (200): sub DF, peste recepții. Operația S-A EXECUTAT.
+    // Se afișează EXPLICIT, cu ambele cifre — nu console.warn.
+    if(data.avertisment_plafon){
+      const _av=data.avertisment_plafon;
+      const _f=v=>v==null?'—':new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v)+' RON';
+      alert('⚠️ Lichidarea a fost confirmată, dar suma ('+_f(_av.suma)+') depășește disponibilul din RECEPȚII ('
+        +_f(_av.disponibil_receptii)+').' + String.fromCharCode(10,10) +
+        'Se încadrează în DF-ul aprobat (disponibil '+_f(_av.disponibil_df)+' din '+_f(_av.df_valoare)+').' + String.fromCharCode(10,10) +
+        'Verificați dacă recepția e înregistrată în sistemul CAB.');
+    }
     closeLichidareModal();
     openAlop(_lichidareAlopId);
     loadAlop();loadAlopStats();

@@ -12,15 +12,38 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '../../..');
 
-describe('I-1: prefill plati_anterioare în newDoc(ordnt)', () => {
-  it('newDoc(ord) face fetch la /api/alop/:id și prefill prima rânduri', () => {
+// #186 — I-1 REESCRIS. Sursa prefill-ului col.3 nu mai e `cicluri_istorice` (plățile știute
+// de aplicație), ci LANȚUL de ordonanțări: GET /api/alop/:id/ord-col3. Intenția testului
+// rămâne aceeași — „newDoc(ordnt) cere valoarea de la server și o aplică pe rânduri" — dar
+// ancorată pe sursa CORECTĂ. `cicluri_istorice` e acum interzis explicit în newDoc.
+describe('I-1 (#186): prefill col.3 în newDoc(ordnt) — din lanțul de ORD, nu din plăți', () => {
+  it('newDoc(ord) cere /api/alop/:id/ord-col3 și aplică valoarea pe rânduri', () => {
     const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
-    expect(src).toMatch(/v3\.9\.500 \(Issue I-1\)/);
     const m = src.match(/function newDoc\(ft\)\{[\s\S]*?_updateBackBtn\(ft\);\s*\}/);
     expect(m, 'newDoc nu e găsit').toBeTruthy();
     expect(m[0]).toMatch(/_alopContext/);
-    expect(m[0]).toMatch(/cicluri_istorice/);
-    expect(m[0]).toMatch(/plati_anterioare/);
+    expect(m[0]).toMatch(/ord-col3/);
+    expect(m[0]).toMatch(/applyPlatiAntPrefill/);
+    // ⛔ sursa veche (plățile știute de DocFlowAI) nu mai are voie să reapară aici
+    expect(m[0]).not.toMatch(/cicluri_istorice/);
+    expect(m[0]).not.toMatch(/plata_suma_efectiva/);
+  });
+
+  it('⛔ INVARIANT #186: populateOrd (ORD EXISTENT) nu mai prefill-ează col.3', () => {
+    const src = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
+    const m = src.match(/async function populateOrd\([\s\S]*?\n\}/);
+    expect(m, 'populateOrd nu e găsit').toBeTruthy();
+    expect(m[0]).not.toMatch(/applyPlatiAntPrefill/);
+    expect(m[0]).not.toMatch(/_platiAntSet/);
+    // (numele vechi mai apare o dată, în comentariul care explică de ce a dispărut)
+  });
+
+  it('⛔ `window._alopSumaPlataAnterioara` a fost RETRASĂ din tot frontendul', () => {
+    const doc = readFileSync(path.join(REPO, 'public/js/formular/doc.js'), 'utf8');
+    const alop = readFileSync(path.join(REPO, 'public/js/formular/alop.js'), 'utf8');
+    // rămâne doar în comentariul care explică de ce a dispărut
+    expect(doc).not.toMatch(/window\._alopSumaPlataAnterioara\s*[|=]/);
+    expect(alop).not.toMatch(/window\._alopSumaPlataAnterioara\s*=/);
   });
 });
 
