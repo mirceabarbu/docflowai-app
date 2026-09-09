@@ -14,7 +14,9 @@
  * ── Regulile de adevăr ale tabelului „Responsabil CAB" (OMF 1140/2025) ──────
  *   col.2 Recepții            — DATĂ EXTERNĂ din sistemul CAB. ⛔ Aplicația NU o derivă
  *                               NICIODATĂ; e completată manual și dovedită prin captură.
- *   col.3 Plăți anterioare    — `col.3 + col.4` de pe ultima ORD APROBATĂ a dosarului.
+ *   col.3 Plăți anterioare    — `col.3 + col.4` de pe ultima ORD APROBATĂ a dosarului,
+ *                               derivat PER CHEIE a coloanei 1 (#187), NICIODATĂ însumat
+ *                               peste rândurile documentului.
  *   col.4 Sumă ordonanțată    — introdusă de utilizator.
  *   col.5 Recepții neplătite  — `col.2 − col.3 − col.4`, ≥ 0 (validateOrdCol5).
  *
@@ -48,14 +50,108 @@ import { docAprobatSql } from './df-aprobat-sql.mjs';
  * @returns {number}
  */
 export function sumaColoana(rows, camp) {
+  return _rowsArr(rows).reduce((s, r) => s + numMoney(r && r[camp]), 0);
+}
+
+/** `formulare_ord.rows` (JSONB sau string) → array sigur. Niciodată throw. */
+function _rowsArr(rows) {
   let arr = rows;
   if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = []; } }
-  if (!Array.isArray(arr)) return 0;
-  return arr.reduce((s, r) => s + numMoney(r && r[camp]), 0);
+  return Array.isArray(arr) ? arr : [];
+}
+
+const _r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #187 — CHEIA COLOANEI 1. col.3 se derivă PER CHEIE, niciodată însumată pe document.
+//
+// De ce: #128k a stabilit că col.3 e o proprietate a ANGAJAMENTULUI (cod_angajament /
+// indicator / program / cod_SSI), NU a furnizorului ⇒ aceeași valoare se repetă IDENTIC în
+// fiecare bloc. Repetarea era sigură fiindcă NIMIC nu o însuma. #186 a introdus primul
+// consumator care o însuma ⇒ pe un ORD cu două blocuri derivarea întorcea valoarea DUBLATĂ.
+// Ghidul MF (Cap. II.1.2, pct. 2-3) e explicit: col.2/col.3 se completează „aferent fiecărui
+// indicator din coloana 1".
+//
+// ⇒ `col3(K) = col3_distinct(K) + Σ col4(K)`: col.3 se ia O SINGURĂ DATĂ per cheie (e
+//   repetată), col.4 SE ÎNSUMEAZĂ peste rândurile cheii.
+// ⛔ Col.4 rămâne însumată GLOBAL peste document acolo unde e azi (disponibil, plafoane,
+//   `sumaOrdonantataDosar`) — acolo însumarea e corectă. Nu confunda cele două căi.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Componentele cheii, în ordinea coloanei 1 a tabelului „Responsabil CAB". */
+export const CHEIE_COMPONENTE = ['cod_angajament', 'indicator_angajament', 'program', 'cod_SSI'];
+const CHEIE_SEP = '||';
+
+// Normalizarea cheii trăiește ÎNTR-UN SINGUR LOC (aici): trim + spații interne colapsate +
+// MAJUSCULE. „ AAB2XFH596K " și „aab2xfh596k" sunt aceeași cheie.
+const _normComp = (v) => String(v ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+
+/** Componentele normalizate ale unui rând ORD. `cod_ssi` (minuscule) acceptat ca alias. */
+export function componenteRand(r) {
+  const o = r || {};
+  return {
+    cod_angajament:       _normComp(o.cod_angajament),
+    indicator_angajament: _normComp(o.indicator_angajament),
+    program:              _normComp(o.program),
+    cod_SSI:              _normComp(o.cod_SSI ?? o.cod_ssi),
+  };
+}
+
+/** Cheia canonică a unui rând ORD (string). FUNCȚIE PURĂ. */
+export function cheieRand(r) {
+  const c = componenteRand(r);
+  return CHEIE_COMPONENTE.map((f) => c[f]).join(CHEIE_SEP);
+}
+
+/** Cheia unui rând cu coloana 1 complet goală (ORD nou, înainte de selecția DF-ului). */
+export const CHEIE_GOALA = CHEIE_COMPONENTE.map(() => '').join(CHEIE_SEP);
+
+/**
+ * Agregă rândurile unui ORD PE CHEIE. FUNCȚIE PURĂ (fără DB).
+ *
+ * Pentru fiecare cheie: col.3 se ia o SINGURĂ dată (valoarea distinctă), col.4 se însumează.
+ * Dacă rândurile aceleiași chei au col.3 DIFERITE, e o ANOMALIE DE DATE — nu alegem noi:
+ * cheia se întoarce `col3: null, col3_inconsistent: true` și apelantul nu prefill-ează nimic.
+ *
+ * @param {Array|string|null} rows  `formulare_ord.rows`
+ * @param {boolean} plataConfirmata  ciclul predecesor e DECONTAT (nuanța din ghid, pct. 3)
+ * @returns {Object<string,{col3:number|null, col3_inconsistent?:true, sursa:'lant',
+ *                          componente:Object, col3_valori?:number[]}>}
+ */
+export function agregaCheiCol3(rows, plataConfirmata) {
+  const acc = new Map();
+  for (const r of _rowsArr(rows)) {
+    const k = cheieRand(r);
+    let e = acc.get(k);
+    if (!e) { e = { componente: componenteRand(r), col3: new Set(), col4: 0 }; acc.set(k, e); }
+    e.col3.add(_r2(numMoney(r && r.plati_anterioare)));
+    e.col4 += numMoney(r && r.suma_ordonantata_plata);
+  }
+  const out = {};
+  for (const [k, e] of acc) {
+    const distincte = [...e.col3];
+    if (distincte.length > 1) {
+      out[k] = { col3: null, col3_inconsistent: true, sursa: 'lant',
+                 componente: e.componente, col3_valori: distincte };
+      continue;
+    }
+    // Aceeași aritmetică pentru TOATE cheile — o singură definiție (`col3DinPredecesor`),
+    // aplicată acum PER CHEIE, nu pe totalul documentului.
+    const { col3 } = col3DinPredecesor({
+      col3: distincte[0] ?? 0, col4: e.col4, plata_confirmata: plataConfirmata === true,
+    });
+    out[k] = { col3: _r2(col3), sursa: 'lant', componente: e.componente };
+  }
+  return out;
 }
 
 /**
  * Aritmetica derivării col.3, IZOLATĂ ca funcție PURĂ (testabilă fără DB).
+ *
+ * ⚠️ #187 — se aplică PER CHEIE a coloanei 1 (`agregaCheiCol3`), NU pe totalul documentului:
+ * `col3` primit e valoarea DISTINCTĂ a cheii (col.3 e repetată identic pe rândurile ei),
+ * iar `col4` e SUMA col.4 peste rândurile aceleiași chei.
+ *
  * @param {{col3:number, col4:number, plata_confirmata:boolean}|null} pred
  * @returns {{col3:number|null, sursa:'lant'|'prima_ord', plata_predecesor_confirmata:boolean}}
  */
@@ -119,6 +215,9 @@ export async function getLantOrd(alopId, orgId, db = pool) {
       ord_seq: Number(r.ord_seq),
       aprobat: r.aprobat === true,
       plata_confirmata: r.plata_confirmata === true,
+      // #187 — rândurile BRUTE, ca derivarea să poată agrega PE CHEIE (col.3). Sumele
+      // globale de mai jos rămân pentru calea col.4 (disponibil / plafoane), NEATINSĂ.
+      rows: _rowsArr(r.rows),
       col2, col3, col4,
       col3_plus_col4: col3 + col4,
     };
@@ -137,14 +236,46 @@ export async function getOrdPredecesor(alopId, orgId, { excludeOrdId } = {}, db 
 }
 
 /**
- * Col.3 derivată pentru o ORD a dosarului.
- * @returns {Promise<{col3:number|null, sursa:'lant'|'prima_ord',
- *                    predecesor:Object|null, plata_predecesor_confirmata:boolean}>}
+ * Col.3 derivată pentru o ORD a dosarului — HARTĂ PE CHEIE, niciodată un scalar (#187).
+ *
+ * ⛔ Nu mai există un `col3` de document: un scalar ar fi exact însumarea peste chei pe care
+ * lotul ăsta o repară. Apelantul alege valoarea PER RÂND, după cheia coloanei 1.
+ *
+ * `cheie_unica` e setat DOAR când predecesorul are exact O cheie distinctă (cazul real de azi)
+ * — e ce permite prefill-ul pe un ORD NOU, ale cărui rânduri sunt încă goale, deci fără cheie.
+ *
+ * Cheile prezente pe ORD-ul CURENT (`pentruOrdId`) dar absente la predecesor sunt marcate
+ * `sursa:'indicator_nou'` cu `col3: null` — NU 0: aplicația nu știe nimic despre acel
+ * angajament în CAB, iar un zero prefill-at ar arăta ca o valoare validată.
+ *
+ * @returns {Promise<{sursa:'lant'|'prima_ord', plata_predecesor_confirmata:boolean,
+ *                    chei:Object, cheie_unica:string|null, predecesor:Object|null}>}
  */
 export async function derivaCol3(alopId, orgId, { pentruOrdId } = {}, db = pool) {
-  const pred = await getOrdPredecesor(alopId, orgId, { excludeOrdId: pentruOrdId }, db);
-  const { col3, sursa, plata_predecesor_confirmata } = col3DinPredecesor(pred);
-  return { col3, sursa, predecesor: pred, plata_predecesor_confirmata };
+  const lant = await getLantOrd(alopId, orgId, db);
+  const ex = pentruOrdId ? String(pentruOrdId) : null;
+  const pred = lant.find(o => o.aprobat && (!ex || String(o.ord_id) !== ex)) || null;
+  const curent = ex ? (lant.find(o => String(o.ord_id) === ex) || null) : null;
+
+  const conf = !!(pred && pred.plata_confirmata);
+  const chei = pred ? agregaCheiCol3(pred.rows, conf) : {};
+
+  // Indicator NOU: cheie pe ORD-ul curent care nu apare pe ordonanțarea anterioară.
+  if (curent) {
+    for (const r of curent.rows) {
+      const k = cheieRand(r);
+      if (!chei[k]) chei[k] = { col3: null, sursa: 'indicator_nou', componente: componenteRand(r) };
+    }
+  }
+
+  const cheiPred = Object.keys(chei).filter(k => chei[k].sursa === 'lant');
+  const cheie_unica = (cheiPred.length === 1 && chei[cheiPred[0]].col3 != null) ? cheiPred[0] : null;
+
+  return {
+    sursa: pred ? 'lant' : 'prima_ord',
+    plata_predecesor_confirmata: conf,
+    chei, cheie_unica, predecesor: pred,
+  };
 }
 
 /**

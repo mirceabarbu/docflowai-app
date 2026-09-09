@@ -97,7 +97,67 @@ window.lockDfSelectIfLinked=lockDfSelectIfLinked;
 // fără un al doilea fetch pe `/api/alop/:id`. Cache-ul se invalidează la newDoc / resetF.
 let _platiAntCache=null;                    // {alopId:string|null, val:number}
 function _platiAntSet(alopId,val){_platiAntCache={alopId:alopId||null,val:Number(val)||0};}
-function _platiAntReset(){_platiAntCache=null;}
+function _platiAntReset(){_platiAntCache=null;_col3CtxReset();}
+
+// ── #187 — col.3 se derivă PER CHEIE a coloanei 1, niciodată însumată pe document ────
+// #128k a stabilit că col.3 e o proprietate a ANGAJAMENTULUI (cod_angajament / indicator /
+// program / cod_SSI), repetată IDENTIC în fiecare bloc. #186 a introdus primul consumator
+// care o însuma ⇒ pe un ORD cu două blocuri valoarea derivată ieșea DUBLATĂ.
+//
+// ⚠️ `cheieRandOrd` e REPLICĂ manual-sincronizată a lui `cheieRand` din
+// `server/services/ord-lant.mjs` — aceeași normalizare (trim + spații interne colapsate +
+// MAJUSCULE), aceeași ordine a componentelor, același separator. SCHIMBI UNA, SCHIMBI AMBELE.
+const _C3_SEP='||';
+function _normComp(v){return String(v==null?'':v).trim().replace(/\s+/g,' ').toUpperCase();}
+function cheieRandOrd(src){
+  const get=f=>{
+    if(!src)return'';
+    if(typeof src.querySelector==='function'){const i=src.querySelector(`[data-f="${f}"]`);return i?i.value:'';}
+    return src[f];
+  };
+  return ORD_IDENT_COLS.map(f=>_normComp(get(f))).join(_C3_SEP);
+}
+const _CHEIE_GOALA_ORD=ORD_IDENT_COLS.map(()=>'').join(_C3_SEP);
+
+// Harta pe cheie a răspunsului `GET /api/alop/:id/ord-col3`. Setată EXCLUSIV pe traseul de
+// ORD NOU (newDoc); resetată de `_platiAntReset` (newDoc/resetF) și de `populateOrd`.
+// ⛔ INVARIANT: cât timp e null, nimic nu prefill-ează col.3 — deschiderea unui ORD existent
+// nu are voie să schimbe nicio cifră.
+let _col3Ctx=null;                          // {alopId, chei:{}, cheie_unica:string|null}
+function _col3CtxSet(alopId,j){
+  _col3Ctx={alopId:alopId||null,chei:(j&&j.chei)||{},cheie_unica:(j&&j.cheie_unica)||null};
+}
+function _col3CtxReset(){_col3Ctx=null;}
+/**
+ * Valoarea col.3 care i se cuvine unui rând, după CHEIA lui. `undefined` ⇒ nu scriem nimic.
+ * - rând cu coloana 1 încă GOALĂ (ORD nou, înainte de selecția DF-ului) ⇒ ramura
+ *   „predecesorul are o SINGURĂ cheie distinctă" (`cheie_unica`), singura în care valoarea
+ *   e neambiguă. Predecesor cu mai multe chei ⇒ rândul rămâne gol până capătă cheie.
+ * - cheie necunoscută la predecesor (indicator nou) sau `col3_inconsistent` ⇒ `undefined`.
+ */
+function _col3PentruRand(tr){
+  if(!_col3Ctx)return undefined;
+  const k=cheieRandOrd(tr);
+  const e=(k===_CHEIE_GOALA_ORD)
+    ? (_col3Ctx.cheie_unica?_col3Ctx.chei[_col3Ctx.cheie_unica]:null)
+    : _col3Ctx.chei[k];
+  return (e&&e.col3!=null)?Number(e.col3):undefined;
+}
+/**
+ * Prefill pentru UN rând — apelat pe măsură ce utilizatorul completează coloana 1.
+ * ⛔ Doar dacă col.3 a rândului e ÎNCĂ 0: o valoare pusă de om nu se suprascrie niciodată.
+ */
+function applyPlatiAntPrefillRand(tr){
+  if(!tr||!_col3Ctx||typeof tr.querySelector!=='function')return 0;
+  const inp=tr.querySelector('input[data-f="plati_anterioare"]');
+  if(!inp)return 0;
+  if((parseFloat(inp.value)||0)!==0)return 0;
+  const val=_col3PentruRand(tr);
+  if(val==null||!(val>0))return 0;
+  inp.value=fMR(val);
+  if(typeof calcORRow==='function')calcORRow(inp);
+  return 1;
+}
 // `blocEl` lipsă/null ⇒ TOATE blocurile (fallback fără containere [data-bloc]: `#o-tbody`,
 // adică exact comportamentul de dinainte de #128h). `opts.val` lipsă ⇒ valoarea memoizată.
 // `opts.force` ⇒ suprascriere necondiționată (garda din populateOrd); altfel scrie doar
@@ -105,22 +165,35 @@ function _platiAntReset(){_platiAntCache=null;}
 // ⚠️ §5.2 #128k: gărzile NU se unifică în lotul ăsta — fiecare sit își păstrează garda de azi.
 function applyPlatiAntPrefill(blocEl,opts){
   const o=opts||{};
-  const val=(o.val!=null)?(Number(o.val)||0):(_platiAntCache?_platiAntCache.val:0);
-  if(!(val>0))return 0;
+  // #187 — `opts.val` = valoare IMPUSĂ de apelant (gărzile vechi): traseul de dinainte, primul
+  // rând al fiecărui bloc. Fără `val`, dacă există hartă pe cheie, se aplică PER RÂND, după
+  // cheia coloanei 1; altfel se cade pe valoarea memoizată, exact ca înainte.
+  const impus=(o.val!=null)?(Number(o.val)||0):null;
+  const memo=_platiAntCache?_platiAntCache.val:0;
   const scopes=blocEl?[blocEl]:(_ordBlocScopes().length?_ordBlocScopes():[null]);
   let n=0;
   scopes.forEach(sc=>{
-    const inp=sc?sc.querySelector('tbody input[data-f="plati_anterioare"]')
-               :document.querySelector('#o-tbody input[data-f="plati_anterioare"]');
-    if(!inp)return;
-    if(!o.force&&(parseFloat(inp.value)||0)!==0)return;
-    inp.value=fMR(val);
-    if(typeof calcORRow==='function')calcORRow(inp);
-    n++;
+    const trs=sc?[...sc.querySelectorAll('tbody tr')]
+               :[...document.querySelectorAll('#o-tbody tr')];
+    trs.forEach((tr,idx)=>{
+      const inp=tr.querySelector('input[data-f="plati_anterioare"]');
+      if(!inp)return;
+      let val;
+      if(impus!=null){if(idx>0)return;val=impus;}
+      else if(_col3Ctx){val=_col3PentruRand(tr);}
+      else{if(idx>0)return;val=memo;}
+      if(val==null||!(val>0))return;
+      if(!o.force&&(parseFloat(inp.value)||0)!==0)return;
+      inp.value=fMR(val);
+      if(typeof calcORRow==='function')calcORRow(inp);
+      n++;
+    });
   });
   return n;
 }
 window.applyPlatiAntPrefill=applyPlatiAntPrefill;
+window.applyPlatiAntPrefillRand=applyPlatiAntPrefillRand;   // #187 — per rând, la completarea col.1
+window.cheieRandOrd=cheieRandOrd;
 window._platiAntReset=_platiAntReset;
 
 // ── #186 — nota „prima ordonanțare a dosarului" + avertismentul de plafon ─────
@@ -149,9 +222,32 @@ function _ordNotaEl(id,culoare){
 function _ordCol3Nota(j){
   const el=_ordNotaEl('ord-col3-nota','rgba(93,202,165,.35)');
   if(!el)return;
-  if(!j||j.sursa!=='prima_ord'){el.style.display='none';el.innerHTML='';return;}
-  el.innerHTML='ℹ️ Prima ordonanțare a dosarului — coloana 3 („Plăți anterioare") '
-    +'nu se poate deriva dintr-o ordonanțare anterioară. Se completează din sistemul CAB.';
+  const linii=[];
+  if(j&&j.sursa==='prima_ord'){
+    linii.push('ℹ️ Prima ordonanțare a dosarului — coloana 3 („Plăți anterioare") '
+      +'nu se poate deriva dintr-o ordonanțare anterioară. Se completează din sistemul CAB.');
+  }
+  // #187 — tăcerea are acum două motive în plus, ambele PER CHEIE a coloanei 1. Spunem care.
+  const chei=(j&&j.chei)||{};
+  const et=e=>{const c=(e&&e.componente)||{};
+    return[c.cod_angajament,c.indicator_angajament].filter(Boolean).join(' / ')||'fără cod';};
+  // Pe `prima_ord` NU are sens „angajament nou": nu există ordonanțare anterioară deloc,
+  // iar linia de mai sus spune deja de ce e goală coloana 3.
+  const noi=(j&&j.sursa==='prima_ord')?[]
+    :Object.keys(chei).filter(k=>chei[k].sursa==='indicator_nou');
+  const inc=Object.keys(chei).filter(k=>chei[k].col3_inconsistent);
+  if(noi.length){
+    linii.push('ℹ️ Angajament care NU apare pe ordonanțarea anterioară ('
+      +noi.map(k=>esc(et(chei[k]))).join(', ')+') — coloana 3 rămâne necompletată, '
+      +'nu zero. Se completează din sistemul CAB.');
+  }
+  if(inc.length){
+    linii.push('⚠️ Ordonanțarea anterioară are valori DIFERITE pe coloana 3 pentru același '
+      +'indicator ('+inc.map(k=>esc(et(chei[k]))).join(', ')+') — nu se poate deriva o '
+      +'valoare unică. Verificați și completați din sistemul CAB.');
+  }
+  if(!linii.length){el.style.display='none';el.innerHTML='';return;}
+  el.innerHTML=linii.join('<br>');
   el.style.display='';
 }
 /**
@@ -308,6 +404,9 @@ async function populateOrd(doc){
   // valoarea salvată, inclusiv pe un ORD deja aprobat. Pe ORD 43759 asta a înlocuit
   // 300.424,95 (cifra corectă, derivată din ciclul 1) cu o valoare internă.
   // Derivarea corectă trăiește ACUM într-un singur loc: newDoc → GET /api/alop/:id/ord-col3.
+  // #187 — și harta pe cheie se stinge aici: un context rămas de la un ORD NOU deschis mai
+  // devreme în aceeași sesiune SPA nu are voie să atingă cifrele documentului încărcat acum.
+  _col3CtxReset();
   _ordCol3Nota(null);
 }
 function populateDf(doc){
@@ -1169,11 +1268,17 @@ function newDoc(ft){
           if(!j)return;
           _ordCol3Nota(j);
           if(j.sursa!=='lant')return;
-          const _c3=parseFloat(j.col3);
-          if(!(_c3>0))return;
-          // #128k — TOATE blocurile; garda „doar dacă primul rând e 0" NESCHIMBATĂ.
-          _platiAntSet(_alopId,_c3);
-          applyPlatiAntPrefill(null,{val:_c3});
+          // #187 — răspunsul e o HARTĂ PE CHEIE, nu un scalar. Două ramuri:
+          //  (a) predecesorul are o SINGURĂ cheie distinctă (cazul real de azi) ⇒ valoarea
+          //      ajunge în rândurile încă fără coloana 1 completată — exact ca înainte;
+          //  (b) mai multe chei ⇒ se scrie DOAR în rândurile a căror cheie se potrivește deja,
+          //      restul rămân goale până capătă cheie (vezi applyPlatiAntPrefillRand).
+          // ⛔ Nicio însumare peste chei: un ORD cu două blocuri nu mai dublează col.3.
+          _col3CtxSet(_alopId,j);
+          const _uk=j.cheie_unica&&j.chei?j.chei[j.cheie_unica]:null;
+          // Memoizarea scalară rămâne DOAR ca plasă pentru cazul cu o singură cheie.
+          if(_uk&&_uk.col3!=null)_platiAntSet(_alopId,_uk.col3);
+          applyPlatiAntPrefill(null);
         });
     }
   }else{['n-vtbody','n-ptbody','n-ctbody'].forEach(tid=>{document.getElementById(tid).innerHTML='';});addNV();addNC();clrImg('n-cimg','n-cph');['n-fdal','n-alist'].forEach(id=>document.getElementById(id).innerHTML='');['n-fdad','n-adata'].forEach(id=>document.getElementById(id).value='[]');

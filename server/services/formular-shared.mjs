@@ -24,6 +24,10 @@ import { codSsiBlockResponse } from './cod-ssi-validate.mjs';
 import { normalizeAngajamentRows } from './angajament-normalize.mjs';
 import { blocuriDinOrd, pregatesteScriereBlocuri, normalizeBlocIdx } from './ord-blocuri.mjs';
 import { dfAprobatSql } from './df-aprobat-sql.mjs';
+// #187 — poarta de plafon la TRIMITEREA spre CAB. `ord-lant.mjs` importă la rândul lui
+// `numMoney` de aici: ciclul e INOFENSIV (ambele părți se folosesc doar la RULARE, nu la
+// evaluarea modulului), dar nu-l lărgi — nu muta constante între cele două fișiere.
+import { sumaColoana, verificaPlafonOrdonantare } from './ord-lant.mjs';
 
 // ── helpers partajate (și de rutele create/PUT/capturi din server/routes/formulare/) ─────
 
@@ -160,6 +164,7 @@ export const FORMULAR_TYPES = {
     p2Fields: DF_P2_FIELDS,
     submitStatuses: ['draft', 'returnat', 'de_revizuit'],
     budgetCheck: 'none',              // DF: buget = soft-warning DOAR în frontend (by design)
+    plafonOrdonantare: false,         // ASIMETRIE (#187): DF nu ordonanțează ⇒ fără plafon de dosar
     // ASIMETRIE (incident 13.07.2026): DF validează HARD codurile SSI din rows_val/rows_plati/
     // rows_ctrl împotriva bugetului Clasa 8 (blocare la submit/complete/link-flow, 400). ORD are
     // cod SSI în `rows`, dar validarea NU s-a extins la ORD în această iterație (scope owner).
@@ -202,6 +207,9 @@ export const FORMULAR_TYPES = {
     p2Fields: ORD_P2_FIELDS,
     submitStatuses: ['draft', 'returnat'],   // ASIMETRIE: fără 'de_revizuit'
     budgetCheck: 'hard_col5',                // ORD: validare hard col.5 ≥ 0 → 422
+    // #187 ETAPA C — poarta de plafon (Σ col.4 vs valoarea DF-ului aprobat) la TRIMITEREA
+    // spre Responsabilul CAB. ASIMETRIE: DF n-are ordonanțări, deci n-are plafon de dosar.
+    plafonOrdonantare: true,
     rowsBlocGuard: true,                     // ASIMETRIE: /complete refuză un `rows` care nu acoperă toate blocurile (#128l)
     codSsiValidate: false,                   // ASIMETRIE: validarea Cod SSI vs Clasa 8 nu s-a extins la ORD
 
@@ -455,6 +463,38 @@ export async function submitFormular({ type, id, actor, body }) {
       if (overBudget) return overBudget;
     }
 
+    // ── #187 ETAPA C — PORȚILE DE ORDONANȚARE, mutate pe traseul care CONTEAZĂ ──────
+    // Poarta gemenă din `POST /api/formulare-ord` (creare) rămâne, dar e decorativă acolo:
+    // autosalvarea creează documentul cu rândurile ÎNCĂ GOALE, deci suma e 0 și poarta e
+    // transparentă. Aici, la trimiterea spre Responsabilul CAB, suma e cea DEJA SALVATĂ
+    // (`doc.rows`, ca `validateOrdBugetAnCurent` de mai sus) și există sigur.
+    //   BLOCARE 400 `peste_valoare_df` — Σ col.4 pe dosar ar depăși valoarea DF-ului aprobat.
+    //   AVERTISMENT — sub DF dar peste disponibilul din RECEPȚII; 200 + `avertisment_plafon`.
+    // ⛔ NU înlocuiește `validateOrdBugetAnCurent` (credite bugetare col.10) — se ADAUGĂ.
+    // ⛔ Calea col.4 (însumare globală) e cea corectă AICI: plafonul e pe suma ordonanțată a
+    //    documentului, nu pe col.3 per cheie.
+    let avertismentPlafon = null;
+    if (cfg.plafonOrdonantare && doc.source_alop_id) {
+      const _suma = sumaColoana(doc.rows, 'suma_ordonantata_plata');
+      if (_suma > 0) {
+        const plafon = await verificaPlafonOrdonantare({
+          alopId: doc.source_alop_id, orgId: actor.orgId, suma: _suma,
+          excludeOrdId: id, dfId: doc.df_id || null,
+        });
+        if (plafon.blocat) {
+          logger.warn({ id, alopId: doc.source_alop_id, ...plafon },
+            `formulare-${type} submit BLOCAT (peste valoarea DF)`);
+          return { status: 400, body: {
+            error: 'peste_valoare_df',
+            message: `Suma ordonanțată (${_suma.toFixed(2)} RON) depășește disponibilul din DF-ul aprobat (${(plafon.disponibil_df ?? 0).toFixed(2)} RON din ${(plafon.df_valoare ?? 0).toFixed(2)} RON, deja ordonanțat ${plafon.ordonantat.toFixed(2)} RON).`,
+            ...plafon,
+          } };
+        }
+        if (plafon.avertisment) avertismentPlafon = plafon;
+      }
+    }
+    const _avert = () => (avertismentPlafon ? { avertisment_plafon: avertismentPlafon } : {});
+
     // ── #131a — calea COMPARTIMENT ───────────────────────────────────────────
     if (assigned_comp) {
       // Compartimentul trebuie să existe în organizație cu cel puțin un utilizator ACTIV.
@@ -498,7 +538,7 @@ export async function submitFormular({ type, id, actor, body }) {
         fromStatus: doc.status, toStatus: 'pending_p2',
         meta: { assigned_comp: compTrim, membri: membri.length } });
       updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp, { authzRole });
-      return { status: 200, body: { ok: true, document: updated[0], assigned_comp: compTrim } };
+      return { status: 200, body: { ok: true, document: updated[0], assigned_comp: compTrim, ..._avert() } };
     }
 
     // Verifică că P2 e din același org
@@ -525,7 +565,7 @@ export async function submitFormular({ type, id, actor, body }) {
       actorId: actor.userId, actorEmail: actor.email, eventType: 'trimis_p2',
       fromStatus: doc.status, toStatus: 'pending_p2', meta: { assigned_to } });
     updated[0].capabilities = computeDocCapabilities(updated[0], actor, cfg.capsFt, actorComp, { authzRole });
-    return { status: 200, body: { ok: true, document: updated[0], assigned_to: p2 } };
+    return { status: 200, body: { ok: true, document: updated[0], assigned_to: p2, ..._avert() } };
   } catch (e) {
     logger.error({ err: e }, `formulare-${type} submit error`);
     return { status: 500, body: { error: 'server_error' } };

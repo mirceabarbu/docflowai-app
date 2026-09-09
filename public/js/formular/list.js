@@ -210,12 +210,19 @@ async function onDfSelect(dfId){
     if(typeof window.setOrdDfCtrlRows==='function')window.setOrdDfCtrlRows(rows);
     const tbody=document.getElementById('o-tbody');
     tbody.innerHTML='';oI=0;
-    if(!rows.length){addOR();if(typeof window.lockOrdIdentityCols==='function')window.lockOrdIdentityCols();return;}
+    if(!rows.length){addOR();
+      if(typeof window.applyPlatiAntPrefill==='function')window.applyPlatiAntPrefill();
+      if(typeof window.lockOrdIdentityCols==='function')window.lockOrdIdentityCols();return;}
     // #128h — pre-popularea rândurilor (inclusiv ștampila `ctrl_idx` din #128g) e EXTRASĂ în
     // prefillOrdRowsFromCtrl (core.js), refolosită identic la crearea unui bloc nou.
     // readOnly-ul coloanelor de identitate rămâne pe seama lui lockOrdIdentityCols pentru
     // blocul 0 (comportament neschimbat).
     prefillOrdRowsFromCtrl(rows,tbody);
+    // #187 — abia ACUM rândurile au coloana 1 (cheia), deci abia acum se poate aplica col.3
+    // derivată PER CHEIE. Fără asta, rândurile recreate din `rows_ctrl` ar rămâne pe 0,00 —
+    // `tbody.innerHTML=''` de mai sus șterge exact rândul pe care newDoc îl prefill-ase.
+    // No-op pe un ORD EXISTENT (harta pe cheie trăiește doar pe traseul de creare).
+    if(typeof window.applyPlatiAntPrefill==='function')window.applyPlatiAntPrefill();
     upTot();
     if(typeof window.lockOrdIdentityCols==='function')window.lockOrdIdentityCols(); // ORD legat de DF → coloanele de identitate needitabile
     // Încarcă contextul de buget al DF-ului selectat → atenționare inline ORD (paritate server).

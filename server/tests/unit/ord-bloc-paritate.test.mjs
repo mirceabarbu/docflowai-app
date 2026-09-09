@@ -122,7 +122,16 @@ beforeEach(() => { mountOrdForm(); vi.restoreAllMocks(); });
 // PARITATEA blocurilor (obiectul acestui fișier) rămâne NESCHIMBATĂ — se schimbă doar de
 // unde vine numărul, și faptul că traseul 2 (redeschidere) nu mai prefill-ează deloc.
 const okJson = (obj) => ({ ok: true, json: () => Promise.resolve(obj) });
-const col3Resp = (col3) => okJson({ ok: true, col3, sursa: 'lant', plata_predecesor_confirmata: true });
+// #187 — răspunsul endpointului e o HARTĂ PE CHEIE, nu un scalar `col3`. Fixture-ul de aici
+// e cazul REAL de azi: predecesorul are o SINGURĂ cheie distinctă ⇒ `cheie_unica` setat ⇒
+// comportamentul vizibil (prefill în toate blocurile) rămâne EXACT ca înainte.
+const CHEIE_1 = 'A1||I1||||';
+const col3Resp = (col3) => okJson({
+  ok: true, sursa: 'lant', plata_predecesor_confirmata: true,
+  chei: { [CHEIE_1]: { col3: Number(col3), sursa: 'lant',
+    componente: { cod_angajament: 'A1', indicator_angajament: 'I1', program: '', cod_SSI: '' } } },
+  cheie_unica: CHEIE_1,
+});
 
 describe('#128k — prefill „plăți anterioare" pe toate blocurile', () => {
   // ── Traseul 1: CREARE (newDoc → fetch /api/alop/:id/ord-col3) ──────────────

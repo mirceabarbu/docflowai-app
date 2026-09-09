@@ -11,7 +11,8 @@
  *     3   | 47218 | ≥413.096,30 | 353.688,51  | 59.407,79 | 413.096,30
  */
 import { describe, it, expect } from 'vitest';
-import { col3DinPredecesor, sumaColoana } from '../../services/ord-lant.mjs';
+import { col3DinPredecesor, sumaColoana, cheieRand, CHEIE_GOALA,
+         agregaCheiCol3 } from '../../services/ord-lant.mjs';
 
 const CICLU1 = { col2: 0, col3: 254379.63, col4: 46045.32 };
 const CICLU2 = { col2: 353688.51, col3: 300424.95, col4: 53263.56 };
@@ -74,5 +75,62 @@ describe('#186 sumaColoana — însumare peste TOATE rândurile', () => {
     expect(sumaColoana(null, 'suma_ordonantata_plata')).toBe(0);
     expect(sumaColoana('nu-i json', 'suma_ordonantata_plata')).toBe(0);
     expect(sumaColoana([{}], 'suma_ordonantata_plata')).toBe(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// #187 — cheia coloanei 1 și agregarea PER CHEIE. Funcții PURE, fără DB.
+// ═══════════════════════════════════════════════════════════════════════════════
+describe('#187 cheieRand — normalizarea cheii, într-un singur loc', () => {
+  it('trim + spații interne colapsate + majuscule ⇒ aceeași cheie', () => {
+    expect(cheieRand({ cod_angajament: ' AAB2XFH596K ', indicator_angajament: 'I1' }))
+      .toBe(cheieRand({ cod_angajament: 'aab2xfh596k', indicator_angajament: 'i1' }));
+    expect(cheieRand({ cod_angajament: 'A  B' })).toBe(cheieRand({ cod_angajament: 'a b' }));
+  });
+
+  it('componentele sunt cele patru din coloana 1, în ordine; `cod_ssi` e alias acceptat', () => {
+    expect(cheieRand({ cod_angajament: 'A', indicator_angajament: 'I', program: 'P', cod_SSI: 'S' }))
+      .toBe('A||I||P||S');
+    expect(cheieRand({ cod_ssi: 's9' })).toBe('||||||S9');   // trei separatori, patru componente
+  });
+
+  it('rând gol ⇒ CHEIE_GOALA (ORD nou, înainte de selecția DF-ului)', () => {
+    expect(cheieRand({})).toBe(CHEIE_GOALA);
+    expect(cheieRand(null)).toBe(CHEIE_GOALA);
+  });
+});
+
+describe('#187 agregaCheiCol3 — col.3 o singură dată per cheie, col.4 însumată', () => {
+  const R = (cod, c3, c4) => ({ cod_angajament: cod, indicator_angajament: 'I1',
+    plati_anterioare: c3, suma_ordonantata_plata: c4 });
+
+  it('⭐ două blocuri, ACEEAȘI cheie: 300.424,95 + (30.000 + 23.263,56) = 353.688,51', () => {
+    const chei = agregaCheiCol3([R('A1', '300424.95', '30000'), R('A1', '300424.95', '23263.56')], true);
+    expect(Object.keys(chei)).toHaveLength(1);
+    expect(chei['A1||I1||||'].col3).toBeCloseTo(353688.51, 2);
+    // ⛔ NU 600.849,90 + 53.263,56 — col.3 nu se însumează peste rândurile aceleiași chei.
+    expect(chei['A1||I1||||'].col3).toBeLessThan(400000);
+  });
+
+  it('chei diferite ⇒ intrări separate, nicio însumare între ele', () => {
+    const chei = agregaCheiCol3([R('A1', '1000', '100'), R('A2', '7000', '250')], true);
+    expect(chei['A1||I1||||'].col3).toBeCloseTo(1100, 2);
+    expect(chei['A2||I1||||'].col3).toBeCloseTo(7250, 2);
+  });
+
+  it('plată NECONFIRMATĂ ⇒ col.4 nu intră (nuanța din ghid), per cheie', () => {
+    const chei = agregaCheiCol3([R('A1', '300424.95', '30000'), R('A1', '300424.95', '23263.56')], false);
+    expect(chei['A1||I1||||'].col3).toBeCloseTo(300424.95, 2);
+  });
+
+  it('col.3 DIFERITE pe aceeași cheie ⇒ anomalie: col3 null + col3_inconsistent', () => {
+    const chei = agregaCheiCol3([R('A1', '30000.50', '10000'), R('A1', '13263.06', '5000')], true);
+    expect(chei['A1||I1||||'].col3).toBeNull();
+    expect(chei['A1||I1||||'].col3_inconsistent).toBe(true);
+  });
+
+  it('rows gol / invalid ⇒ hartă goală, nicio excepție', () => {
+    expect(agregaCheiCol3(null, true)).toEqual({});
+    expect(agregaCheiCol3('nu-i json', true)).toEqual({});
   });
 });

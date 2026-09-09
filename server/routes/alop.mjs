@@ -1136,6 +1136,10 @@ const _ORD_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 // (col.4 al predecesorului intră doar dacă plata lui e CONFIRMATĂ).
 // ⛔ `col3: null` + `sursa:'prima_ord'` = „nu se știe" (prima ordonanțare a dosarului) —
 // frontendul NU trebuie să scrie 0 în tabel pe cazul ăsta.
+// ⛔ #187 — răspunsul e o HARTĂ PE CHEIE (`chei`), NU un scalar `col3`. Un scalar ar fi exact
+// însumarea col.3 peste rândurile documentului, care dubla valoarea pe un ORD cu două blocuri.
+// `cheie_unica` (predecesor cu o singură cheie distinctă) e ce permite prefill-ul pe un ORD
+// NOU, ale cărui rânduri sunt încă goale.
 // Autorizare: identică cu GET /api/alop/:id (aceeași `buildAlopVisibilityWhere`).
 router.get('/api/alop/:id/ord-col3', async (req, res) => {
   if (!req.params.id || req.params.id === 'null' || req.params.id === 'undefined') {
@@ -1159,9 +1163,10 @@ router.get('/api/alop/:id/ord-col3', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({
       ok: true,
-      col3: d.col3,
       sursa: d.sursa,
       plata_predecesor_confirmata: d.plata_predecesor_confirmata,
+      chei: d.chei,
+      cheie_unica: d.cheie_unica,
       predecesor: d.predecesor
         ? { nr_ord: d.predecesor.nr_ord, col3: d.predecesor.col3, col4: d.predecesor.col4 }
         : null,
