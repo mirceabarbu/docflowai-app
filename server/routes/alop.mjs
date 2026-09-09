@@ -31,7 +31,7 @@ import { isPlatformAdmin } from '../services/authz-scope.mjs';
 import { selfHealAlopDfLinkByAlop, backfillAlopFlowPointers } from '../services/alop-link.mjs';
 import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.mjs';
 import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
-import { derivaCol3, sumaOrdonantataDosar, verificaPlafonOrdonantare } from '../services/ord-lant.mjs';
+import { derivaCol3, sumaOrdonantataDosar, verificaPlafonOrdonantare, sumaCol3PerCheie } from '../services/ord-lant.mjs';
 import { dosarKeyExpr } from '../services/df-dosar-key.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
@@ -804,8 +804,10 @@ router.get('/api/alop/:id', async (req, res) => {
         -- calculează pe ea + plata confirmată a ciclului curent, NU pe Σ plăților istorice:
         -- col.3 poartă deja tot ce s-a plătit înaintea acestui ciclu, inclusiv plăți din CAB
         -- dinaintea dosarului (pe care aplicația nu le știe). Vezi services/ord-lant.mjs.
-        (SELECT COALESCE(SUM((r->>'plati_anterioare')::numeric),0)
-         FROM jsonb_array_elements(COALESCE(fo.rows,'[]'::jsonb)) r) AS ord_col3,
+        -- #188 — brute (rândurile), NU SUM SQL: col.3 e o proprietate a angajamentului,
+        -- repetată identic pe fiecare bloc (#128k) — SUM peste rânduri o dubla. Agregarea
+        -- corectă (per cheie) se face în JS, cu sumaCol3PerCheie (services/ord-lant.mjs).
+        fo.rows AS ord_rows_raw,
         a.plata_suma_efectiva AS op_valoare,
         COALESCE(a.suma_totala_platita,0) + COALESCE(a.plata_suma_efectiva,0) AS suma_platita_total,
         a.ciclu_curent,
@@ -857,6 +859,9 @@ router.get('/api/alop/:id', async (req, res) => {
 
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     const alop = rows[0];
+    // #188 — col.3 pe cardul ALOP, agregată PER CHEIE (nu SUM SQL peste rânduri).
+    alop.ord_col3 = sumaCol3PerCheie(alop.ord_rows_raw);
+    delete alop.ord_rows_raw;
 
     // ── Self-heal LAZY al legăturii ALOP→DF (v3.9.750) ──────────────────────
     // Calea de semnare CLOUD nu poate apela cârligul de finalizare (zona NO-TOUCH),
