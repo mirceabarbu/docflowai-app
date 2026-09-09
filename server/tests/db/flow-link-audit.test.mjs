@@ -280,3 +280,122 @@ d('PAS 4 — igiena completed la anulare', () => {
     expect(d2.completedAt).toBeNull();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// #190 — clasa E `pointer_alt_flux`: pointerul documentului e NON-NULL, dar nu e
+// pe un flux valid semnat, în timp ce ALT flux valid semnat revendică documentul.
+// (DF 45748, 01.09.2026 — dublă lansare, anulat fluxul pe care stătea pointerul.)
+// ═══════════════════════════════════════════════════════════════════════════════
+d('#190 — clasa E: pointer pe alt flux decât cel semnat', () => {
+  let orgId, userId;
+  beforeAll(migrate);
+  beforeEach(async () => {
+    await truncateAll();
+    const s = await seedOrgUser({ role: 'user', email: 'p1@x.ro' });
+    orgId = s.orgId; userId = s.userId;
+  });
+
+  it('(E1) ⭐ DF 45748 reprodus — pointer pe flux ANULAT + flux semnat care revendică ⇒ detectat', async () => {
+    // Pointerul poartă și el meta.dfId (starea reală după prima lansare) — self-join-ul
+    // `fv.id <> d.flow_id` trebuie să-l excludă ca revendicator.
+    await insertFlow('PZ_01BA62F89A', { orgId, status: 'cancelled' });
+    const dfId = await seedDf({ orgId, createdBy: userId, status: 'completed', flowId: 'PZ_01BA62F89A' });
+    await pool.query(`UPDATE flows SET data = jsonb_set(data, '{meta}', $2::jsonb) WHERE id=$1`,
+      ['PZ_01BA62F89A', JSON.stringify({ dfId })]);
+    await insertFlow('PZ_3E88B4147C', { orgId, status: 'completed', completed: true, meta: { dfId } });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.pointer_alt_flux).toBe(1);
+    const row = r.rows.find(x => x.clasa === 'pointer_alt_flux');
+    expect(row.tip).toBe('df');
+    expect(row.doc_id).toBe(String(dfId));
+    expect(row.flux).toBe('PZ_3E88B4147C');   // fluxul SEMNAT, nu pointerul mort
+  });
+
+  it('(E2) ⭐⭐ NEGATIV CRUCIAL — pointer pe flux ANULAT, NICIUN flux semnat care să revendice ⇒ NU e detectat', async () => {
+    // Starea NORMALĂ după orice anulare: pointerul rămâne ca proveniență. Dacă testul
+    // ăsta pică, clasa raportează sute de cazuri legitime și cardul devine zgomot.
+    await insertFlow('flow-anulat-simplu', { orgId, status: 'cancelled' });
+    const dfId = await seedDf({ orgId, createdBy: userId, status: 'completed', flowId: 'flow-anulat-simplu' });
+    await pool.query(`UPDATE flows SET data = jsonb_set(data, '{meta}', $2::jsonb) WHERE id=$1`,
+      ['flow-anulat-simplu', JSON.stringify({ dfId })]);
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.pointer_alt_flux).toBe(0);
+    expect(r.total).toBe(0);
+  });
+
+  it('(E3) NEGATIV — pointer pe flux valid semnat (stare sănătoasă) + un flux vechi anulat care revendică ⇒ nedetectat', async () => {
+    await insertFlow('flow-sanatos', { orgId, status: 'completed' });
+    const dfId = await seedDf({ orgId, createdBy: userId, status: 'completed', flowId: 'flow-sanatos' });
+    await pool.query(`UPDATE flows SET data = jsonb_set(data, '{meta}', $2::jsonb) WHERE id=$1`,
+      ['flow-sanatos', JSON.stringify({ dfId })]);
+    await insertFlow('flow-vechi-anulat', { orgId, status: 'cancelled', meta: { dfId } });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.pointer_alt_flux).toBe(0);
+    expect(r.total).toBe(0);
+  });
+
+  it('(E4) NEGATIV — revendicatorul e ANULAT dar păstrează completed=true (PZ_8C34C4E842) ⇒ nedetectat', async () => {
+    await insertFlow('flow-ptr-mort', { orgId, status: 'cancelled' });
+    const dfId = await seedDf({ orgId, createdBy: userId, status: 'completed', flowId: 'flow-ptr-mort' });
+    await insertFlow('PZ_8C34C4E842', { orgId, status: 'cancelled', completed: true, meta: { dfId } });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.pointer_alt_flux).toBe(0);
+    expect(r.total).toBe(0);
+  });
+
+  it('(E5) ⭐ pointer pe flux FĂRĂ cheia `completed` (status active) + flux semnat care revendică ⇒ detectat', async () => {
+    // Apărătorul lui `IS NOT TRUE`: predicatul întoarce NULL pe fluxul ăsta, iar
+    // `NOT (…)` ar fi tot NULL ⇒ rândul ar dispărea TĂCUT din WHERE.
+    await insertFlow('flow-fara-completed', { orgId, status: 'active' });
+    const dfId = await seedDf({ orgId, createdBy: userId, status: 'transmis_flux', flowId: 'flow-fara-completed' });
+    const { rows: pf } = await pool.query(`SELECT data ? 'completed' AS are FROM flows WHERE id='flow-fara-completed'`);
+    expect(pf[0].are).toBe(false);   // fixtura chiar NU are cheia
+    await insertFlow('flow-semnat-e5', { orgId, status: 'completed', completed: true, meta: { dfId } });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.pointer_alt_flux).toBe(1);
+    const row = r.rows.find(x => x.clasa === 'pointer_alt_flux');
+    expect(row.doc_id).toBe(String(dfId));
+    expect(row.flux).toBe('flow-semnat-e5');
+  });
+
+  it('(E6) ORD, simetric — pointer pe flux anulat + flux semnat care revendică prin meta.ordId ⇒ detectat', async () => {
+    await insertFlow('flow-ord-anulat', { orgId, status: 'cancelled' });
+    const ordId = await seedOrd({ orgId, createdBy: userId, status: 'completed', flowId: 'flow-ord-anulat' });
+    await insertFlow('flow-ord-semnat', { orgId, status: 'completed', completed: true, meta: { ordId } });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.pointer_alt_flux).toBe(1);
+    const row = r.rows.find(x => x.clasa === 'pointer_alt_flux');
+    expect(row.tip).toBe('ord');
+    expect(row.doc_id).toBe(String(ordId));
+    expect(row.flux).toBe('flow-ord-semnat');
+  });
+
+  it('(E7) disjuncție față de clasa A — pointer NULL ⇒ doar doc_fara_flux, pointer_alt_flux = 0', async () => {
+    const dfId = await seedDf({ orgId, createdBy: userId, status: 'completed', flowId: null });
+    await insertFlow('flow-a-disj', { orgId, status: 'completed', meta: { dfId } });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.doc_fara_flux).toBe(1);
+    expect(r.byClass.pointer_alt_flux).toBe(0);
+    expect(r.total).toBe(1);
+  });
+
+  it('(E8) orgId respectat — divergența clasei E din org B nu apare la interogarea pe org A', async () => {
+    const b = await seedOrgUser({ orgName: 'Org B', role: 'user', email: 'b@x.ro' });
+    await insertFlow('flow-b-anulat', { orgId: b.orgId, status: 'cancelled' });
+    const dfB = await seedDf({ orgId: b.orgId, createdBy: b.userId, status: 'completed', flowId: 'flow-b-anulat' });
+    await insertFlow('flow-b-semnat', { orgId: b.orgId, status: 'completed', completed: true, meta: { dfId: dfB } });
+
+    const onA = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(onA.byClass.pointer_alt_flux).toBe(0);
+    expect(onA.total).toBe(0);
+    const onB = await findFlowLinkDivergences(pool, { orgId: b.orgId, limit: 200 });
+    expect(onB.byClass.pointer_alt_flux).toBe(1);
+  });
+});

@@ -220,6 +220,7 @@
                 if (_bc.alop_fara_flux)    _parts.push('ALOP fără flux: ' + _bc.alop_fara_flux);
                 if (_bc.alop_fara_document) _parts.push('ALOP fără doc: ' + _bc.alop_fara_document);
                 if (_bc.fluxuri_paralele)  _parts.push('fluxuri paralele: ' + _bc.fluxuri_paralele);
+                if (_bc.pointer_alt_flux)  _parts.push('pointer greșit: ' + _bc.pointer_alt_flux);
                 _laSub.textContent = _parts.join(' · ') || 'vezi detalii';
               }
               _laCard.style.display = '';
@@ -247,6 +248,7 @@
         alop_fara_flux:     'ALOP fără legătură la flux',
         alop_fara_document: 'ALOP fără document',
         fluxuri_paralele:   'Fluxuri paralele',
+        pointer_alt_flux:   'Document legat de alt flux decât cel semnat',
       };
       const w = window.open('', '_blank');
       if (!w) { alert('Permite ferestrele pop-up pentru a vedea raportul.'); return; }

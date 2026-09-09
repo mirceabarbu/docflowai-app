@@ -6,6 +6,10 @@
  * document"). Trei incidente în șase zile, aceeași familie, niciunul prins de
  * self-heal-urile existente (care se declanșează DOAR pe df_id/ord_id NULL).
  *
+ * Clasa E (`pointer_alt_flux`) e complementara clasei A: A acoperă pointerul LIPSĂ
+ * (flow_id NULL), iar E acoperă pointerul GREȘIT — non-NULL, dar pe un flux care nu e
+ * valid semnat, în timp ce ALT flux valid semnat revendică documentul (DF 45748, 01.09.2026).
+ *
  * ⛔ ZERO scrieri. Acest modul NU repară nimic — semnalează, decizia e a omului
  * (un document semnat nu se re-leagă tăcut de un flux ales de o euristică).
  *
@@ -22,7 +26,7 @@
 
 import { validSignedFlowSql, liveFlowSql } from './flow-provenance.mjs';
 
-const CLASS_KEYS = ['doc_fara_flux', 'alop_fara_flux', 'alop_fara_document', 'fluxuri_paralele'];
+const CLASS_KEYS = ['doc_fara_flux', 'alop_fara_flux', 'alop_fara_document', 'fluxuri_paralele', 'pointer_alt_flux'];
 
 /**
  * Găsește divergențele document↔flux, opțional scopate pe o organizație.
@@ -128,6 +132,41 @@ export async function findFlowLinkDivergences(pool, { orgId = null, limit = 200 
         ) m
        GROUP BY m.doc_id
       HAVING COUNT(*) >= 2` },
+
+    // ── E — pointer_alt_flux ─────────────────────────────────────────────────
+    // Documentul are flow_id NON-NULL, dar pointerul NU e pe un flux valid semnat,
+    // în timp ce UN ALT flux valid semnat îl revendică prin data->'meta'. Adică
+    // artefactul QES există, iar documentul arată spre altceva. (DF 45748, 01.09.2026:
+    // dublă lansare, anulat fluxul pe care stătea pointerul, semnat pe celălalt.)
+    //
+    // ⚠️ `IS NOT TRUE`, NU `NOT (…)`: un flux fără cheia `completed` în `data` face
+    //    conjuncția NULL, iar `NOT NULL` = NULL ⇒ rândul ar dispărea TĂCUT. Aici
+    //    „nu pot dovedi că pointerul e valid semnat" trebuie să însemne „îl raportez".
+    //
+    // ⛔ Ce NU intră, deliberat: un document care pointează spre un flux anulat FĂRĂ
+    //    să existe un flux semnat care să-l revendice. Aceea e starea NORMALĂ după
+    //    orice anulare (pointerul rămâne ca proveniență) — sute de cazuri în producție,
+    //    iar cardul n-ar mai ajunge niciodată la 0.
+    { clasa: 'pointer_alt_flux', sql: `
+      SELECT 'pointer_alt_flux'::text AS clasa, 'df'::text AS tip, d.id::text AS doc_id,
+             d.nr_unic_inreg AS doc_nr, NULL::text AS alop_id, fv.id AS flux,
+             'DF pointează spre un flux care nu e valid semnat, dar fluxul semnat îl revendică prin meta.dfId'::text AS detaliu
+        FROM formulare_df d
+        JOIN flows fm ON fm.id = d.flow_id
+        JOIN flows fv ON fv.data->'meta'->>'dfId' = d.id::text AND fv.id <> d.flow_id
+       WHERE d.deleted_at IS NULL AND d.flow_id IS NOT NULL
+         AND (${validSignedFlowSql('fm')}) IS NOT TRUE
+         AND ${validSignedFlowSql('fv')}${orgCond('d')}` },
+    { clasa: 'pointer_alt_flux', sql: `
+      SELECT 'pointer_alt_flux'::text AS clasa, 'ord'::text AS tip, d.id::text AS doc_id,
+             d.nr_ordonant_pl AS doc_nr, NULL::text AS alop_id, fv.id AS flux,
+             'ORD pointează spre un flux care nu e valid semnat, dar fluxul semnat îl revendică prin meta.ordId'::text AS detaliu
+        FROM formulare_ord d
+        JOIN flows fm ON fm.id = d.flow_id
+        JOIN flows fv ON fv.data->'meta'->>'ordId' = d.id::text AND fv.id <> d.flow_id
+       WHERE d.deleted_at IS NULL AND d.flow_id IS NOT NULL
+         AND (${validSignedFlowSql('fm')}) IS NOT TRUE
+         AND ${validSignedFlowSql('fv')}${orgCond('d')}` },
   ];
 
   const byClass = Object.fromEntries(CLASS_KEYS.map((k) => [k, 0]));
