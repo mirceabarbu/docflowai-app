@@ -146,6 +146,35 @@ export function agregaCheiCol3(rows, plataConfirmata) {
 }
 
 /**
+ * Suma col.3 („Plăți anterioare") a UNUI document ORD (rândurile lui, brute) — luată O
+ * SINGURĂ DATĂ per cheie a coloanei 1, nu însumată peste rândurile aceleiași chei. FUNCȚIE
+ * PURĂ. Folosită de cardul ALOP („Total plăți", #188) — greșeala #187 a reparat-o în
+ * derivare (`agregaCheiCol3`/`col3DinPredecesor`), dar cardul de afișare o repeta pe SUM SQL.
+ *
+ * Chei DIFERITE se adună (angajamente distincte). Anomalie de date — rânduri ale ACELEIAȘI
+ * chei cu col.3 diferite — nu inventează o valoare: ia cea mai MICĂ dintre variante (cel
+ * mai conservator, nu supraestimează ce s-a plătit deja înaintea acestui ciclu).
+ *
+ * @param {Array|string|null} rows  `formulare_ord.rows`
+ * @returns {number}
+ */
+export function sumaCol3PerCheie(rows) {
+  const acc = new Map();
+  for (const r of _rowsArr(rows)) {
+    const k = cheieRand(r);
+    let set = acc.get(k);
+    if (!set) { set = new Set(); acc.set(k, set); }
+    set.add(_r2(numMoney(r && r.plati_anterioare)));
+  }
+  let total = 0;
+  for (const [, valori] of acc) {
+    const distincte = [...valori];
+    total += distincte.length > 1 ? Math.min(...distincte) : (distincte[0] ?? 0);
+  }
+  return _r2(total);
+}
+
+/**
  * Aritmetica derivării col.3, IZOLATĂ ca funcție PURĂ (testabilă fără DB).
  *
  * ⚠️ #187 — se aplică PER CHEIE a coloanei 1 (`agregaCheiCol3`), NU pe totalul documentului:

@@ -2486,7 +2486,7 @@ async function signFromFluxuri(flowId) {
             try {
               const _rLink = await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
                 method: "POST", credentials: "include",
-                headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                headers: { "Content-Type": "application/json", "X-CSRF-Token": df.getCsrf() },
                 body: JSON.stringify({ flow_id: j.flowId })
               });
               const _jLink = await _rLink.json().catch(() => ({}));
@@ -2513,7 +2513,7 @@ async function signFromFluxuri(flowId) {
                 try {
                   const _rDoc = await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
                     method: "POST", credentials: "include",
-                    headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                    headers: { "Content-Type": "application/json", "X-CSRF-Token": df.getCsrf() },
                     body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
                   });
                   if (!_rDoc.ok) {
@@ -2521,7 +2521,7 @@ async function signFromFluxuri(flowId) {
                     _alopLinkErr = _jDoc?.message || _jDoc?.error || `HTTP ${_rDoc.status}`;
                     console.error(`❌ ${_lnkDoc} FAILED:`, _alopLinkErr);
                   }
-                } catch (e) { _alopLinkErr = 'eroare de rețea'; console.error('❌ link-df FAILED:', e); }
+                } catch (e) { _alopLinkErr = (e && (e.name === 'TypeError' || e.name === 'ReferenceError')) ? 'eroare internă' : 'eroare de rețea'; console.error('❌ link-df FAILED:', e); }
               }
               // Link fluxul de semnare
               const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
@@ -2529,7 +2529,7 @@ async function signFromFluxuri(flowId) {
               try {
                 const _rFlow = await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
                   method: "POST", credentials: "include",
-                  headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+                  headers: { "Content-Type": "application/json", "X-CSRF-Token": df.getCsrf() },
                   body: JSON.stringify({ flow_id: j.flowId })
                 });
                 if (!_rFlow.ok) {
@@ -2537,7 +2537,7 @@ async function signFromFluxuri(flowId) {
                   _alopLinkErr = _alopLinkErr || _jFlow?.message || _jFlow?.error || `HTTP ${_rFlow.status}`;
                   console.error(`❌ ${_lnkFlow} FAILED:`, _jFlow?.error || _rFlow.status);
                 }
-              } catch (e) { _alopLinkErr = _alopLinkErr || 'eroare de rețea'; console.error('❌ link-df-flow FAILED:', e); }
+              } catch (e) { _alopLinkErr = _alopLinkErr || ((e && (e.name === 'TypeError' || e.name === 'ReferenceError')) ? 'eroare internă' : 'eroare de rețea'); console.error('❌ link-df-flow FAILED:', e); }
             } catch(_) {}
             sessionStorage.removeItem("alop_id_for_flow");
           }
