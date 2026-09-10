@@ -38,7 +38,7 @@
         const container = document.getElementById('providerRadios');
         if (!container) return;
         try {
-          const r = await fetch('/api/me/signing-providers', { credentials: 'include' });
+          const r = await DFApi.fetch('/api/me/signing-providers');
           if (!r.ok) {
             container.innerHTML = '<span style="font-size:.8rem; color:#ff8080;">Eroare la încărcarea providerilor. Reîncărcați pagina.</span>';
             return;
@@ -314,8 +314,8 @@
         try {
           const fd = new FormData();
           fd.append('file', f, f.name);
-          const resp = await fetch('/api/convert-to-pdf', {
-            method: 'POST', credentials: 'include', body: fd
+          const resp = await DFApi.fetch('/api/convert-to-pdf', {
+            method: 'POST', body: fd
           });
           if (!resp.ok) {
             const err = await resp.json().catch(()=>({error:'Eroare conversie'}));
@@ -2484,9 +2484,9 @@ async function signFromFluxuri(flowId) {
           if (_prefDocId && _prefDocType && j.flowId) {
             const _pfApi = _prefDocType === "ordnt" ? "/api/formulare-ord" : "/api/formulare-df";
             try {
-              const _rLink = await fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
-                method: "POST", credentials: "include",
-                headers: { "Content-Type": "application/json", "X-CSRF-Token": df.getCsrf() },
+              const _rLink = await DFApi.fetch(`${_pfApi}/${_prefDocId}/link-flow`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ flow_id: j.flowId })
               });
               const _jLink = await _rLink.json().catch(() => ({}));
@@ -2511,9 +2511,9 @@ async function signFromFluxuri(flowId) {
                 const _lnkDoc = _isDfFlow ? "link-df" : "link-ord";
                 console.log(`ALOP ${_lnkDoc}: ${_alopId} → ${_prefDocId}`);
                 try {
-                  const _rDoc = await fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
-                    method: "POST", credentials: "include",
-                    headers: { "Content-Type": "application/json", "X-CSRF-Token": df.getCsrf() },
+                  const _rDoc = await DFApi.fetch(`/api/alop/${_alopId}/${_lnkDoc}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(_isDfFlow ? { df_id: _prefDocId } : { ord_id: _prefDocId })
                   });
                   if (!_rDoc.ok) {
@@ -2527,9 +2527,9 @@ async function signFromFluxuri(flowId) {
               const _lnkFlow = _isDfFlow ? "link-df-flow" : "link-ord-flow";
               console.log(`ALOP ${_lnkFlow}: ${_alopId} → ${j.flowId}`);
               try {
-                const _rFlow = await fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
-                  method: "POST", credentials: "include",
-                  headers: { "Content-Type": "application/json", "X-CSRF-Token": df.getCsrf() },
+                const _rFlow = await DFApi.fetch(`/api/alop/${_alopId}/${_lnkFlow}`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ flow_id: j.flowId })
                 });
                 if (!_rFlow.ok) {
