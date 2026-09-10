@@ -56,7 +56,7 @@
     const msg=$('cpMsg'), btn=$('cpBtn');
     if(!cur||!nw||!cf){msg.style.color='#f28b82';msg.textContent='Completează toate câmpurile.';return;}
     if(nw!==cf){msg.style.color='#f28b82';msg.textContent='Parolele noi nu coincid.';return;}
-    if(nw.length<6){msg.style.color='#f28b82';msg.textContent='Parola trebuie să aibă minim 6 caractere.';return;}
+    if(nw.length<10){msg.style.color='#f28b82';msg.textContent='Parola trebuie să aibă minim 10 caractere.';return;}
     btn.disabled=true;btn.textContent='Se salvează...';
     try{
       const r=await _apiFetch('/auth/change-password',{method:'POST',headers:hdrs(),body:JSON.stringify({current_password:cur,new_password:nw})});

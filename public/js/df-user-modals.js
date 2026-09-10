@@ -69,9 +69,9 @@
       msg.textContent = 'Parolele noi nu coincid.';
       return;
     }
-    if (nw.length < 6) {
+    if (nw.length < 10) {
       msg.style.color = '#f28b82';
-      msg.textContent = 'Parola trebuie să aibă minim 6 caractere.';
+      msg.textContent = 'Parola trebuie să aibă minim 10 caractere.';
       return;
     }
     btn.disabled = true; btn.textContent = 'Se salvează...';
