@@ -4,6 +4,10 @@
  * și expune window.openChangePwdModal() + closeChangePwdModal() +
  * submitChangePwd(). Folosit pe paginile cu df-shell, EXCEPȚIE admin.html
  * (are propriul său modal în admin.js).
+ *
+ * #192: toate apelurile trec prin window.DFApi.fetch (public/js/shared/df-api.js) —
+ * CSRF-ul nu se mai construiește de mână din cookie. Tot aici se înregistrează cârligul
+ * pentru 403 `password_change_required`.
  */
 (function() {
   function injectModal() {
@@ -76,12 +80,9 @@
     }
     btn.disabled = true; btn.textContent = 'Se salvează...';
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      const csrfCookie = document.cookie.split('; ')
-        .find(function(r) { return r.startsWith('csrf_token='); });
-      if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
-      const r = await fetch('/auth/change-password', {
-        method: 'POST', credentials: 'include', headers,
+      const r = await window.DFApi.fetch('/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ current_password: cur, new_password: nw })
       });
       const d = await r.json();
@@ -249,7 +250,7 @@
 
   async function _lvLoadUsers() {
     try {
-      const r = await fetch('/users', { credentials: 'include' });
+      const r = await window.DFApi.fetch('/users');
       if (!r.ok) return [];
       _lvAllUsers = await r.json();
       const meEmail = (JSON.parse(localStorage.getItem('docflow_user') || '{}').email || '').toLowerCase();
@@ -368,12 +369,9 @@
     const btn = document.getElementById('lvBtnSave');
     btn.disabled = true; btn.textContent = 'Se salvează...';
     try {
-      const headers = { 'Content-Type': 'application/json' };
-      const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-      if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
-
-      const r = await fetch('/api/users/me/leave', {
-        method: 'PUT', credentials: 'include', headers,
+      const r = await window.DFApi.fetch('/api/users/me/leave', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leave_start, leave_end, delegate_user_id: Number(delegate_user_id), leave_reason }),
       });
       const data = await r.json().catch(() => ({}));
@@ -399,11 +397,7 @@
     const btn = document.getElementById('lvBtnClear');
     btn.disabled = true;
     try {
-      const headers = {};
-      const csrfCookie = document.cookie.split('; ').find(r => r.startsWith('csrf_token='));
-      if (csrfCookie) headers['x-csrf-token'] = csrfCookie.split('=')[1];
-
-      const r = await fetch('/api/users/me/leave', { method: 'DELETE', credentials: 'include', headers });
+      const r = await window.DFApi.fetch('/api/users/me/leave', { method: 'DELETE' });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
         msg.style.color = '#f28b82'; msg.textContent = data.message || data.error || 'Eroare la anulare.';
@@ -419,5 +413,37 @@
       btn.disabled = false;
     }
   };
+
+  // ════════════════════════════════════════════════════════════════════════
+  // #192 — 403 `password_change_required` deschide modalul de parolă
+  // ════════════════════════════════════════════════════════════════════════
+  // sessionGuard (#182) răspunde 403 `password_change_required` pe rutele guarded când
+  // `force_password_change` e activ. Fără tratare, omul primea erori generice pe fiecare
+  // apel, fără să afle ce are de făcut. Fișierul ăsta DEȚINE modalul, deci e locul firesc
+  // al cârligului. Zăvorul (o singură deschidere per pagină) e în DFApi.
+  //
+  // Fără buclă: `/auth/` NU e în GUARDED_PREFIXES (server/middleware/session-guard.mjs:170),
+  // deci POST /auth/change-password — singura ieșire din poartă — nu poate întoarce codul.
+  function _registerPwdChangeHook() {
+    const api = window.DFApi;
+    if (!api || typeof api._setPasswordChangeHook !== 'function') return;
+    api._setPasswordChangeHook(function(body) {
+      window.openChangePwdModal();
+      const msg = document.getElementById('cpMsg');
+      if (!msg) return;
+      msg.style.color = '#f28b82';
+      msg.textContent = (body && body.message) ||
+        'Trebuie să îți schimbi parola înainte de a continua.';
+    });
+  }
+  // Înregistrarea se face într-un handler, NU la nivelul de sus: în flow/formular/
+  // notafd-invest-form/refnec-form fișierul ăsta a fost multă vreme evaluat ÎNAINTEA lui
+  // df-api.js. Tag-urile au urcat la #192, dar regula rămâne — ea face fișierul robust
+  // indiferent de ordinea din pagină.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _registerPwdChangeHook);
+  } else {
+    _registerPwdChangeHook();
+  }
 
 })();
