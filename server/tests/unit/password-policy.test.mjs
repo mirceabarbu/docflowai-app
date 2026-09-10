@@ -1,8 +1,15 @@
 // server/tests/unit/password-policy.test.mjs
 // #181 (v3.9.836) — politica de parole ca SURSĂ UNICĂ. Teste pure, fără DB.
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { validatePassword, MIN_PASSWORD_LEN, MAX_PASSWORD_LEN } from '../../services/password-policy.mjs';
 import { generatePassword } from '../../middleware/auth.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.resolve(__dirname, '../../../public');
+const readPublic = (rel) => readFileSync(path.join(publicDir, rel), 'utf8');
 
 const rep = (n) => 'a'.repeat(n);
 
@@ -66,4 +73,47 @@ describe('#181 password-policy — mesajul e derivat din constantă', () => {
     expect(out.message).toContain(String(MIN_PASSWORD_LEN));
     expect(out.message).toMatch(/minim/i);
   });
+});
+
+describe('#191 password-policy — frontendul rămâne aliniat la MIN_PASSWORD_LEN', () => {
+  const jsFiles = [
+    'js/admin/organizations.js',
+    'js/df-user-modals.js',
+    'js/semdoc-signer/modals.js',
+  ];
+  const htmlFiles = [
+    'admin.html',
+    'semdoc-signer.html',
+  ];
+  const expectedMessage = validatePassword('a'.repeat(MIN_PASSWORD_LEN - 1)).message;
+
+  for (const rel of jsFiles) {
+    it(`${rel} verifică lungimea parolei față de MIN_PASSWORD_LEN (${MIN_PASSWORD_LEN})`, () => {
+      const src = readPublic(rel);
+      const thresholdPattern = new RegExp('\\.length\\s*<\\s*' + MIN_PASSWORD_LEN + '\\b');
+      expect(src).toMatch(thresholdPattern);
+    });
+
+    it(`${rel} nu conține un prag de PAROLĂ mai mic decât MIN_PASSWORD_LEN (excluzând codul TOTP)`, () => {
+      const src = readPublic(rel);
+      const matches = [...src.matchAll(/(\w+)\.length\s*<\s*(\d+)/g)];
+      const belowThreshold = matches.filter(([, , num]) => Number(num) < MIN_PASSWORD_LEN);
+      // Singurul prag sub MIN_PASSWORD_LEN tolerat e codul TOTP de 6 cifre (variabila `code`).
+      for (const match of belowThreshold) {
+        expect(match[1], `prag suspect sub MIN_PASSWORD_LEN găsit: "${match[0]}"`).toBe('code');
+      }
+    });
+
+    it(`${rel} folosește mesajul identic cu cel al serverului`, () => {
+      const src = readPublic(rel);
+      expect(src).toContain(expectedMessage);
+    });
+  }
+
+  for (const rel of htmlFiles) {
+    it(`${rel} afișează eticheta „minim ${MIN_PASSWORD_LEN} caractere"`, () => {
+      const src = readPublic(rel);
+      expect(src).toContain(`minim ${MIN_PASSWORD_LEN} caractere`);
+    });
+  }
 });

@@ -56,8 +56,18 @@
   let _refreshHook = null;   // () => Promise<boolean>
   let _redirectHook = null;  // () => void
 
+  // #192: cârlig pentru 403 `password_change_required` (sessionGuard, #182). Îl înregistrează
+  // df-user-modals.js — fișierul care DEȚINE modalul de schimbare a parolei și e încărcat de
+  // exact cele 10 pagini care au nevoie de el. Paginile fără modal nu înregistrează nimic și
+  // se comportă exact ca azi (403-ul se întoarce brut).
+  let _pwdChangeHook = null; // (body) => void
+  // Zăvor per ÎNCĂRCARE DE PAGINĂ: o pagină lansează zeci de apeluri în paralel, iar fiecare
+  // ar primi același 403. Fără zăvor, utilizatorul ar primi modalul de zece ori peste el.
+  let _pwdChangeFired = false;
+
   function _setRefreshHook(fn) { _refreshHook = (typeof fn === 'function') ? fn : null; }
   function _setRedirectHook(fn) { _redirectHook = (typeof fn === 'function') ? fn : null; }
+  function _setPasswordChangeHook(fn) { _pwdChangeHook = (typeof fn === 'function') ? fn : null; }
 
   // ── CSRF ─────────────────────────────────────────────────────────────────────
   /** Token-ul CSRF curent: window._csrfToken (setat la init pagină) > cookie. */
@@ -142,6 +152,21 @@
       }
     }
 
+    // ── 403 password_change_required: cârlig, O SINGURĂ dată per pagină ───────
+    // Bloc SEPARAT de cel de csrf_invalid, nu o ramură în el: acela e (corect) gardat pe
+    // `isMutation`, dar sessionGuard întoarce `password_change_required` pe ORICE metodă,
+    // deci și pe GET. Garda pe `_pwdChangeHook` e prima condiție intenționat — fără cârlig
+    // înregistrat nici nu clonăm răspunsul, deci comportamentul rămâne bit-cu-bit cel de azi.
+    // Răspunsul se întoarce oricum: nu înghițim eroarea, apelantul își face treaba lui.
+    if (res.status === 403 && _pwdChangeHook && !_pwdChangeFired) {
+      let body = {};
+      try { body = await res.clone().json(); } catch (e) {}
+      if (body?.error === 'password_change_required') {
+        _pwdChangeFired = true;
+        try { _pwdChangeHook(body); } catch (e) {}
+      }
+    }
+
     return res;
   }
 
@@ -153,6 +178,7 @@
     REVOKED_CODES: REVOKED_CODES,
     _setRefreshHook: _setRefreshHook,
     _setRedirectHook: _setRedirectHook,
+    _setPasswordChangeHook: _setPasswordChangeHook,
   };
 
   // ── CSRF: incarcare token la deschiderea paginii ──────────────────────────

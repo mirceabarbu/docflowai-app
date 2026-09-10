@@ -236,6 +236,113 @@ describe('DFApi.fetch — 401 și cârligele opționale', () => {
   });
 });
 
+// ── 12: 403 password_change_required (#192) ──────────────────────────────────
+
+describe('DFApi.fetch — 403 password_change_required (#192)', () => {
+  const pwdRes = (url) => url === '/auth/csrf-token'
+    ? mkRes(200, { csrfToken: 'C' })
+    : mkRes(403, { error: 'password_change_required', message: 'Trebuie să îți schimbi parola.' });
+
+  it('12. ⭐ pe un GET, cârligul e chemat — codul vine pe ORICE metodă, nu doar pe mutații', async () => {
+    // Cade dacă cineva mută blocul sub `isMutation`, ca cel de csrf_invalid.
+    const calls = installFetch(async (url) => pwdRes(url));
+    const DFApi = loadFresh();
+    await flush();
+    calls.length = 0;
+
+    const hook = vi.fn();
+    DFApi._setPasswordChangeHook(hook);
+
+    const res = await DFApi.fetch('/api/x'); // GET, fără options
+
+    expect(hook).toHaveBeenCalledTimes(1);
+    expect(hook.mock.calls[0][0].error).toBe('password_change_required');
+    expect(res.status).toBe(403);
+    expect(calls.filter(c => c.url === '/api/x')).toHaveLength(1); // niciun retry
+  });
+
+  it('13. ⭐ zăvor: trei apeluri care primesc 403 ⇒ cârligul e chemat O SINGURĂ dată', async () => {
+    // O pagină lansează zeci de apeluri în paralel; fără zăvor, modalul s-ar deschide de zece ori.
+    installFetch(async (url) => pwdRes(url));
+    const DFApi = loadFresh();
+    await flush();
+
+    const hook = vi.fn();
+    DFApi._setPasswordChangeHook(hook);
+
+    await DFApi.fetch('/api/a');
+    await DFApi.fetch('/api/b', { method: 'POST' });
+    await DFApi.fetch('/api/c');
+
+    expect(hook).toHaveBeenCalledTimes(1);
+  });
+
+  it('14. ⭐ FĂRĂ cârlig înregistrat, 403-ul se întoarce BRUT: fără excepție, fără redirect', async () => {
+    // Garda anti-regresie pentru cele 3 pagini care NU încarcă df-user-modals.js
+    // (admin.html, bulk-signer.html, semdoc-signer.html): comportamentul rămâne cel de azi.
+    const calls = installFetch(async (url) => pwdRes(url));
+    const DFApi = loadFresh();
+    await flush();
+    calls.length = 0;
+
+    const redirect = vi.fn();
+    const refresh = vi.fn(async () => true);
+    DFApi._setRedirectHook(redirect);
+    DFApi._setRefreshHook(refresh);
+
+    const res = await DFApi.fetch('/api/x');
+
+    expect(res.status).toBe(403);
+    expect(redirect).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(calls.filter(c => c.url === '/api/x')).toHaveLength(1);
+  });
+
+  it('15. un 403 csrf_invalid pe mutație își păstrează retry-ul și NU cheamă cârligul', async () => {
+    const calls = installFetch(async (url) => {
+      if (url === '/auth/csrf-token') return mkRes(200, { csrfToken: 'CSRF-NOU' });
+      return mkRes(403, { error: 'csrf_invalid' });
+    });
+    const DFApi = loadFresh();
+    await flush();
+    calls.length = 0;
+    DFApi.setCsrf('CSRF-VECHI');
+
+    const hook = vi.fn();
+    DFApi._setPasswordChangeHook(hook);
+
+    const res = await DFApi.fetch('/api/x', { method: 'POST' });
+
+    expect(hook).not.toHaveBeenCalled();
+    expect(res.status).toBe(403);
+    expect(calls.filter(c => c.url === '/api/x')).toHaveLength(2); // retry-ul intact
+  });
+
+  it('16. răspunsul se întoarce și după ce cârligul a fost chemat — eroarea nu e înghițită', async () => {
+    installFetch(async (url) => pwdRes(url));
+    const DFApi = loadFresh();
+    await flush();
+    DFApi._setPasswordChangeHook(() => {});
+
+    const res = await DFApi.fetch('/api/x', { method: 'PUT' });
+
+    expect(res.status).toBe(403);
+    expect(res.ok).toBe(false);
+    expect((await res.json()).error).toBe('password_change_required');
+  });
+
+  it('17. ⭐ df-user-modals.js nu mai are fetch brut și nu mai citește csrf_token din cookie', () => {
+    const src = readFileSync(join(PUBLIC, 'js/df-user-modals.js'), 'utf8');
+    // `fetch(` neprecedat de punct = apel brut; `window.DFApi.fetch(` are punct înainte.
+    expect(src).not.toMatch(/(?<![.\w])fetch\(/);
+    expect(src).not.toMatch(/csrf_token/);
+    expect(src).not.toMatch(/headers\[\s*['"]x-csrf-token['"]\s*\]\s*=/);
+    // Cele patru apeluri trec prin sursa unică, iar cârligul e înregistrat aici.
+    expect(src.match(/window\.DFApi\.fetch\(/g)).toHaveLength(4);
+    expect(src).toMatch(/_setPasswordChangeHook\(/);
+  });
+});
+
 // ── 8: garda de reintrare ────────────────────────────────────────────────────
 
 describe('df-api.js — garda de reintrare', () => {
@@ -310,6 +417,7 @@ describe('#183 — convergența celor cinci puncte de intrare (analiză statică
       'df-apifetch-shim-full.js',
       '/js/admin/core.js',
       'bulk-signer/bulk-signer.js',
+      'df-user-modals.js', // #192 — al șaselea consumator, pe 10 pagini
     ];
     const pages = readdirSync(PUBLIC).filter(f => f.endsWith('.html'));
     expect(pages.length).toBeGreaterThan(10);
