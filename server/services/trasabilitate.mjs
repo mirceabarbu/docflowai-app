@@ -11,13 +11,17 @@
  *
  * Multi-tenant: orgId e filtru obligatoriu pe TOATE query-urile.
  *
- * Identificare „aprobat" (pattern canonic, vezi server/routes/formulare/):
- *   flow_id IS NOT NULL
- *   AND (f.data->>'status' = 'completed'
- *        OR (f.data->>'completed')::boolean = true)
+ * Identificare „aprobat":
+ *   DF (Q2):  flow_id IS NOT NULL AND validSignedFlowSql('f') — fluxul VIU (nețters,
+ *             ne-anulat, ne-refuzat) ȘI finalizat (#197). Anularea administrativă
+ *             păstrează `completed:true` ca istoric (#164) și nu golește
+ *             `formulare_df.flow_id`, deci „finalizat" singur NU înseamnă aprobat.
+ *   ORD (Q3/Q4): flow_id IS NOT NULL AND (status='completed' OR completed=true)
+ *             — predicat neatins; compensat de flow-undo, care golește `formulare_ord.flow_id`.
  */
 
 import { dosarKeyExpr } from './df-dosar-key.mjs';
+import { validSignedFlowSql } from './flow-provenance.mjs';
 
 /**
  * Returnează arborele de trasabilitate pornind de la un DF sau ORD.
@@ -76,7 +80,7 @@ export async function getTrasabilitate(pool, orgId, type, id) {
               COALESCE(fd.este_revizie, FALSE) AS este_revizie,
               fd.status, fd.flow_id, fd.created_at, fd.updated_at,
               CASE WHEN fd.flow_id IS NOT NULL
-                   AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+                   AND ${validSignedFlowSql('f')}
                    THEN TRUE ELSE FALSE END AS aprobat,
               COALESCE(
                 (SELECT SUM(NULLIF(r->>'sum_rezv_crdt_bug_act', '')::numeric)

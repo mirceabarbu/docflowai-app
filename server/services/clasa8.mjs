@@ -8,9 +8,12 @@
  *   - Plăți (proporțional)  (alop_ord_cicluri + alop_instances ciclu curent,
  *                            plata_confirmed_at IS NOT NULL)
  *
- * „Aprobat" = JOIN flows f ON f.id = doc.flow_id
- *           WHERE f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true
- * (Pattern canonic, vezi server/routes/formulare/df.mjs „DF aprobate".)
+ * „Aprobat" (DF) = JOIN flows f ON f.id = doc.flow_id WHERE validSignedFlowSql('f')
+ *   — fluxul VIU (nețters, ne-anulat, ne-refuzat) ȘI finalizat (#197). Anularea
+ *   administrativă păstrează `completed:true` ca istoric (#164) și nu golește
+ *   `formulare_df.flow_id`, deci „finalizat" singur NU înseamnă aprobat.
+ * „Aprobat" (ORD) = flux finalizat (predicat neatins; compensat de flow-undo, care
+ *   golește `formulare_ord.flow_id`).
  *
  * Read-only. Nu scrie nimic în BD.
  *
@@ -29,6 +32,7 @@
  */
 
 import { dosarKeyExpr } from './df-dosar-key.mjs';
+import { validSignedFlowSql } from './flow-provenance.mjs';
 
 /**
  * Returnează rândurile centralizatorului filtrate.
@@ -90,6 +94,9 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
     -- Sursă: DF Sec.B rows_ctrl[].sum_rezv_crdt_bug_act (col.10 = 8+9,
     --        Suma rezervată din credite bugetare actualizată).
     -- „Aprobat" = flow signing completat (NU doar form-data-entry).
+    -- #197: aprobarea se derivă din fluxul VIU (validSignedFlowSql), fiindcă anularea
+    -- administrativă păstrează completed:true ca istoric (#164) și nu golește
+    -- formulare_df.flow_id — altfel o revizie desfăcută ar consuma în continuare buget.
     -- ─────────────────────────────────────────────────────────────────────
     latest_approved_df AS (
       SELECT DISTINCT ON (${dosarKeyExpr('fd')})
@@ -100,7 +107,7 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
         AND fd.deleted_at IS NULL
         AND fd.flow_id IS NOT NULL
         AND fd.nr_unic_inreg IS NOT NULL
-        AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+        AND ${validSignedFlowSql('f')}
         ${dfCompFilter}
         ${dfQFilter}
       ORDER BY ${dosarKeyExpr('fd')}, fd.revizie_nr DESC NULLS LAST
@@ -326,6 +333,9 @@ export async function getBugetDisponibil(pool, orgId, excludeDfId = null) {
 
   const sql = `
     WITH
+    -- #197: aprobarea se derivă din fluxul VIU (validSignedFlowSql), fiindcă anularea
+    -- administrativă păstrează completed:true ca istoric (#164) și nu golește
+    -- formulare_df.flow_id — altfel o revizie desfăcută ar consuma în continuare buget.
     latest_approved_df AS (
       SELECT DISTINCT ON (${dosarKeyExpr('fd')})
         fd.id, fd.rows_ctrl, fd.nr_unic_inreg
@@ -335,7 +345,7 @@ export async function getBugetDisponibil(pool, orgId, excludeDfId = null) {
         AND fd.deleted_at IS NULL
         AND fd.flow_id IS NOT NULL
         AND fd.nr_unic_inreg IS NOT NULL
-        AND (f.data->>'status' = 'completed' OR (f.data->>'completed')::boolean = true)
+        AND ${validSignedFlowSql('f')}
         AND ($2::uuid IS NULL OR ${dosarKeyExpr('fd')} IS DISTINCT FROM
              (SELECT ${dosarKeyExpr('fd2')} FROM formulare_df fd2 WHERE fd2.id = $2::uuid))
       ORDER BY ${dosarKeyExpr('fd')}, fd.revizie_nr DESC NULLS LAST
