@@ -182,6 +182,9 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
         AND ai.plata_suma_efectiva IS NOT NULL
         AND ai.ord_id IS NOT NULL
     ),
+    -- Numitorul trebuie să acopere exact aceleași rânduri ca numărătorul
+    -- (ord_rows_ssi), altfel suma proporțiilor iese sub 1 și plata se pierde
+    -- tăcut (#198).
     ord_totals AS (
       SELECT
         fo.id AS ord_id,
@@ -190,6 +193,10 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(fo.rows, '[]'::jsonb)) r
       WHERE fo.org_id = $1
         AND fo.deleted_at IS NULL
+        AND COALESCE(r->>'cod_SSI', r->>'codSSI', '') <> ''
+        AND NULLIF(r->>'suma_ordonantata_plata','')::numeric > 0
+        ${ordCompFilter}
+        ${ordQFilter}
       GROUP BY fo.id
     ),
     ord_rows_ssi AS (
@@ -203,6 +210,8 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
         AND fo.deleted_at IS NULL
         AND COALESCE(r->>'cod_SSI', r->>'codSSI', '') <> ''
         AND NULLIF(r->>'suma_ordonantata_plata','')::numeric > 0
+        ${ordCompFilter}
+        ${ordQFilter}
     ),
     plati AS (
       SELECT
