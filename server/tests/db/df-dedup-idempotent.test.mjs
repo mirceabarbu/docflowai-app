@@ -130,11 +130,23 @@ d('DF dedup din ALOP (idempotență + index + migrare 095)', () => {
 
   // Reface indexul (testele de migrare 095 îl pot lăsa lipsă — e schema-level, nu-l prinde
   // truncateAll), apoi închide pool-ul. Ordinea contează: recreare ÎNAINTE de pool.end().
+  // Testul 6 lasă intenționat două rânduri duplicate (ambele cu flow_id) — trebuie
+  // șterse ÎNAINTE de CREATE UNIQUE INDEX, altfel indexul pică pe unique_violation și
+  // rămâne lipsă pe baza refolosită de rularea următoare (RECON #193).
   afterAll(async () => {
+    await pool.query(`
+      DELETE FROM formulare_df a
+      USING formulare_df b
+      WHERE a.source_alop_id IS NOT NULL
+        AND a.deleted_at IS NULL
+        AND b.deleted_at IS NULL
+        AND a.source_alop_id = b.source_alop_id
+        AND a.revizie_nr = b.revizie_nr
+        AND a.id > b.id`);
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS df_source_alop_revizie_uniq
         ON formulare_df (source_alop_id, revizie_nr)
-        WHERE source_alop_id IS NOT NULL AND deleted_at IS NULL`).catch(() => {});
+        WHERE source_alop_id IS NOT NULL AND deleted_at IS NULL`);
     await pool.end();
   });
 });

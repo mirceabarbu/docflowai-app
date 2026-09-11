@@ -740,12 +740,14 @@ router.post('/flows/:flowId/admin-cancel', async (req, res) => {
     // Audit (best-effort, în afara tranzacției).
     writeAuditEvent({ flowId, orgId: data.orgId, eventType: 'FLOW_ADMIN_CANCELLED', actorIp: _getIp(req), actorEmail: actor.email,
       payload: { reason: data.cancelReason, dfId: undo.dfId, ordId: undo.ordId, alopId: undo.alopId } });
+    // await: formulare_audit are FK spre organizations și users — o scriere detașată
+    // se poate ciocni de curățenia dintre teste (RECON #193, deadlock 40P01).
     if (undo.dfId) {
-      recordFormularAudit({ orgId: data.orgId, formType: 'df', formId: undo.dfId, actorId: actor.userId, actorEmail: actor.email,
+      await recordFormularAudit({ orgId: data.orgId, formType: 'df', formId: undo.dfId, actorId: actor.userId, actorEmail: actor.email,
         eventType: 'FLOW_ADMIN_CANCELLED', meta: { flowId, reason: data.cancelReason, alopId: undo.alopId } });
     }
     if (undo.ordId) {
-      recordFormularAudit({ orgId: data.orgId, formType: 'ord', formId: undo.ordId, actorId: actor.userId, actorEmail: actor.email,
+      await recordFormularAudit({ orgId: data.orgId, formType: 'ord', formId: undo.ordId, actorId: actor.userId, actorEmail: actor.email,
         eventType: 'FLOW_ADMIN_CANCELLED', meta: { flowId, reason: data.cancelReason, alopId: undo.alopId } });
     }
 

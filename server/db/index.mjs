@@ -2770,6 +2770,39 @@ export function markDbFailed(err) {
 export async function migrateForTests() {
   if (!pool) throw new Error('migrateForTests: DATABASE_URL/TEST_DATABASE_URL lipsește');
 
+  // ── Poartă „bază caldă" (#195) ──────────────────────────────────────────────
+  // Vitest izolează fiecare fișier de test, deci flagul _migrated din db-real.mjs se
+  // resetează la fiecare dintre cele ~134 de fișiere și funcția asta rulează din nou.
+  // Pasul 3 de mai jos ȘTERGE marcajele celor 17 migrații deferred și le RE-EXECUTĂ:
+  // CREATE OR REPLACE FUNCTION + triggere (093/094/109/110), adică DDL cu
+  // ACCESS EXCLUSIVE, de ~2300 de ori pe rulare — muncă în gol pe o bază deja migrată.
+  //
+  // Condiția se verifică în BAZĂ, nu în memorie: dacă TOATE migrațiile inline sunt
+  // marcate aplicate ȘI tabelele V4 există, nu mai e nimic de făcut. Pe o bază rece sau
+  // cu schema incompletă condiția e falsă și parcursul complet de mai jos rulează
+  // neschimbat — inclusiv la adăugarea unei migrații noi (numărătoarea nu se mai potrivește).
+  //
+  // Sigur pentru că niciun test nu se bazează pe re-rularea deferred ca să-și refacă
+  // schema: singurul obiect coborât de teste e indexul df_source_alop_revizie_uniq
+  // (migrația 095, NEdeferred), iar ambele fișiere care-l coboară îl refac ele însele.
+  try {
+    const client = await pool.connect();
+    try {
+      const { rows: t } = await client.query(
+        `SELECT to_regclass('public.schema_migrations') IS NOT NULL AS sm,
+                to_regclass('public.alop_instances')     IS NOT NULL AS alop,
+                to_regclass('public.formulare_oficiale') IS NOT NULL AS fo`
+      );
+      if (t[0].sm && t[0].alop && t[0].fo) {
+        const { rows: m } = await client.query(
+          `SELECT COUNT(*)::int AS n FROM schema_migrations WHERE id = ANY($1::text[])`,
+          [MIGRATIONS.map((x) => x.id)]
+        );
+        if (m[0].n === MIGRATIONS.length) { markDbReady(); return; }
+      }
+    } finally { client.release(); }
+  } catch { /* bază rece / schemă incompletă → parcursul complet de mai jos */ }
+
   const V4_ONLY = /alop_instances|alop_sabloane|formulare_oficiale/i;
   const deferredIds = MIGRATIONS.filter(m => V4_ONLY.test(m.sql)).map(m => m.id);
 
