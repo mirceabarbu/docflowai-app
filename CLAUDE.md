@@ -451,7 +451,12 @@ Campanii email către ~2.950 municipalități românești. Tabele: `outreach_ins
       PWFILE="$TEMP/claude/pgpwfile"
       echo "postgres" > "$PWFILE"
       "$PGBIN/initdb" -D "$PGDATA" -U postgres --pwfile="$PWFILE" -A md5 -E UTF8
-      "$PGBIN/pg_ctl" -D "$PGDATA" -o "-p 55432 -c listen_addresses=127.0.0.1" \
+      # Bază de UNICĂ FOLOSINȚĂ: durabilitatea nu valorează nimic aici, viteza da.
+      # fsync/synchronous_commit/full_page_writes off ⇒ scrierile nu mai ating discul.
+      # ⛔ Aceste opțiuni sunt EXCLUSIV pentru instanța efemeră de test. Niciodată în producție.
+      "$PGBIN/pg_ctl" -D "$PGDATA" -o "-p 55432 -c listen_addresses=127.0.0.1 \
+        -c fsync=off -c synchronous_commit=off -c full_page_writes=off \
+        -c autovacuum=off -c checkpoint_timeout=60min -c max_wal_size=4GB" \
         -l "$TEMP/claude/pglog.txt" start
       PGPASSWORD=postgres "$PGBIN/createdb" -h 127.0.0.1 -p 55432 -U postgres docflow_test
       export TEST_DATABASE_URL="postgres://postgres:postgres@127.0.0.1:55432/docflow_test"
@@ -461,6 +466,13 @@ Campanii email către ~2.950 municipalități românești. Tabele: `outreach_ins
       rm -rf "$PGDATA" "$PWFILE" "$TEMP/claude/pglog.txt"
 
   Portul 55432 evită conflictul cu serviciul Windows de pe 5432.
+- ⭐ **În timpul unui lot, NU rula suita întreagă la fiecare iterație.** Rulează doar
+  fișierele atinse:
+
+      npx vitest run --config vitest.config.db.mjs server/tests/db/<fisier>.test.mjs
+
+  Suita completă o singură dată, la final, înainte de commit. Suita întreagă durează
+  ~13 minute; un fișier durează secunde.
 - Local, alternativ: `npm run db:test:up` (Docker) → exportă `TEST_DATABASE_URL` → `npm run test:db` → `npm run db:test:down`.
 - ⛔ Docker absent NU e motiv de skip. Folosește rețeta efemeră de mai sus.
   Raportează „skipped" doar dacă și ea eșuează, și spune explicit că nu e o dovadă.
