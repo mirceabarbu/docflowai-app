@@ -97,13 +97,18 @@ export async function findFlowLinkDivergences(pool, { orgId = null, limit = 200 
         FROM alop_instances a
         JOIN formulare_df d ON d.source_alop_id = a.id AND d.deleted_at IS NULL
        WHERE a.cancelled_at IS NULL AND a.df_id IS NULL${orgCond('a')}` },
+    // Un ORD care aparține unui ciclu ARHIVAT al aceluiași dosar (alop_ord_cicluri) nu e o
+    // divergență: `noua-lichidare` golește alop.ord_id prin proiectare la arhivare, iar
+    // ORD-ul rămâne legat prin source_alop_id — cazul de producție (#200), dosar sănătos.
     { clasa: 'alop_fara_document', sql: `
       SELECT 'alop_fara_document'::text AS clasa, 'ord'::text AS tip, d.id::text AS doc_id,
              d.nr_ordonant_pl AS doc_nr, a.id::text AS alop_id, NULL::text AS flux,
              'ALOP fără ord_id, dar există un ORD cu source_alop_id = ALOP'::text AS detaliu
         FROM alop_instances a
         JOIN formulare_ord d ON d.source_alop_id = a.id AND d.deleted_at IS NULL
-       WHERE a.cancelled_at IS NULL AND a.ord_id IS NULL${orgCond('a')}` },
+       WHERE a.cancelled_at IS NULL AND a.ord_id IS NULL
+         AND NOT EXISTS (SELECT 1 FROM alop_ord_cicluri c
+                          WHERE c.alop_id = a.id AND c.ord_id = d.id)${orgCond('a')}` },
 
     // ── D — fluxuri_paralele ─────────────────────────────────────────────────
     // Două sau mai multe fluxuri VII (neșterse, ne-anulate, ne-refuzate) revendică

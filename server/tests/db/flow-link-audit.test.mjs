@@ -399,3 +399,97 @@ d('#190 — clasa E: pointer pe alt flux decât cel semnat', () => {
     expect(onB.byClass.pointer_alt_flux).toBe(1);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// #200 — clasa C (`alop_fara_document`), ramura ORD: un ORD care aparține unui ciclu
+// ARHIVAT al aceluiași dosar (alop_ord_cicluri) nu e o divergență — `noua-lichidare`
+// golește alop.ord_id prin proiectare, iar ORD-ul rămâne legat prin source_alop_id.
+// ═══════════════════════════════════════════════════════════════════════════════
+d('#200 — clasa C nu mai raportează ciclurile ORD arhivate', () => {
+  let orgId, userId;
+  beforeAll(migrate);
+  beforeEach(async () => {
+    await truncateAll();
+    const s = await seedOrgUser({ role: 'user', email: 'p1@x.ro' });
+    orgId = s.orgId; userId = s.userId;
+  });
+
+  // Insert minimal într-un ciclu arhivat — doar coloanele relevante pentru detector.
+  async function insertCiclu({ alopId, ordAlopId = null, orgId: oid, ordId, cicluNr = 1, status = 'completed' }) {
+    await pool.query(
+      `INSERT INTO alop_ord_cicluri (alop_id, org_id, ciclu_nr, ord_id, status)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [ordAlopId ?? alopId, oid, cicluNr, ordId, status]
+    );
+  }
+
+  it('(1) ⭐⭐ cazul de producție reprodus — ciclu arhivat cu exact acel ord_id ⇒ NU e raportat', async () => {
+    const alopId = await seedAlop({ orgId, createdBy: userId, status: 'draft', ordId: null });
+    const ordId = await seedOrd({ orgId, createdBy: userId, status: 'completed' });
+    await pool.query('UPDATE formulare_ord SET source_alop_id=$1 WHERE id=$2', [alopId, ordId]);
+    await insertCiclu({ alopId, orgId, ordId, cicluNr: 1, status: 'completed' });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.alop_fara_document).toBe(0);
+    expect(r.total).toBe(0);
+  });
+
+  it('(2) ⭐ clasa își păstrează dinții — fără niciun rând în alop_ord_cicluri ⇒ ESTE raportat', async () => {
+    const alopId = await seedAlop({ orgId, createdBy: userId, status: 'draft', ordId: null });
+    const ordId = await seedOrd({ orgId, createdBy: userId, status: 'completed' });
+    await pool.query('UPDATE formulare_ord SET source_alop_id=$1 WHERE id=$2', [alopId, ordId]);
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.alop_fara_document).toBe(1);
+    const row = r.rows.find(x => x.clasa === 'alop_fara_document' && x.tip === 'ord');
+    expect(row.doc_id).toBe(String(ordId));
+    expect(row.alop_id).toBe(String(alopId));
+  });
+
+  it('(3) ⭐ excluderea e scopată pe dosar — ciclul arhivat aparține ALTUI ALOP ⇒ ORD-ul ESTE raportat pe dosarul lui', async () => {
+    const alopId = await seedAlop({ orgId, createdBy: userId, status: 'draft', ordId: null });
+    const otherAlopId = await seedAlop({ orgId, createdBy: userId, status: 'completed' });
+    const ordId = await seedOrd({ orgId, createdBy: userId, status: 'completed' });
+    await pool.query('UPDATE formulare_ord SET source_alop_id=$1 WHERE id=$2', [alopId, ordId]);
+    // Ciclu arhivat cu ACELAȘI ord_id, dar legat de ALT ALOP.
+    await insertCiclu({ alopId: otherAlopId, orgId, ordId, cicluNr: 1, status: 'completed' });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(r.byClass.alop_fara_document).toBe(1);
+    const row = r.rows.find(x => x.clasa === 'alop_fara_document' && x.tip === 'ord');
+    expect(row.alop_id).toBe(String(alopId));
+  });
+
+  it('(4) ramura DF neschimbată — ALOP fără df_id + DF cu source_alop_id ⇒ raportat, ca azi', async () => {
+    const alopId = await seedAlop({ orgId, createdBy: userId, status: 'draft', dfId: null });
+    const dfId = await seedDf({ orgId, createdBy: userId, status: 'draft' });
+    await pool.query('UPDATE formulare_df SET source_alop_id=$1 WHERE id=$2', [alopId, dfId]);
+    // Chiar dacă există un ciclu arhivat oarecare pe același dosar, ramura DF nu-l consultă.
+    const ordId = await seedOrd({ orgId, createdBy: userId, status: 'completed' });
+    await insertCiclu({ alopId, orgId, ordId, cicluNr: 1, status: 'completed' });
+
+    const r = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    const row = r.rows.find(x => x.clasa === 'alop_fara_document' && x.tip === 'df');
+    expect(row).toBeTruthy();
+    expect(row.doc_id).toBe(String(dfId));
+  });
+
+  it('(5) orgId respectat — cazul nou din org B nu apare la interogarea pe org A', async () => {
+    const b = await seedOrgUser({ orgName: 'Org B', role: 'user', email: 'b@x.ro' });
+    const alopIdA = await seedAlop({ orgId, createdBy: userId, status: 'draft', ordId: null });
+    const ordIdA = await seedOrd({ orgId, createdBy: userId, status: 'completed' });
+    await pool.query('UPDATE formulare_ord SET source_alop_id=$1 WHERE id=$2', [alopIdA, ordIdA]);
+    // fără ciclu ⇒ raportat pe org A
+
+    const alopIdB = await seedAlop({ orgId: b.orgId, createdBy: b.userId, status: 'draft', ordId: null });
+    const ordIdB = await seedOrd({ orgId: b.orgId, createdBy: b.userId, status: 'completed' });
+    await pool.query('UPDATE formulare_ord SET source_alop_id=$1 WHERE id=$2', [alopIdB, ordIdB]);
+    await insertCiclu({ alopId: alopIdB, orgId: b.orgId, ordId: ordIdB, cicluNr: 1, status: 'completed' });
+    // cu ciclu ⇒ NU raportat pe org B
+
+    const onA = await findFlowLinkDivergences(pool, { orgId, limit: 200 });
+    expect(onA.byClass.alop_fara_document).toBe(1);
+    const onB = await findFlowLinkDivergences(pool, { orgId: b.orgId, limit: 200 });
+    expect(onB.byClass.alop_fara_document).toBe(0);
+  });
+});
