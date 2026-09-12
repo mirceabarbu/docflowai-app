@@ -6,6 +6,12 @@
  *  (10) user activ + token valid ⇒ identitate validă (email din DB);
  *  (11) deleted_at setat ⇒ ACELAȘI token ⇒ null (cont dezactivat);
  *  (12) token_version incrementat ⇒ ACELAȘI token ⇒ null (sesiune revocată).
+ *
+ * #199 Etapa C — poarta #182 (force_password_change) reutilizată pe WS (G6):
+ *  (13) force_password_change=true ⇒ null (WS refuzat, la fel ca HTTP 403);
+ *  (14) anti-regresie: user normal, token valid ⇒ reușește (neatins de G6);
+ *  (15) anti-regresie: token_version nepotrivit rămâne refuzat (G1b neatins de G6);
+ *  (16) force_password_change=false explicit ⇒ reușește (nu o comparație greșită pe NULL).
  */
 import { vi, describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import jwt from 'jsonwebtoken';
@@ -50,6 +56,30 @@ const d = describe.skipIf(!hasTestDb())('SEC-100 authenticateWsToken (Postgres r
     const { userId, token } = await seedActive('ws@x.ro');
     await pool.query('UPDATE users SET token_version = token_version + 1 WHERE id=$1', [userId]);
     expect(await authenticateWsToken(token)).toBeNull();
+  });
+
+  it('#13 force_password_change=true ⇒ null (poarta #182 pe WS)', async () => {
+    const { userId, token } = await seedActive('ws-fpc@x.ro');
+    await pool.query('UPDATE users SET force_password_change=TRUE WHERE id=$1', [userId]);
+    expect(await authenticateWsToken(token)).toBeNull();
+  });
+
+  it('#14 anti-regresie: user normal, token valid ⇒ reușește (neatins de G6)', async () => {
+    const { userId, orgId, token } = await seedActive('ws-ok@x.ro');
+    const res = await authenticateWsToken(token);
+    expect(res).toMatchObject({ userId, email: 'ws-ok@x.ro', role: 'user', orgId });
+  });
+
+  it('#15 anti-regresie: token_version nepotrivit rămâne refuzat (G1b neatins de G6)', async () => {
+    const { userId, token } = await seedActive('ws-g1b@x.ro');
+    await pool.query('UPDATE users SET token_version = token_version + 1, force_password_change=FALSE WHERE id=$1', [userId]);
+    expect(await authenticateWsToken(token)).toBeNull();
+  });
+
+  it('#16 force_password_change=false explicit ⇒ reușește (nu o comparație greșită pe NULL)', async () => {
+    const { userId, token } = await seedActive('ws-fpc-false@x.ro');
+    await pool.query('UPDATE users SET force_password_change=FALSE WHERE id=$1', [userId]);
+    expect(await authenticateWsToken(token)).not.toBeNull();
   });
 });
 

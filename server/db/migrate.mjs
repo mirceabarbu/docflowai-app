@@ -48,10 +48,9 @@ async function runMigrationsLocked(pool) {
     )
   `);
 
-  // Force re-run 014_alop — migration rescrisă cu ALTER TABLE idempotent
-  await pool.query(
-    "DELETE FROM schema_migrations WHERE id='014_alop'"
-  ).catch(() => {});
+  // (#199) Force-rerun-ul lui 014_alop a fost o măsură de o singură dată, consumată —
+  // migrația e idempotentă și aplicată peste tot; ștergerea ei repetată la fiecare boot
+  // nu mai are rost.
 
   // Read applied migration IDs
   const { rows: applied } = await pool.query('SELECT id FROM schema_migrations');

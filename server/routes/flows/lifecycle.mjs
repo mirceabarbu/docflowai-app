@@ -20,7 +20,6 @@ import { documenteRevendicate } from '../../services/flow-doc-claim.mjs';
 const _largePdf = expressJson({ limit: '50mb' });
 const _getIp = req => req.ip || req.socket?.remoteAddress || null;
 const _signRateLimit   = createRateLimiter({ windowMs: 60_000, max: 20, message: 'Prea multe cereri de semnare. Încearcă în 1 minut.' });
-const _uploadRateLimit = createRateLimiter({ windowMs: 60_000, max: 5,  message: 'Prea multe upload-uri. Încearcă în 1 minut.' });
 const _readRateLimit   = createRateLimiter({ windowMs: 60_000, max: 60, message: 'Prea multe cereri. Încearcă în 1 minut.' });
 
 

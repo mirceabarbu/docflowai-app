@@ -483,6 +483,38 @@ Campanii email către ~2.950 municipalități românești. Tabele: `outreach_ins
   (push pe `develop`) sau local cu Docker — niciodată prin skip.
 - CI rulează ambele (serviciu `postgres:16` în GitHub Actions) și pe `push: develop`.
 
+### Mediul local: de unde vin binarele PostgreSQL 17 (din #201)
+
+Rețeta efemeră de mai sus are nevoie doar de binare (`initdb`, `pg_ctl`, `createdb`, `psql`) —
+NU de un serviciu Windows instalat. Ordine de căutare:
+
+1. **Variabilă de mediu**, dacă e setată pe mașina asta (ex. `PGBIN`).
+2. **Instalare existentă** — `C:\Program Files\PostgreSQL\17\bin` (calea standard a
+   instalatorului oficial/winget).
+3. **Arhivă portabilă** dezarhivată local — pe mașina folosită la #201 nu exista nicio
+   instalare, s-a descărcat arhiva „Binaries" (zip, fără instalator) de pe
+   `enterprisedb.com/download-postgresql-binaries` (link către binarele oficiale ale
+   PostgreSQL Global Development Group, versiunea 17.11) și dezarhivat în afara
+   directorului de proiect (`%TEMP%\claude\pgtools\pgsql\bin`) — fără drepturi de
+   administrator, fără serviciu Windows.
+
+**Dacă lipsesc binarele** pe o mașină nouă → Etapa A din `PROMPT-201-mediu-local-pg17.md`:
+arhiva portabilă întâi, `winget install PostgreSQL.PostgreSQL.17` (confirmă `17.x`) al doilea,
+instalatorul oficial ultimul. Niciodată Docker pentru asta, niciodată serviciu permanent.
+
+⭐ **Regula bazei proaspete.** Măsurat la #195: aceeași suită a rulat în **806 s** pe o bază
+nouă și în **1327 s** pe una refolosită de câteva ori. Recreează `PGDATA` (`rm -rf` + `initdb`)
+la fiecare sesiune de lucru, și din nou după vreo cinci rulări dacă sesiunea e lungă. `initdb`
+costă secunde; o bază obosită costă zece minute pe rulare.
+
+⭐ **Regula de măsurare** (din corecția #197): **o singură rulare `test:db` pe instanță**.
+Rezultatul se citește **din log** (fișier, nu notificare de fundal), și numărul de fișiere
+raportat se confruntă cu discul (`find server/tests/db -name '*.test.mjs' | wc -l`). Două
+rulări suprapuse peste aceeași bază au produs deja cifre false într-un raport.
+
+**`skipped ≠ passed`.** Dacă `test:db` sare fișiere (`TEST_DATABASE_URL` nesetat sau greșit),
+raportul spune „nerulat", nu „verde" — nu se poate confirma nimic din teste sărite.
+
 **Baseline teste — crește în timp** (≈800 la mai/2026; era 758 la Etapa 1). Confirmă prin `npm test`
 că e **verde, fără regresii** — NU hardcoda un număr în prompturi (suita crește) și NU folosi `grep it(`
 (ratează al doilea pattern din `vitest.config.mjs` + testele generate în buclă). Plus `npm run test:db`
@@ -1243,7 +1275,7 @@ Astea nu merg într-o migrație fără confirmare explicită de la owner (Mircea
 
 #### REGULA 7: NICIODATĂ nu modifica `server/db/migrate.mjs`
 
-Force-rerun pe migration ID (`DELETE FROM schema_migrations WHERE id='X'`) e extrem de periculos. Dacă migrația are efect cumulativ, re-rulatul poate strica date. Există un force-rerun pe `014_alop` — **nu adăuga altele**.
+Force-rerun pe migration ID (`DELETE FROM schema_migrations WHERE id='X'`) e extrem de periculos. Dacă migrația are efect cumulativ, re-rulatul poate strica date. A existat un force-rerun pe `014_alop` — a fost eliminat la #199, era o măsură de o singură dată deja consumată — **nu adăuga altele**.
 
 ### Proces pentru migrare nouă
 

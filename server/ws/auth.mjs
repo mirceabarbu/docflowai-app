@@ -38,7 +38,7 @@ export async function authenticateWsToken(token) {
   let row;
   try {
     const { rows } = await pool.query(
-      `SELECT id, email, role, org_id, token_version
+      `SELECT id, email, role, org_id, token_version, force_password_change
          FROM users
         WHERE id = $1
           AND deleted_at IS NULL`,
@@ -55,6 +55,15 @@ export async function authenticateWsToken(token) {
   const dbTv  = row.token_version ?? 1;
   const jwtTv = payload.tv ?? 1;
   if (Number(jwtTv) !== Number(dbTv)) return null;              // G1b — sesiune revocată
+
+  // G6 (#182/#199) — schimbarea parolei e obligatorie, la fel ca poarta HTTP din
+  // sessionGuard. Fără ea, un cont blocat pe HTTP tot primea chat/prezență/notificări WS.
+  // Motiv logat DISTINCT de G1b, ca diagnosticul viitor să nu confunde revocarea de
+  // sesiune cu poarta de schimbare a parolei.
+  if (row.force_password_change === true) {
+    logger.warn({ userId: payload.userId }, 'WS: schimbarea parolei e obligatorie — refuzat');
+    return null;
+  }
 
   return {
     userId: row.id,
