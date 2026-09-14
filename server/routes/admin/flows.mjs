@@ -13,6 +13,8 @@ import { logger } from '../../middleware/logger.mjs';
 import { isAdminOrOrgAdmin, actorOrgFilter } from './_helpers.mjs';
 import { isFlowAccessAllowed } from '../../services/flow-access.mjs';
 import { findFlowLinkDivergences } from '../../services/flow-link-audit.mjs';
+// #203 — validarea `?an=` e definită O SINGURĂ dată, în clasa8.mjs; aici doar importată.
+import { _parseAn } from '../clasa8.mjs';
 
 let PDFLibAdmin = null;
 try { PDFLibAdmin = await import('pdf-lib'); } catch(e) { logger.warn('⚠️ pdf-lib not available for audit PDF export'); }
@@ -86,12 +88,19 @@ router.get('/admin/alop/stats', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  // #203 — anul raportului vine din `?an=` (implicit anul curent). E un filtru de raport
+  // READ-ONLY: singura expresie de an care are voie să vină din cerere. Porțile de scriere
+  // (plafon ordonanțare/plată, alop.mjs / formular-shared.mjs) își iau anul de la server.
+  const an = _parseAn(req.query?.an);
+  if (an === null) return res.status(400).json({ error: 'an_invalid' });
   try {
     const orgFilter = actorOrgFilter(actor);
     const whereCond = orgFilter ? ' AND a.org_id = $1' : '';  // PERF: org_id coloană indexată
     const params = orgFilter ? [orgFilter] : [];
-    const curYear  = 'EXTRACT(YEAR FROM NOW())::int';
-    const anCurent = `COALESCE(df.an_referinta, ${curYear}) = ${curYear}`;
+    // `an` LEGAT ca parametru, NU interpolat: indicele diferă după cum există sau nu filtrul
+    // de org, deci vine din push() (noua lungime = $N), ca în getClasa8Aggregate (#202).
+    const anIdx    = params.push(an);
+    const anCurent = `COALESCE(df.an_referinta, $${anIdx}) = $${anIdx}`;
     const col10    = sqlCrediteBugetareCol10Admin('df');
     const sql =
       'SELECT ' +

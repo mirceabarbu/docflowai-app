@@ -5,7 +5,10 @@
 //   - openClasa8, clasa8Reload
 //   - clasa8CloseImport
 //
-// Local state: _state (items, totals, filters, loading, debounceTimer, error, initialized)
+// Local state: _state (items, totals, filters{ssi,compartiment,q,an}, loading, debounceTimer, error, initialized)
+// #203: `filters.an` = anul de exercițiu al raportului (selector UI); trimis ca ?an= la
+// /api/clasa8, /buget/meta, DELETE /buget și ca `an` în corpul importului.
+// ⛔ window.loadBugetCodes() (datalist DF, core.js) rămâne FĂRĂ ?an= — DF-ul are alt an (an_referinta).
 // Dependențe: window.df.esc (cu fallback inline), window.DFXlsx (public/js/shared/xlsx-export.js)
 //
 // SheetJS este încărcat LAZY la export/import prin încărcătorul partajat window.DFXlsx.load().
@@ -25,7 +28,9 @@
   const _state = {
     items: [],
     totals: { buget: 0, angajamente: 0, ordonantari: 0, plati: 0, ramane_din_buget: 0, ramane_din_angajamente: 0 },
-    filters: { ssi: '', compartiment: '', q: '' },
+    // #203 — `an` = contextul raportului (NU filtru de căutare). null = „încă nu știm";
+    // se completează la init din /buget/ani (an_curent).
+    filters: { ssi: '', compartiment: '', q: '', an: null },
     loading: false,
     error: null,
     debounceTimer: null,
@@ -58,6 +63,7 @@
       if (_state.filters.ssi)          params.set('ssi', _state.filters.ssi);
       if (_state.filters.compartiment) params.set('compartiment', _state.filters.compartiment);
       if (_state.filters.q)            params.set('q', _state.filters.q);
+      if (_state.filters.an)           params.set('an', _state.filters.an);
 
       const r = await DFApi.fetch('/api/clasa8?' + params.toString());
       // SEC-88.3: URL canonic de login (nu homepage), cu ?next= pentru revenire.
@@ -157,7 +163,8 @@
   }
 
   function _onResetFilters() {
-    _state.filters = { ssi: '', compartiment: '', q: '' };
+    // #203 — anul NU se resetează: e contextul raportului, nu un filtru de căutare.
+    _state.filters = { ssi: '', compartiment: '', q: '', an: _state.filters.an };
     const ssiInput = document.getElementById('clasa8-filter-ssi');
     if (ssiInput) ssiInput.value = '';
     _fetch();
@@ -177,7 +184,12 @@
       await window.DFXlsx.load();
       if (typeof window.XLSX === 'undefined') throw new Error('XLSX indisponibil după load');
 
+      // #203 — anul în antet și în numele fișierului: un export fără an, cu doi ani în
+      // bază, nu se mai poate interpreta peste șase luni.
+      const anExp = _state.filters.an || new Date().getFullYear();
       const aoa = [
+        ['Centralizator Clasa 8 — An exercițiu ' + anExp],
+        [],
         ['Cod SSI', 'BUGET', 'Angajamente bugetare', 'Rămâne din buget', 'Ordonanțări', 'Rămâne din angajamente', 'Plăți'],
       ];
       _state.items.forEach(it => {
@@ -206,7 +218,7 @@
 
       // Format numeric pe coloanele B-G (col indices 1-6)
       const range = window.XLSX.utils.decode_range(ws['!ref']);
-      for (let R = 1; R <= range.e.r; R++) {
+      for (let R = 3; R <= range.e.r; R++) { // rândurile 0-2 = titlu, gol, antet
         for (let C = 1; C <= 6; C++) {
           const ref = window.XLSX.utils.encode_cell({ r: R, c: C });
           if (ws[ref] && typeof ws[ref].v === 'number') {
@@ -221,7 +233,7 @@
       window.XLSX.utils.book_append_sheet(wb, ws, 'Clasa 8');
 
       const dateStr = new Date().toISOString().slice(0, 10);
-      window.XLSX.writeFile(wb, 'Clasa8_' + dateStr + '.xlsx');
+      window.XLSX.writeFile(wb, 'Clasa8_' + anExp + '_' + dateStr + '.xlsx');
     } catch(e) {
       alert('Export eșuat: ' + (e.message || e));
     } finally {
@@ -235,19 +247,28 @@
   // ── Buget meta ──────────────────────────────────────────────────────────────
   async function _refreshBugetMeta() {
     try {
-      const r = await DFApi.fetch('/api/clasa8/buget/meta');
+      const an = _state.filters.an;
+      const r = await DFApi.fetch('/api/clasa8/buget/meta' + (an ? '?an=' + encodeURIComponent(an) : ''));
       if (!r.ok) return;
       const j = await r.json();
+      const anServit = j.an || an; // #203 — anul confirmat de server
       const metaEl  = document.getElementById('clasa8-buget-meta');
       const emptyEl = document.getElementById('clasa8-buget-empty');
       if (!j.active) {
         if (metaEl)  metaEl.style.display  = 'none';
-        if (emptyEl) emptyEl.style.display = '';
+        if (emptyEl) {
+          // #203 — spune CARE an n-are buget; „încă" ar minți cu doi ani în bază.
+          emptyEl.innerHTML = 'ℹ Niciun buget importat pentru <strong>' + esc(anServit) + '</strong>. '
+            + 'Folosește butonul <strong>Import buget</strong> pentru a urca fișierul .xlsx sau .csv al acestui an.';
+          emptyEl.style.display = '';
+        }
         return;
       }
       const a = j.active;
       if (metaEl) {
         metaEl.style.display = 'flex';
+        const lEl = document.getElementById('clasa8-buget-label');
+        if (lEl) lEl.textContent = 'Buget ' + anServit + ':';
         const vEl = document.getElementById('clasa8-buget-version');
         if (vEl) vEl.textContent = 'v' + a.version_no;
         const wEl = document.getElementById('clasa8-buget-when');
@@ -310,11 +331,16 @@
     // Populate current version info în modal
     const metaEl = document.getElementById('clasa8-buget-meta');
     const cur = document.getElementById('clasa8-import-current');
+    const anImp = _state.filters.an || new Date().getFullYear();
+    // #203 — modalul spune clar PENTRU CE AN se importă (anul selectat în centralizator).
+    const anLine = '<div style="font-size:.9rem;font-weight:600;margin-bottom:6px;">📅 Import pentru anul de exercițiu <strong>' + esc(anImp) + '</strong></div>';
     if (cur) {
-      cur.innerHTML = metaEl && metaEl.style.display !== 'none'
-        ? '<div style="font-size:.83rem;color:var(--df-text-2);">Versiune curentă: ' + esc(document.getElementById('clasa8-buget-version')?.textContent||'') + ' — va fi înlocuită.</div>'
-        : '<div style="font-size:.83rem;color:var(--df-text-3);">Niciun buget activ.</div>';
+      cur.innerHTML = anLine + (metaEl && metaEl.style.display !== 'none'
+        ? '<div style="font-size:.83rem;color:var(--df-text-2);">Versiune curentă pe ' + esc(anImp) + ': ' + esc(document.getElementById('clasa8-buget-version')?.textContent||'') + ' — va fi înlocuită.</div>'
+        : '<div style="font-size:.83rem;color:var(--df-text-3);">Niciun buget activ pe ' + esc(anImp) + '.</div>');
     }
+    const clearBtn = document.getElementById('clasa8-btn-clear-buget');
+    if (clearBtn) clearBtn.textContent = '🗑 Șterge bugetul pe ' + anImp;
     // Reset state
     _parsedRows = [];
     const fileInput = document.getElementById('clasa8-import-file');
@@ -418,12 +444,14 @@
       const r = await DFApi.fetch('/api/clasa8/buget/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rows: _parsedRows, filename }),
+        // #203 — anul explicit din selectorul UI (implicit pe server: anul curent).
+        body: JSON.stringify({ rows: _parsedRows, filename, an: _state.filters.an || undefined }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.message || j.error || 'HTTP ' + r.status);
       clasa8CloseImport();
-      alert('Buget importat ca v' + j.version_no + ' (' + j.count + ' coduri)');
+      alert('Buget ' + j.an + ' importat ca v' + j.version_no + ' (' + j.count + ' coduri)');
+      await _loadAni(); // anul tocmai importat intră în selector
       await _refreshBugetMeta();
       _fetch();
       if (typeof window.loadBugetCodes === 'function') window.loadBugetCodes();
@@ -435,19 +463,58 @@
   }
 
   async function _clearBuget() {
-    if (!confirm('Vrei să ștergi bugetul activ? Versiunile anterioare rămân în istoric.')) return;
+    // #203 — ștergerea e PE AN. Textul spune explicit anul; „bugetul activ" ar fi înșelător
+    // cu doi ani în bază.
+    const an = _state.filters.an || new Date().getFullYear();
+    if (!confirm(`Vrei să ștergi bugetul pe ${an}? Bugetele pe ceilalți ani NU sunt afectate.`)) return;
     try {
-      const r = await DFApi.fetch('/api/clasa8/buget', {
+      const r = await DFApi.fetch('/api/clasa8/buget?an=' + encodeURIComponent(an), {
         method: 'DELETE',
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       clasa8CloseImport();
+      await _loadAni(); // anul șters poate dispărea din selector (dacă nu e anul curent)
       await _refreshBugetMeta();
       _fetch();
       if (typeof window.loadBugetCodes === 'function') window.loadBugetCodes();
     } catch(e) {
       alert('Eroare la ștergere: ' + (e.message || e));
     }
+  }
+
+  // ── Selector an (#203) ──────────────────────────────────────────────────────
+  // Populat din /buget/ani: reuniunea `ani` (ce EXISTĂ în bază) ∪ {an_curent}, descrescător.
+  // Anul curent e selectabil și fără buget (centralizatorul are sens cu coloana BUGET goală).
+  async function _loadAni() {
+    const sel = document.getElementById('clasa8-filter-an');
+    let ani = [], anCurent = new Date().getFullYear();
+    try {
+      const r = await DFApi.fetch('/api/clasa8/buget/ani');
+      if (r.ok) {
+        const j = await r.json();
+        if (Array.isArray(j.ani)) ani = j.ani.map(Number).filter(Number.isInteger);
+        if (Number.isInteger(j.an_curent)) anCurent = j.an_curent;
+      }
+    } catch (_) {}
+    const set = new Set(ani); set.add(anCurent);
+    if (_state.filters.an) set.add(_state.filters.an); // selecția curentă rămâne vizibilă
+    const lista = [...set].sort((a, b) => b - a);
+    if (!_state.filters.an) _state.filters.an = anCurent;
+    if (sel) {
+      sel.innerHTML = lista.map(a =>
+        '<option value="' + a + '"' + (a === _state.filters.an ? ' selected' : '') + '>' + a
+        + (ani.includes(a) ? '' : ' (fără buget)') + '</option>'
+      ).join('');
+    }
+  }
+
+  function _onAnChange(value) {
+    const an = Number(value);
+    if (!Number.isInteger(an) || an === _state.filters.an) return;
+    _state.filters.an = an;
+    // Fără debounce: e un <select>, se refetchează imediat.
+    _refreshBugetMeta();
+    _fetch();
   }
 
   // ── Init handlere event ─────────────────────────────────────────────────────
@@ -462,6 +529,7 @@
     const clearBtn  = document.getElementById('clasa8-btn-clear-buget');
 
     if (ssiInput)  ssiInput.addEventListener('input', e => _onSsiInput(e.target.value));
+    document.getElementById('clasa8-filter-an')?.addEventListener('change', e => _onAnChange(e.target.value));
     if (resetBtn)  resetBtn.addEventListener('click', _onResetFilters);
     if (exportBtn) exportBtn.addEventListener('click', _exportXLSX);
     if (importBtn) importBtn.addEventListener('click', _openImportModal);
@@ -488,8 +556,9 @@
   }
 
   // Public API
-  function openClasa8() {
+  async function openClasa8() {
     _bindEvents();
+    await _loadAni(); // #203 — anul se stabilește ÎNAINTE de primul fetch
     _refreshBugetMeta();
     _fetch();
   }
