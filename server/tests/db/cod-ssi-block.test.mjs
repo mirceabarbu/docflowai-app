@@ -15,17 +15,18 @@ const d = describe.skipIf(!hasTestDb());
 const VALID = '02A670503710101'; // 15 caractere — codul valid din listă
 const BAD   = '02A67050371010';  // 14 caractere — un caracter lipsă (cazul real observat)
 
-async function seedClasa8(orgId, codes) {
+// #202: `an` e NOT NULL — calculat din ceas (NU literal), ca suita să nu pice pe 1 ianuarie.
+async function seedClasa8(orgId, codes, an = new Date().getFullYear()) {
   const { rows } = await pool.query(
-    `INSERT INTO clasa8_buget_versions (org_id, version_no, row_count, total_value)
-     VALUES ($1, 1, $2, 0) RETURNING id`,
-    [orgId, codes.length]
+    `INSERT INTO clasa8_buget_versions (org_id, version_no, row_count, total_value, an)
+     VALUES ($1, 1, $2, 0, $3) RETURNING id`,
+    [orgId, codes.length, an]
   );
   const vid = rows[0].id;
   for (const c of codes) {
     await pool.query(
-      `INSERT INTO clasa8_buget (version_id, org_id, cod_ssi, valoare) VALUES ($1,$2,$3,0)`,
-      [vid, orgId, c]
+      `INSERT INTO clasa8_buget (version_id, org_id, cod_ssi, valoare, an) VALUES ($1,$2,$3,0,$4)`,
+      [vid, orgId, c, an]
     );
   }
 }
@@ -106,6 +107,24 @@ d('Cod SSI — blocare server-side vs bugetul Clasa 8', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('clasa8_neimportat');
     expect((await getDf(id)).rows_val).toEqual([]);
+  });
+
+  // ── #202 Etapa D — validarea cod SSI traversează anii ───────────────────────────
+  // `cod-ssi-validate.mjs` e DELIBERAT fără filtru de an: e validare de NOMENCLATOR, nu
+  // de buget. Un cod valid în 2026 rămâne valid într-o revizie făcută în 2027; scopat pe
+  // anul curent, filtrul ar produce refuzuri pe documente corecte. Testul ancorează decizia —
+  // un lot viitor care „completează" filtrul pică aici.
+  it('validarea cod SSI traversează anii — #202 Etapa D: cod prezent DOAR pe anul trecut ⇒ 200', async () => {
+    await seedClasa8(1, [VALID], new Date().getFullYear() - 1);
+    const id = await seedDf({ orgId: 1, createdBy: 1, status: 'draft' });
+
+    const res = await request(app)
+      .put(`/api/formulare-df/${id}`)
+      .set('Cookie', p1())
+      .send({ rows_val: [{ element_fd: 'X', codSSI: VALID }] });
+
+    expect(res.status).toBe(200);
+    expect((await getDf(id)).rows_val[0].codSSI).toBe(VALID);
   });
 
   // ── rândurile cu cod gol NU se blochează, chiar și fără buget ────────────────────

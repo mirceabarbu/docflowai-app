@@ -47,15 +47,16 @@ async function adminCancelFlow(flowId) {
   await softDeleteFlow(flowId);
 }
 
-async function seedBuget(orgId, codSsi, valoare) {
+// #202: `an` e NOT NULL — calculat din ceas (NU literal), ca suita să nu pice pe 1 ianuarie.
+async function seedBuget(orgId, codSsi, valoare, an = new Date().getFullYear()) {
   const { rows } = await pool.query(
-    `INSERT INTO clasa8_buget_versions (org_id, version_no, row_count, total_value)
-     VALUES ($1, 1, 1, $2) RETURNING id`,
-    [orgId, valoare]
+    `INSERT INTO clasa8_buget_versions (org_id, version_no, row_count, total_value, an)
+     VALUES ($1, 1, 1, $2, $3) RETURNING id`,
+    [orgId, valoare, an]
   );
   await pool.query(
-    `INSERT INTO clasa8_buget (version_id, org_id, cod_ssi, valoare) VALUES ($1,$2,$3,$4)`,
-    [rows[0].id, orgId, codSsi, valoare]
+    `INSERT INTO clasa8_buget (version_id, org_id, cod_ssi, valoare, an) VALUES ($1,$2,$3,$4,$5)`,
+    [rows[0].id, orgId, codSsi, valoare, an]
   );
 }
 

@@ -15,6 +15,16 @@ import { getClasa8Aggregate, getBugetDisponibil } from '../services/clasa8.mjs';
 
 const router = Router();
 
+// #202 — anul de exercițiu al bugetului. Explicit în corp/query, cu implicit anul curent:
+// cazul real e „în decembrie încarc bugetul pe anul următor", deci nu se poate deriva din ceas.
+const AN_MIN = 2000, AN_MAX = 2100;
+function _parseAn(raw) {
+  if (raw === undefined || raw === null || raw === '') return new Date().getFullYear();
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < AN_MIN || n > AN_MAX) return null; // null = invalid
+  return n;
+}
+
 // GET /api/clasa8?ssi=&compartiment=&q=
 router.get('/', requireAuth, async (req, res) => {
   try {
@@ -64,24 +74,29 @@ router.get('/buget/disponibil', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/clasa8/buget/meta — metadate versiune activă
+// GET /api/clasa8/buget/meta?an= — metadate versiune activă a anului (implicit anul curent)
 router.get('/buget/meta', requireAuth, async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: 'db_unavailable' });
     const { orgId } = req.actor;
+
+    const an = _parseAn(req.query?.an);
+    if (an === null)
+      return res.status(400).json({ error: 'an_invalid' });
 
     const { rows } = await pool.query(
       `SELECT v.version_no, v.uploaded_at, v.source_filename,
               v.row_count, v.total_value, u.nume AS uploaded_by_nume
          FROM clasa8_buget_versions v
          LEFT JOIN users u ON u.id = v.uploaded_by
-        WHERE v.org_id = $1
+        WHERE v.org_id = $1 AND v.an = $2
           AND EXISTS (SELECT 1 FROM clasa8_buget b WHERE b.version_id = v.id)
         ORDER BY v.version_no DESC LIMIT 1`,
-      [orgId]
+      [orgId, an]
     );
 
     return res.json({
+      an,
       active: rows.length ? {
         version_no:       rows[0].version_no,
         uploaded_at:      rows[0].uploaded_at,
@@ -97,16 +112,21 @@ router.get('/buget/meta', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/clasa8/buget/coduri — pentru datalist DF
+// GET /api/clasa8/buget/coduri?an= — pentru datalist DF (implicit anul curent).
+// #202: cu doi ani în bază și fără filtru, fiecare cod ar apărea de două ori, cu valori diferite.
 router.get('/buget/coduri', requireAuth, async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: 'db_unavailable' });
     const { orgId } = req.actor;
 
+    const an = _parseAn(req.query?.an);
+    if (an === null)
+      return res.status(400).json({ error: 'an_invalid' });
+
     const { rows } = await pool.query(
       `SELECT cod_ssi, valoare FROM clasa8_buget
-        WHERE org_id = $1 ORDER BY cod_ssi ASC`,
-      [orgId]
+        WHERE org_id = $1 AND an = $2 ORDER BY cod_ssi ASC`,
+      [orgId, an]
     );
 
     return res.json({ items: rows.map(r => ({ cod_ssi: r.cod_ssi, valoare: Number(r.valoare) })) });
@@ -123,6 +143,11 @@ router.post('/buget/import', requireAuth, csrfMiddleware, requireModule('clasa8'
     const { orgId, userId } = req.actor;
 
     const { rows: rawRows, filename } = req.body || {};
+
+    // #202 — anul de exercițiu al acestui import.
+    const an = _parseAn(req.body?.an);
+    if (an === null)
+      return res.status(400).json({ error: 'an_invalid', message: `an trebuie să fie un întreg între ${AN_MIN} și ${AN_MAX}` });
 
     if (!Array.isArray(rawRows) || rawRows.length === 0)
       return res.status(400).json({ error: 'rows_required', message: 'rows trebuie să fie array nenul' });
@@ -158,22 +183,24 @@ router.post('/buget/import', requireAuth, csrfMiddleware, requireModule('clasa8'
 
       const { rows: ins } = await client.query(
         `INSERT INTO clasa8_buget_versions
-           (org_id, version_no, uploaded_by, source_filename, row_count, total_value)
-           VALUES ($1, $2, $3, $4, $5, $6)
-           RETURNING id, version_no, uploaded_at`,
-        [orgId, nextV, userId, filename || null, count, Math.round(total * 100) / 100]
+           (org_id, version_no, uploaded_by, source_filename, row_count, total_value, an)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id, version_no, uploaded_at, an`,
+        [orgId, nextV, userId, filename || null, count, Math.round(total * 100) / 100, an]
       );
       const versionId = ins[0].id;
 
-      await client.query('DELETE FROM clasa8_buget WHERE org_id = $1', [orgId]);
+      // #202 — ștergerea e scopată pe AN. Fără `AND an = $2`, importul pe 2027 ar șterge
+      // bugetul pe 2026, exact comportamentul pe care lotul ăsta îl repară.
+      await client.query('DELETE FROM clasa8_buget WHERE org_id = $1 AND an = $2', [orgId, an]);
 
       if (deduped.length > 0) {
         const valuePlaceholders = deduped.map((_, i) =>
-          `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`
+          `($${i * 5 + 1}, $${i * 5 + 2}, $${i * 5 + 3}, $${i * 5 + 4}, $${i * 5 + 5})`
         ).join(', ');
-        const valueParams = deduped.flatMap(([cod, val]) => [versionId, orgId, cod, val]);
+        const valueParams = deduped.flatMap(([cod, val]) => [versionId, orgId, cod, val, an]);
         await client.query(
-          `INSERT INTO clasa8_buget (version_id, org_id, cod_ssi, valoare) VALUES ${valuePlaceholders}`,
+          `INSERT INTO clasa8_buget (version_id, org_id, cod_ssi, valoare, an) VALUES ${valuePlaceholders}`,
           valueParams
         );
       }
@@ -183,6 +210,7 @@ router.post('/buget/import', requireAuth, csrfMiddleware, requireModule('clasa8'
         ok: true,
         version_no:  ins[0].version_no,
         uploaded_at: ins[0].uploaded_at,
+        an,
         count,
         total: Math.round(total * 100) / 100,
       });
@@ -198,18 +226,23 @@ router.post('/buget/import', requireAuth, csrfMiddleware, requireModule('clasa8'
   }
 });
 
-// DELETE /api/clasa8/buget — șterge bugetul activ (versiunile rămân în istoric)
+// DELETE /api/clasa8/buget?an= — șterge bugetul activ al anului (implicit anul curent);
+// metadatele versiunilor rămân în istoric. #202: scopat pe an — nu atinge ceilalți ani.
 router.delete('/buget', requireAuth, csrfMiddleware, async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: 'db_unavailable' });
     const { orgId } = req.actor;
 
+    const an = _parseAn(req.query?.an);
+    if (an === null)
+      return res.status(400).json({ error: 'an_invalid' });
+
     const { rowCount } = await pool.query(
-      'DELETE FROM clasa8_buget WHERE org_id = $1',
-      [orgId]
+      'DELETE FROM clasa8_buget WHERE org_id = $1 AND an = $2',
+      [orgId, an]
     );
 
-    return res.json({ ok: true, deleted: rowCount });
+    return res.json({ ok: true, deleted: rowCount, an });
   } catch (e) {
     logger.error({ err: e, requestId: req.requestId }, 'clasa8 buget delete error');
     return res.status(500).json({ error: 'server_error' });

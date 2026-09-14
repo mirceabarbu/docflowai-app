@@ -2639,6 +2639,49 @@ export const MIGRATIONS = [
       -- ⛔ Fără DROP/CREATE TRIGGER: trigger-ul trg_alop_status_guard (094) rămâne legat de
       -- această funcție (CREATE OR REPLACE păstrează legătura). alop_instances neatins.
     `
+  },
+  {
+    id: '111_clasa8_buget_an',
+    sql: `
+      -- #202: bugetul importat capătă AN DE EXERCIȚIU.
+      -- Până aici, UNIQUE (org_id, cod_ssi) forța importul să facă
+      -- DELETE FROM clasa8_buget WHERE org_id — adică încărcarea bugetului pe anul
+      -- următor ȘTERGEA bugetul anului curent, irecuperabil.
+      ALTER TABLE clasa8_buget          ADD COLUMN IF NOT EXISTS an INTEGER;
+      ALTER TABLE clasa8_buget_versions ADD COLUMN IF NOT EXISTS an INTEGER;
+
+      -- Backfill: anul vine din momentul încărcării versiunii. Măsurat pe producție
+      -- (13.09.2026): toate cele 6 versiuni ale singurei organizații cu buget sunt
+      -- din 2026, deci backfill-ul e omogen. Derivat, NU hardcodat.
+      UPDATE clasa8_buget_versions
+         SET an = EXTRACT(YEAR FROM uploaded_at)::int
+       WHERE an IS NULL;
+
+      UPDATE clasa8_buget b
+         SET an = v.an
+        FROM clasa8_buget_versions v
+       WHERE b.version_id = v.id
+         AND b.an IS NULL;
+
+      -- Plasă: rânduri fără versiune corespondentă (FK ar trebui să le excludă).
+      UPDATE clasa8_buget
+         SET an = EXTRACT(YEAR FROM NOW())::int
+       WHERE an IS NULL;
+
+      ALTER TABLE clasa8_buget          ALTER COLUMN an SET NOT NULL;
+      ALTER TABLE clasa8_buget_versions ALTER COLUMN an SET NOT NULL;
+
+      -- Cheia care forța ștergerea. Numele e cel generat de Postgres pentru
+      -- UNIQUE (org_id, cod_ssi) din migrarea 069.
+      ALTER TABLE clasa8_buget DROP CONSTRAINT IF EXISTS clasa8_buget_org_id_cod_ssi_key;
+      ALTER TABLE clasa8_buget
+        ADD CONSTRAINT clasa8_buget_org_an_cod_uniq UNIQUE (org_id, an, cod_ssi);
+
+      CREATE INDEX IF NOT EXISTS idx_clasa8_buget_org_an
+        ON clasa8_buget(org_id, an);
+      CREATE INDEX IF NOT EXISTS idx_clasa8_buget_versions_org_an
+        ON clasa8_buget_versions(org_id, an, version_no DESC);
+    `
   }
 ];
 

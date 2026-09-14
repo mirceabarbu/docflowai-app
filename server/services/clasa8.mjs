@@ -87,6 +87,11 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
   const ssiFinalFilter = ssi ? `AND a.cod_ssi ILIKE $${++paramIdx}` : '';
   if (ssi) params.push(`%${ssi}%`);
 
+  // #202 — anul de exercițiu al bugetului (implicit anul curent; parametrizat din rută în #203).
+  // Împins ULTIMUL, după toate filtrele opționale — indicele vine din push(), nu din ++paramIdx.
+  const an = Number.isInteger(filters.an) ? filters.an : new Date().getFullYear();
+  const anIdx = params.push(an); // push() întoarce noua lungime = indicele $N
+
   const sql = `
     WITH
     -- ─────────────────────────────────────────────────────────────────────
@@ -227,7 +232,7 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
     buget AS (
       SELECT cod_ssi, valoare AS suma
       FROM clasa8_buget
-      WHERE org_id = $1
+      WHERE org_id = $1 AND an = $${anIdx}
     ),
 
     -- Universul cod_SSI = unirea celor 4 surse
@@ -331,14 +336,15 @@ export async function getClasa8Aggregate(pool, orgId, filters = {}) {
  * @param {object} pool - PostgreSQL pool
  * @param {number} orgId - ID organizație (filtru obligatoriu, multi-tenant)
  * @param {string|null} [excludeDfId] - UUID DF de exclus (revizia în lucru)
+ * @param {number} [an] - anul de exercițiu al bugetului (#202; implicit anul curent)
  * @returns {Promise<{items: Array<{cod_ssi,buget,angajat_aprobat,disponibil}>}>}
  */
-export async function getBugetDisponibil(pool, orgId, excludeDfId = null) {
+export async function getBugetDisponibil(pool, orgId, excludeDfId = null, an = new Date().getFullYear()) {
   if (!pool || !orgId) {
     throw new Error('clasa8.getBugetDisponibil: pool și orgId sunt obligatorii');
   }
 
-  const params = [orgId, excludeDfId || null];
+  const params = [orgId, excludeDfId || null, an];
 
   const sql = `
     WITH
@@ -374,7 +380,7 @@ export async function getBugetDisponibil(pool, orgId, excludeDfId = null) {
     buget AS (
       SELECT cod_ssi, valoare AS suma
       FROM clasa8_buget
-      WHERE org_id = $1
+      WHERE org_id = $1 AND an = $3
     ),
     universe AS (
       SELECT cod_ssi FROM angajamente
