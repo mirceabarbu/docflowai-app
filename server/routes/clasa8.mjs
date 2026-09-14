@@ -18,14 +18,19 @@ const router = Router();
 // #202 — anul de exercițiu al bugetului. Explicit în corp/query, cu implicit anul curent:
 // cazul real e „în decembrie încarc bugetul pe anul următor", deci nu se poate deriva din ceas.
 const AN_MIN = 2000, AN_MAX = 2100;
-function _parseAn(raw) {
+// #203 — exportat: `admin/flows.mjs` îl importă pentru `/admin/alop/stats?an=`. O singură
+// definiție a validării, nu două copii care pot diverge.
+export function _parseAn(raw) {
   if (raw === undefined || raw === null || raw === '') return new Date().getFullYear();
+  // #203 — doar scalari. Number([2026]) === 2026, deci fără garda asta un array
+  // cu un element trecea ca an valid; `?an=` duplicat dădea deja NaN ⇒ 400.
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < AN_MIN || n > AN_MAX) return null; // null = invalid
   return n;
 }
 
-// GET /api/clasa8?ssi=&compartiment=&q=
+// GET /api/clasa8?ssi=&compartiment=&q=&an= (#203: an implicit anul curent)
 router.get('/', requireAuth, async (req, res) => {
   try {
     if (!pool) return res.status(503).json({ error: 'db_unavailable' });
@@ -33,10 +38,15 @@ router.get('/', requireAuth, async (req, res) => {
     const { orgId } = req.actor;
     if (!orgId) return res.status(400).json({ error: 'orgId_missing_in_token' });
 
+    // #203 — anul pe care utilizatorul vrea să-l VADĂ vine din cerere (raport read-only).
+    const an = _parseAn(req.query?.an);
+    if (an === null) return res.status(400).json({ error: 'an_invalid' });
+
     const filters = {
       ssi:          typeof req.query.ssi === 'string' ? req.query.ssi : '',
       compartiment: typeof req.query.compartiment === 'string' ? req.query.compartiment : '',
       q:            typeof req.query.q === 'string' ? req.query.q : '',
+      an,
     };
 
     if (filters.ssi.length > 100)          return res.status(400).json({ error: 'ssi_too_long' });
@@ -44,14 +54,14 @@ router.get('/', requireAuth, async (req, res) => {
     if (filters.q.length > 200)            return res.status(400).json({ error: 'q_too_long' });
 
     const result = await getClasa8Aggregate(pool, orgId, filters);
-    return res.json(result);
+    return res.json({ an, ...result });
   } catch (e) {
     logger.error({ err: e, requestId: req.requestId }, 'clasa8 aggregate error');
     return res.status(500).json({ error: 'server_error' });
   }
 });
 
-// GET /api/clasa8/buget/disponibil?exclude_df=<uuid?>
+// GET /api/clasa8/buget/disponibil?exclude_df=<uuid?>&an= (#203: an implicit anul curent)
 // Read-only — buget disponibil per cod_SSI pentru soft-warning Sec.B (CAB).
 router.get('/buget/disponibil', requireAuth, async (req, res) => {
   try {
@@ -66,10 +76,34 @@ router.get('/buget/disponibil', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'exclude_df_invalid' });
     }
 
-    const result = await getBugetDisponibil(pool, orgId, excludeDf || null);
-    return res.json(result);
+    const an = _parseAn(req.query?.an);
+    if (an === null) return res.status(400).json({ error: 'an_invalid' });
+
+    const result = await getBugetDisponibil(pool, orgId, excludeDf || null, an);
+    return res.json({ an, ...result });
   } catch (e) {
     logger.error({ err: e, requestId: req.requestId }, 'clasa8 buget disponibil error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// GET /api/clasa8/buget/ani — anii cu buget încărcat, pentru selectorul din UI (#203).
+// Populat din ce EXISTĂ în bază, nu dintr-o listă generată. `an_curent` vine separat:
+// anul curent poate lipsi din `ani` (niciun buget încărcat) și trebuie totuși să fie
+// selectabil — centralizatorul are sens și fără buget (coloana BUGET goală).
+router.get('/buget/ani', requireAuth, async (req, res) => {
+  try {
+    if (!pool) return res.status(503).json({ error: 'db_unavailable' });
+    const { orgId } = req.actor;
+    if (!orgId) return res.status(400).json({ error: 'orgId_missing_in_token' });
+
+    const { rows } = await pool.query(
+      `SELECT DISTINCT an FROM clasa8_buget WHERE org_id = $1 ORDER BY an DESC`,
+      [orgId]
+    );
+    return res.json({ ani: rows.map(r => r.an), an_curent: new Date().getFullYear() });
+  } catch (e) {
+    logger.error({ err: e, requestId: req.requestId }, 'clasa8 buget ani error');
     return res.status(500).json({ error: 'server_error' });
   }
 });

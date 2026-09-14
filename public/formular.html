@@ -409,7 +409,7 @@
 
   <div id="clasa8-buget-meta" style="display:none;padding:10px 14px;margin-bottom:14px;background:var(--df-teal-bg);border:1px solid var(--df-teal-bd);border-radius:var(--df-radius-md);font-size:.85rem;color:var(--df-text-2);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
     <span style="font-size:1.1rem">📦</span>
-    <span>Buget activ: <strong id="clasa8-buget-version">—</strong></span>
+    <span><span id="clasa8-buget-label">Buget activ:</span> <strong id="clasa8-buget-version">—</strong></span>
     <span style="color:var(--df-text-3)">•</span>
     <span id="clasa8-buget-when">—</span>
     <span style="color:var(--df-text-3)">•</span>
@@ -422,6 +422,11 @@
   <!-- ── Filter bar ────────────────────────────────────────────────────────── -->
   <div class="lst-filters">
     <div class="lst-filter-row">
+      <!-- #203 — anul de exercițiu al raportului (populat din /api/clasa8/buget/ani) -->
+      <div class="flt-grp" style="flex:0 0 130px;">
+        <label class="flt-lbl">📅 An exercițiu</label>
+        <select id="clasa8-filter-an" class="flt-sel"></select>
+      </div>
       <div class="flt-grp" style="flex:1.6 1 240px;">
         <label class="flt-lbl">🔎 Filtrare Cod SSI</label>
         <input id="clasa8-filter-ssi" class="flt-inp" type="text" autocomplete="off"
@@ -511,7 +516,8 @@
         </div>
 
         <div style="font-size:.78rem;color:var(--df-text-3);margin-top:8px;">
-          Header pe rândul 1 (opțional). Bugetul nou înlocuiește versiunea curentă.
+          Header pe rândul 1 (opțional). Bugetul nou înlocuiește versiunea curentă
+          <strong>a anului selectat</strong>; bugetele pe ceilalți ani nu sunt afectate.
           Versiunea curentă se păstrează în istoricul intern.
         </div>
       </div>
@@ -525,7 +531,7 @@
            padding:9px 12px;font-size:.85rem;"></div>
       <div class="df-modal-footer">
         <button class="df-action-btn danger sm" id="clasa8-btn-clear-buget"
-                title="Șterge bugetul activ (istoricul de versiuni rămâne)">
+                title="Șterge bugetul anului selectat (ceilalți ani și istoricul de versiuni rămân)">
           🗑 Șterge bugetul activ
         </button>
         <span style="flex:1"></span>
@@ -1527,7 +1533,7 @@
 <script src="/js/components/opme-import-modal.js?v=3.9.760" defer></script>
 <script src="/js/components/opme-report-drawer.js?v=3.9.693" defer></script>
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
-<script src="/js/formular/clasa8.js?v=3.9.839" defer></script>
+<script src="/js/formular/clasa8.js?v=3.9.856" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.839" defer></script>
 <script src="/js/formular/list.js?v=3.9.842" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.839" defer></script>
