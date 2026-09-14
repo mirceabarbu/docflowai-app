@@ -17,11 +17,16 @@
  *
  * ⛔ Comparație EXACTĂ, case-sensitive, după trim(). Fără ILIKE, fără prefixe.
  *
- * Sursa validă: `clasa8_buget` (org_id, cod_ssi). Deși importurile sunt versionate
- * (`clasa8_buget_versions`), tabela `clasa8_buget` ține DOAR versiunea ACTIVĂ —
- * `POST /api/clasa8/buget/import` face `DELETE FROM clasa8_buget WHERE org_id` apoi
- * re-inserează rândurile noii versiuni. Deci un simplu `SELECT ... WHERE org_id`
- * întoarce exact universul activ de coduri; nu e nevoie de filtru pe version_id.
+ * Sursa validă: `clasa8_buget` (org_id, an, cod_ssi). Deși importurile sunt versionate
+ * (`clasa8_buget_versions`), tabela `clasa8_buget` ține DOAR versiunea ACTIVĂ a fiecărui
+ * AN de exercițiu (#202) — `POST /api/clasa8/buget/import` face
+ * `DELETE FROM clasa8_buget WHERE org_id AND an` apoi re-inserează rândurile noii versiuni
+ * pentru anul respectiv. Nu e nevoie de filtru pe version_id.
+ *
+ * ⛔ DELIBERAT FĂRĂ FILTRU DE AN (#202). E o validare de NOMENCLATOR („există codul ăsta
+ *    la noi?"), nu una de buget. Scopată pe anul curent, o revizie făcută în 2027 pe un DF
+ *    din 2026 ar fi respinsă pentru coduri perfect valide. Interogarea traversează toți anii
+ *    activi ai organizației — câștig zero dintr-un filtru, regresie garantată.
  */
 
 /** Extrage codul SSI dintr-un rând, tolerant la ambele ortografii. */
