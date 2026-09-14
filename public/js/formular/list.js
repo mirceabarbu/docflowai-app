@@ -88,10 +88,13 @@ async function _autoSaveDb(ft){
       return;
     }
     // v3.9.499: auto-save uploadează ambele sloturi (slot 2 doar pentru ord)
+    // #205: uploadCaptura întoarce acum descriptorul de eșec (null la succes) — badge-ul 💾
+    // nu mai poate afirma „salvat" peste o captură pierdută.
+    let _capFailed=[];
     if(ST.docId[ft]){
-      if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
-      if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
-      if(ft==='ordnt') await window.uploadCapturaBlocuri?.(ft);
+      if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']){const f=await uploadCaptura(ft, 1);if(f)_capFailed.push(f);}
+      if(ft==='ordnt' && imgs['o-cimg2']){const f=await uploadCaptura(ft, 2);if(f)_capFailed.push(f);}
+      if(ft==='ordnt') _capFailed=_capFailed.concat(await window.uploadCapturaBlocuri?.(ft)||[]);
     }
     // v3.9.501: auto-save uploadează atașamente pending pentru ambele sloturi
     // v3.9.554 (B2): eșecurile de upload nu mai sunt mascate de badge-ul 💾
@@ -102,8 +105,9 @@ async function _autoSaveDb(ft){
       // #128m — atașamentele blocurilor 2+ de furnizor (ORD).
       _attFailed=_attFailed.concat(await window.uploadAttachmentsBlocuri?.(ft)||[]);
     }
-    if(_attFailed.length){
-      _draftShowBadge(ft,'⚠ '+_attFailed.length+' atașament(e) neîncărcate');
+    if(_capFailed.length||_attFailed.length){
+      const what=[_capFailed.length?_capFailed.length+' captură(i)':'',_attFailed.length?_attFailed.length+' atașament(e)':''].filter(Boolean).join(', ');
+      _draftShowBadge(ft,'⚠ '+what+' neîncărcate');
     }else{
       _draftShowBadge(ft,'💾 '+new Date().toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}));
     }

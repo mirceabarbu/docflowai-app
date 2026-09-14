@@ -80,19 +80,27 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
     // #128n: blocul de furnizor (ORD multi-bloc), ortogonal pe slot — exact ca la atașamente.
-    // ⚠️ Fără `bloc_idx` în cheia DELETE-ului, captura furnizorului 2 o ȘTERGE pe a
-    // furnizorului 1, tăcut, iar utilizatorul vede confirmare de succes. Ăsta e bug-ul
-    // pe care îl repară lotul; regula „o captură per slot" devine „per (slot, bloc)".
+    // ⚠️ Fără `bloc_idx` în cheia de înlocuire, captura furnizorului 2 o ȘTERGE pe a
+    // furnizorului 1, tăcut, iar utilizatorul vede confirmare de succes. Regula „o captură
+    // per slot" e „per (slot, bloc)" — cimentată de indexul unic din migrarea 107.
     // Rândurile legacy au `bloc_idx` NULL ⇒ `COALESCE(bloc_idx, 0)` le citește ca blocul 0.
     const blocIdx = _blocIdx(req);
-    await pool.query(
-      'DELETE FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND COALESCE(bloc_idx, 0)=$4',
-      [type, id, slot, blocIdx]
-    );
-
+    // #205 — DELETE+INSERT ca două interogări separate producea o cursă: două cereri
+    // paralele pe același (slot, bloc) ștergeau amândouă, apoi a doua lovea indexul unic
+    // cu 500. ON CONFLICT face înlocuirea atomic, deci a doua apăsare devine inofensivă.
+    // ⚠️ Ținta ON CONFLICT e EXACT expresia indexului `uniq_formulare_capturi_form_slot_bloc`
+    // (migrarea 107), inclusiv `(COALESCE(bloc_idx, 0))` — cu `bloc_idx` simplu, Postgres
+    // nu găsește constrângerea și aruncă la EXECUȚIE, nu la scriere.
     const { rows: inserted } = await pool.query(`
       INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot, bloc_idx)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (form_type, form_id, slot, (COALESCE(bloc_idx, 0)))
+      DO UPDATE SET uploaded_by = EXCLUDED.uploaded_by,
+                    filename    = EXCLUDED.filename,
+                    mimetype    = EXCLUDED.mimetype,
+                    size_bytes  = EXCLUDED.size_bytes,
+                    data        = EXCLUDED.data,
+                    created_at  = NOW()
       RETURNING id, filename, mimetype, size_bytes, slot, bloc_idx, created_at
     `, [type, id, actor.userId, filename, mimetype, data.length, data, slot, blocIdx]);
 

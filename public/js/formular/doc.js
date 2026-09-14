@@ -1378,10 +1378,12 @@ async function saveDoc(ft){
     if(ft==='ordnt')_ordPlafonAvertisment(j.avertisment_plafon||null);
 
     // v3.9.499: upload ambele sloturi (slot 1 pentru DF/ORD, slot 2 doar ORD)
+    // #205: eșecurile de captură se colectează ca la atașamente — nu se mai înghit.
+    let _capFailed=[];
     if(ST.docId[ft]){
-      if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']) await uploadCaptura(ft, 1);
-      if(ft==='ordnt' && imgs['o-cimg2']) await uploadCaptura(ft, 2);
-      if(ft==='ordnt') await uploadCapturaBlocuri(ft);
+      if(imgs[ft==='ordnt'?'o-cimg':'n-cimg']){const f=await uploadCaptura(ft, 1);if(f)_capFailed.push(f);}
+      if(ft==='ordnt' && imgs['o-cimg2']){const f=await uploadCaptura(ft, 2);if(f)_capFailed.push(f);}
+      if(ft==='ordnt') _capFailed=_capFailed.concat(await uploadCapturaBlocuri(ft)||[]);
     }
     // v3.9.501: upload atașamente pending pentru ambele sloturi (ORD slot 1, DF slot 1+2)
     // v3.9.554 (B2): colectează eșecurile — nu mai raportăm „Salvat cu succes" peste ele
@@ -1396,8 +1398,11 @@ async function saveDoc(ft){
     ST.docCapabilities=ST.docCapabilities||{};
     ST.docCapabilities[ft]=j.document?.capabilities||null;
     renderActions(ft);refreshDocs(ft);
-    if(_attFailed.length){
-      setS(`Document salvat, dar ${_attFailed.length} atașament(e) nu au putut fi încărcate: ${df.esc(_attFailed.map(f=>`${f.name} (${f.reason})`).join(', '))}. Se reîncearcă la următoarea salvare.`,'err');
+    // #205 — capturile eșuate intră în ACELAȘI mesaj final (altfel „Salvat cu succes" le-ar acoperi).
+    const _upFailed=_capFailed.concat(_attFailed);
+    if(_upFailed.length){
+      const what=[_capFailed.length?`${_capFailed.length} captură(i)`:'',_attFailed.length?`${_attFailed.length} atașament(e)`:''].filter(Boolean).join(' și ');
+      setS(`Document salvat, dar ${what} nu au putut fi încărcate: ${df.esc(_upFailed.map(f=>`${f.name} (${f.reason})`).join(', '))}. Se reîncearcă la următoarea salvare.`,'err');
     }else{
       setS('Salvat cu succes.','ok');
     }
@@ -1409,30 +1414,59 @@ async function saveDoc(ft){
 // slot 2 = captura 2 ORD ("Informații complete contract"). Datele se persistă în
 // formulare_capturi via endpoint dedicat (BYTEA), eliminând asimetria veche unde
 // captura 2 era inline base64 în coloana formulare_ord.img2.
+// #205 — un eșec de upload al capturii NU se mai înghite. Semnalăm în bara de stare
+// (setS, tiparul paginii) și întoarcem un descriptor {name, reason} cu ACEEAȘI formă ca
+// eșecurile din uploadAttachments, ca apelanții (saveDoc/completeAsP2/autosave) să-l
+// poată împături în mesajul lor final — altfel setS-ul de „Salvat cu succes" l-ar acoperi.
+// NU blochează salvarea: captura e accesorie; `imgs[]` rămâne populat ⇒ se reîncearcă
+// la următoarea salvare.
+function _capturaEsec(ft,slot,bloc,status,err){
+  const name='captura'+(slot===2?' 2':'')+(bloc>0?' furnizor '+(bloc+1):'');
+  let reason;
+  if(err&&err.nonJson)reason='server indisponibil (HTTP '+status+')';
+  else if(err)reason='eroare de rețea';
+  else if(status===413)reason='imagine prea mare (max 5 MB)';
+  else if(status===403)reason='fără drept de editare';
+  else reason='HTTP '+status;
+  console.warn('[#205] captura upload fail',ft,slot,bloc,status,err||'');
+  setS(`Imaginea (${name}) nu a putut fi încărcată: ${df.esc(reason)}. Documentul se salvează fără ea — reîncercați salvarea.`,'err');
+  return {name,reason};
+}
+// Întoarce null la succes / nimic de urcat, sau descriptorul de eșec (vezi _capturaEsec).
 async function uploadCaptura(ft, slot){
   const _slot=slot===2?2:1;
   // Slot 2 e doar pentru ord. Slot 1 e default pentru ambele.
-  if(_slot===2&&ft!=='ordnt')return;
+  if(_slot===2&&ft!=='ordnt')return null;
   const iid=_slot===2?'o-cimg2':(ft==='ordnt'?'o-cimg':'n-cimg');
-  const dataUrl=imgs[iid];if(!dataUrl||!ST.docId[ft])return;
+  const dataUrl=imgs[iid];if(!dataUrl||!ST.docId[ft])return null;
   try{
     const[header,b64]=dataUrl.split(',');
     const mime=header.match(/:(.*?);/)?.[1]||'image/png';
     const bin=atob(b64);const arr=new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
     const blob=new Blob([arr],{type:mime});
-    await DFApi.fetch(`/api/formulare-capturi/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`,{
+    const res=await DFApi.fetch(`/api/formulare-capturi/${ftType(ft)}/${ST.docId[ft]}?slot=${_slot}`,{
       method:'POST',
       headers:{'Content-Type':mime,'X-Filename':`captura_${ft}_${_slot}.png`},
       body:blob,
     });
-  }catch(_){}
+    if(!res.ok){
+      // #205 — înainte era catch(_){}: captura se pierdea tăcut și utilizatorul
+      // credea că s-a salvat. Semnalăm, dar NU blocăm salvarea documentului.
+      // DFApi.json distinge un răspuns de proxy („upstream error", text/plain) de un JSON de eroare.
+      let jerr=null;try{await DFApi.json(res);}catch(e){if(e.nonJson)jerr=e;}
+      return _capturaEsec(ft,_slot,0,res.status,jerr);
+    }
+    return null;
+  }catch(e){return _capturaEsec(ft,_slot,0,0,e);}
 }
 
 // #128n — capturile blocurilor 2+ de furnizor. Blocul 0 rămâne pe uploadCaptura(ft,slot).
 // Oglindește uploadAttachmentsBlocuri. Pentru DF întoarce imediat.
+// #205 — întoarce lista eșecurilor ({name, reason}[]), ca uploadAttachmentsBlocuri.
 async function uploadCapturaBlocuri(ft){
-  if(ft!=='ordnt'||!ST.docId[ft])return;
+  const failed=[];
+  if(ft!=='ordnt'||!ST.docId[ft])return failed;
   const n=_ordBlocCount();
   for(let b=1;b<n;b++){
     const el=blocEl(b);if(!el)continue;
@@ -1444,14 +1478,20 @@ async function uploadCapturaBlocuri(ft){
         const bin=atob(b64);const arr=new Uint8Array(bin.length);
         for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
         const blob=new Blob([arr],{type:mime});
-        await DFApi.fetch(`/api/formulare-capturi/ord/${ST.docId[ft]}?slot=${slot}&bloc=${b}`,{
+        const res=await DFApi.fetch(`/api/formulare-capturi/ord/${ST.docId[ft]}?slot=${slot}&bloc=${b}`,{
           method:'POST',
           headers:{'Content-Type':mime,'X-Filename':`captura_ord_${slot}_bloc${b}.png`},
           body:blob,
         });
-      }catch(_){}
+        if(!res.ok){
+          // #205 — vezi uploadCaptura: semnalat, nu înghițit; salvarea continuă.
+          let jerr=null;try{await DFApi.json(res);}catch(e){if(e.nonJson)jerr=e;}
+          failed.push(_capturaEsec(ft,slot,b,res.status,jerr));
+        }
+      }catch(e){failed.push(_capturaEsec(ft,slot,b,0,e));}
     }
   }
+  return failed;
 }
 
 // #128n — capturile blocurilor 2+ la redeschidere. Blocurile există deja: renderOrdBlocuri()
@@ -2164,9 +2204,17 @@ async function completeAsP2(ft){
   const body=ft==='ordnt'?{rows:getOrdRowsAll()}:collectDfP2Db();
   // v3.9.499: upload ambele sloturi când P2 finalizează (root cause R-A fix —
   // înainte, captura 2 era pierdută pentru că completeAsP2 trimitea doar slot 1)
-  await uploadCaptura(ft, 1);
-  if(ft==='ordnt') await uploadCaptura(ft, 2);
-  if(ft==='ordnt') await uploadCapturaBlocuri(ft);
+  // #205 — dacă o captură NU s-a încărcat, NU trimitem /complete: după finalizare formularul
+  // se blochează (lockAll) și utilizatorul n-ar mai putea reîncerca din UI. Nimic nu se
+  // pierde — datele și imaginile rămân în pagină, iar butonul se poate apăsa din nou.
+  let _capFailed=[];
+  {const f=await uploadCaptura(ft, 1);if(f)_capFailed.push(f);}
+  if(ft==='ordnt'){const f=await uploadCaptura(ft, 2);if(f)_capFailed.push(f);}
+  if(ft==='ordnt') _capFailed=_capFailed.concat(await uploadCapturaBlocuri(ft)||[]);
+  if(_capFailed.length){
+    setS(`Finalizarea NU a fost trimisă: ${_capFailed.length} captură(i) nu au putut fi încărcate — ${df.esc(_capFailed.map(f=>`${f.name} (${f.reason})`).join(', '))}. Reîncercați.`,'err');
+    return;
+  }
   // v3.9.501: upload atașamente pending (ambele sloturi pentru DF, slot 1 pentru ORD)
   await uploadAttachments(ft, 1);
   if(ft==='notafd') await uploadAttachments(ft, 2);
