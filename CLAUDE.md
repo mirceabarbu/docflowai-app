@@ -685,7 +685,7 @@ anterioare, INDIFERENT de bifă.** Plafonul = `SUM(formulare_df.rows_ctrl[].sum_
 **ordonanțările** anterioare (ce s-a ordonanțat), **NU plățile** (`plata_suma_efectiva`). Ciclurile
 arhivate (`alop_ord_cicluri`) nu stochează direct suma ordonanțată → se ia prin JOIN
 `ord_id → SUM(formulare_ord.rows.suma_ordonantata_plata)`, filtrat pe anul de exercițiu. Helper PUR:
-`server/services/buget-an.mjs` → `crediteBugetareAnCurent(rowsCtrl)`. Trei puncte sincronizate:
+`server/services/buget-an.mjs` → `crediteBugetareCol10(rowsCtrl)`. Trei puncte sincronizate:
 `computeOrdBudgetContext` (plafon ORD, `formular-shared.mjs`), garda `noua-lichidare` (`alop.mjs`),
 și `sqlRamasAnExercitiu`/`sqlCrediteBugetareCol10` (card `ramas_an_curent`, `alop.mjs`). ⚠️
 `sqlRamasAnExercitiu` TREBUIE să oglindească EXACT garda noua-lichidare (col.10 − ordonanțat). ⚠️ În
@@ -698,11 +698,11 @@ arhivate (`alop_ord_cicluri`) nu stochează direct suma ordonanțată → se ia 
 listă+detaliu; frontend `alop.js` afișează cardul chiar dacă `an_referinta` e null când e Stingere.
 
 ⚠️ Cardul (regula 2) și verificarea (regula 1) folosesc baze DIFERITE — INTENȚIONAT. `bugetPentruAnul`
-e DOAR pentru card; `crediteBugetareAnCurent` e DOAR pentru plafon. Teste:
+e DOAR pentru card; `crediteBugetareCol10` e DOAR pentru plafon. Teste:
 `server/tests/db/12-stingere-buget-ordonantare.test.mjs`, `ord-buget-an-curent-plafon.test.mjs`,
 `ord-buget-p1-submit-plafon.test.mjs`, `alop-noua-lichidare-ciclu.test.mjs`,
 `alop-card-ramas-an-curent.test.mjs`, `buget-multianual-an-referinta.test.mjs` (card),
-`server/tests/unit/buget-an.test.mjs` (`crediteBugetareAnCurent`).
+`server/tests/unit/buget-an.test.mjs` (`crediteBugetareCol10`).
 
 ---
 

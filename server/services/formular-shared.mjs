@@ -18,7 +18,7 @@ import { logger } from '../middleware/logger.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import { computeDocCapabilities } from './formular-capabilities.mjs';
 import { loadActorComp, canEditFormular, canDestroyOnly } from './authz-formular.mjs';
-import { crediteBugetareAnCurent } from './buget-an.mjs';
+import { crediteBugetareCol10, anExercitiuCurent } from './buget-an.mjs';
 import { copyFormularAttachmentsToFlow } from './formular-flow-attachments.mjs';
 import { codSsiBlockResponse } from './cod-ssi-validate.mjs';
 import { normalizeAngajamentRows } from './angajament-normalize.mjs';
@@ -285,7 +285,7 @@ function validateOrdCol5(rows) {
 // ciclurilor arhivate (alop_ord_cicluri → JOIN ord_id → SUM(formulare_ord.rows.suma_ordonantata_plata),
 // fiindcă ciclul NU stochează direct suma ordonanțată), FILTRATE pe anul de exercițiu.
 //
-// AN DE EXERCIȚIU: `EXTRACT(YEAR FROM NOW())`. CUMUL PER AN: o ordonanțare făcută în 2026
+// AN DE EXERCIȚIU: `anExercitiuCurent()` (buget-an.mjs, sursă unică #204). CUMUL PER AN: o ordonanțare făcută în 2026
 // consumă bugetul 2026, nu pe cel din 2027 — `an_exercitiu` (mig. 086) cu fallback derivat
 // din `plata_data` apoi `created_at` pentru ciclurile istorice.
 //
@@ -341,7 +341,7 @@ export async function resolveAlopIdForBudget({ ordId, dfId, orgId }, db = pool) 
 
 export async function computeOrdBudgetContext({ dfId, orgId, ordId = null }) {
   if (!dfId) return null;
-  const anExercitiu = new Date().getFullYear();
+  const anExercitiu = anExercitiuCurent(); // #204 — sursă unică, NU din cerere
   const alopId = await resolveAlopIdForBudget({ ordId, dfId, orgId });
   if (!alopId) {
     // `cicluriArhivate = 0` e LEGITIM aici (dosar fără cicluri arhivate), dar poate ascunde
@@ -379,7 +379,7 @@ export async function computeOrdBudgetContext({ dfId, orgId, ordId = null }) {
   );
   if (!rows.length) return null; // DF inexistent — nimic de verificat
 
-  const bugetAnCurent = crediteBugetareAnCurent(rows[0].rows_ctrl) || 0;
+  const bugetAnCurent = crediteBugetareCol10(rows[0].rows_ctrl) || 0;
   const cicluriArhivate = parseFloat(rows[0].cicluri_arhivate || 0);
   return { anExercitiu, bugetAnCurent, cicluriArhivate };
 }

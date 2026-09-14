@@ -30,7 +30,7 @@ import { computeAlopCapabilities } from '../services/alop-capabilities.mjs';
 import { isPlatformAdmin } from '../services/authz-scope.mjs';
 import { selfHealAlopDfLinkByAlop, backfillAlopFlowPointers } from '../services/alop-link.mjs';
 import { checkFlowLinkable, checkFlowSigned } from '../services/flow-provenance.mjs';
-import { crediteBugetareAnCurent } from '../services/buget-an.mjs';
+import { crediteBugetareCol10, anExercitiuCurent, sqlAn } from '../services/buget-an.mjs';
 import { derivaCol3, sumaOrdonantataDosar, verificaPlafonOrdonantare, sumaCol3PerCheie } from '../services/ord-lant.mjs';
 import { dosarKeyExpr } from '../services/df-dosar-key.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
@@ -117,13 +117,16 @@ const ALOP_EXPORT_MAX_ROWS = 5000;
 //    cardul afișează una, verificarea ordonanțării folosește col.10 — INTENȚIONAT diferite.
 // ⚠️ Banda `rows_plati` e SINCRONIZATĂ MANUAL cu `bandaPentruOffset()` din services/buget-an.mjs.
 // `df` = aliasul tabelei formulare_df în query-ul apelant.
+// `an` = anul de exercițiu (#204): vine EXCLUSIV din `anExercitiuCurent()`, la call-site, și se
+// interpolează ca literal prin garda `sqlAn()`. ⛔ FĂRĂ valoare implicită — un apelant care uită
+// parametrul trebuie să crape, nu să treacă tăcut pe ceasul serverului.
 function sqlStingereTruthy(df) {
   // ckbx_* sunt TEXT (`getNC`/save → '1'/''); legacy poate avea 'true'/'on'. Truthy = non-gol
   // și nu o valoare falsă explicită.
   return `(COALESCE(${df}.ckbx_sting_ang_in_ancrt,'') NOT IN ('','0','false','f','no','off'))`;
 }
-function sqlBandaRowsPlati(df) {
-  const off = `(EXTRACT(YEAR FROM NOW())::int - COALESCE(${df}.an_referinta, EXTRACT(YEAR FROM NOW())::int))`;
+export function sqlBandaRowsPlati(df, an) {
+  const off = `(${sqlAn(an)} - COALESCE(${df}.an_referinta, ${sqlAn(an)}))`;
   const band = `(CASE
         WHEN ${off} < 0 THEN 'plati_ani_precedenti'
         WHEN ${off} = 0 THEN 'plati_estim_ancrt'
@@ -140,12 +143,12 @@ function sqlTabel1(df) {
            FROM jsonb_array_elements(COALESCE(${df}.rows_val,'[]'::jsonb)) r
            WHERE (r->>'valt_actualiz') ~ '^[0-9.]+$')`;
 }
-function sqlBugetAnExercitiu(df) {
-  return `(CASE WHEN ${sqlStingereTruthy(df)} THEN ${sqlTabel1(df)} ELSE ${sqlBandaRowsPlati(df)} END)`;
+function sqlBugetAnExercitiu(df, an) {
+  return `(CASE WHEN ${sqlStingereTruthy(df)} THEN ${sqlTabel1(df)} ELSE ${sqlBandaRowsPlati(df, an)} END)`;
 }
 
 // ── PLAFON verificare = CREDITE BUGETARE col.10 (`sum_rezv_crdt_bug_act` din rows_ctrl) ─────
-// Sincronizat cu `crediteBugetareAnCurent()` (JS, buget-an.mjs) folosit de noua-lichidare +
+// Sincronizat cu `crediteBugetareCol10()` (JS, buget-an.mjs) folosit de noua-lichidare +
 // computeOrdBudgetContext. Format pe date reale = număr-string curat (`getNC`→`String(pMR)`),
 // deci `::numeric` + regex `^[0-9.]+$` coincide cu `num()` din JS. `df` = alias formulare_df.
 function sqlCrediteBugetareCol10(df) {
@@ -158,7 +161,10 @@ function sqlCrediteBugetareCol10(df) {
 // = ordonanțările ciclurilor arhivate (JOIN ord_id → SUM rows.suma_ordonantata_plata,
 //   fiindcă ciclul nu stochează direct suma ordonanțată), FILTRATE pe an de exercițiu,
 //   PLUS ORD-ul curent (a.ord_id, necondiționat — exercițiul în curs). `a` = alias alop_instances.
-function sqlOrdonantatAnCurent(a) {
+// `an` = anul de exercițiu (#204, din `anExercitiuCurent()` la call-site, literal prin `sqlAn()`;
+//   FĂRĂ implicit). ⚠️ Doar partea DREAPTĂ a egalității e ceasul; `EXTRACT(YEAR FROM
+//   c_re.plata_data / c_re.created_at)` sunt fallback-uri pe COLOANE (ordinea din mig. 086) — NEATINSE.
+function sqlOrdonantatAnCurent(a, an) {
   return `(
     COALESCE((
       SELECT SUM(co.s)
@@ -172,7 +178,7 @@ function sqlOrdonantatAnCurent(a) {
        WHERE c_re.alop_id = ${a}.id
          AND COALESCE(c_re.an_exercitiu,
                       EXTRACT(YEAR FROM c_re.plata_data)::int,
-                      EXTRACT(YEAR FROM c_re.created_at)::int) = EXTRACT(YEAR FROM NOW())::int
+                      EXTRACT(YEAR FROM c_re.created_at)::int) = ${sqlAn(an)}
     ), 0)
     + COALESCE((
       SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
@@ -190,9 +196,9 @@ function sqlOrdonantatAnCurent(a) {
 //   garda nu-l respectă (card zice X, garda Y).
 // `df` = alias formulare_df, `a` = alias alop_instances.
 // fără DF (a.df_id NULL) → NULL (nicio bază de buget; frontend afișează „—", nu NaN).
-function sqlRamasAnExercitiu(df, a) {
+function sqlRamasAnExercitiu(df, a, an) {
   return `(CASE WHEN ${a}.df_id IS NULL THEN NULL ELSE
-    ${sqlCrediteBugetareCol10(df)} - ${sqlOrdonantatAnCurent(a)}
+    ${sqlCrediteBugetareCol10(df)} - ${sqlOrdonantatAnCurent(a, an)}
   END)`;
 }
 
@@ -503,7 +509,7 @@ router.get('/api/alop', async (req, res) => {
         ${SQL_ALOP_REVIZIE_VIGOARE_NR} AS df_revizie_vigoare_nr,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
-        ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        ${sqlBugetAnExercitiu('df', anExercitiuCurent())} AS df_buget_an_curent,
         ${sqlCrediteBugetareCol10('df')} AS credite_bugetare_an_curent,
         df.an_referinta AS df_an_referinta,
         ${sqlStingereTruthy('df')} AS df_stingere,
@@ -793,9 +799,9 @@ router.get('/api/alop/:id', async (req, res) => {
         up.nume AS plata_by_name,
         (SELECT COALESCE(SUM((r->>'valt_actualiz')::numeric),0)
          FROM jsonb_array_elements(COALESCE(df.rows_val,'[]'::jsonb)) r) AS df_valoare,
-        ${sqlBugetAnExercitiu('df')} AS df_buget_an_curent,
+        ${sqlBugetAnExercitiu('df', anExercitiuCurent())} AS df_buget_an_curent,
         ${sqlCrediteBugetareCol10('df')} AS credite_bugetare_an_curent,
-        ${sqlRamasAnExercitiu('df','a')} AS ramas_an_curent,
+        ${sqlRamasAnExercitiu('df','a', anExercitiuCurent())} AS ramas_an_curent,
         df.an_referinta AS df_an_referinta,
         ${sqlStingereTruthy('df')} AS df_stingere,
         (SELECT COALESCE(SUM((r->>'suma_ordonantata_plata')::numeric),0)
@@ -1985,12 +1991,12 @@ router.post('/api/alop/:id/noua-lichidare', _csrf, async (req, res) => {
       // aprobat (credite bugetare an curent), NU banda `rows_plati` (aceea = baza CARDULUI),
       // NU angajamentul total (rows_val), NU creditele de angajament col.7. INDIFERENT de
       // bifa „Stingere". După o revizie de DF, alop.df_id pointează deja la revizia activă.
-      const anExercitiu = new Date().getFullYear();
+      const anExercitiu = anExercitiuCurent(); // #204 — sursă unică, NU din cerere
       const { rows: [dfRow] } = await client.query(
         `SELECT df.rows_ctrl FROM formulare_df df WHERE df.id=$1`,
         [alop.df_id]
       );
-      const bugetAnCurent = crediteBugetareAnCurent(dfRow?.rows_ctrl) || 0;
+      const bugetAnCurent = crediteBugetareCol10(dfRow?.rows_ctrl) || 0;
 
       // Suma ORDONANȚATĂ (NU plătită — distincție owner) în ACELAȘI an de exercițiu: ciclurile
       // arhivate (JOIN ord_id → SUM rows.suma_ordonantata_plata, fiindcă ciclul nu stochează

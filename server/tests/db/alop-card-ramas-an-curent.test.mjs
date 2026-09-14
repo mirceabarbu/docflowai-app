@@ -4,7 +4,7 @@
  * Valoarea TREBUIE să fie IDENTICĂ cu cea pe care garda din `noua-lichidare` o aplică.
  *
  * Formula gărzii (oglindită aici independent, recalculată din DB):
- *   buget       = crediteBugetareAnCurent(df.rows_ctrl)            // col.10 sum_rezv_crdt_bug_act
+ *   buget       = crediteBugetareCol10(df.rows_ctrl)            // col.10 sum_rezv_crdt_bug_act
  *   ordonantat  = Σ(cicluri arhivate anul curent → ord_id → rows.suma_ordonantata_plata)
  *                 + (ORD curent alop.ord_id → rows.suma_ordonantata_plata)
  *   ramas       = buget − ordonantat
@@ -17,7 +17,7 @@ import request from 'supertest';
 import { hasTestDb, migrate, truncateAll, pool,
          seedOrgUser, seedUser, seedDf, seedOrd, seedAlop, makeAuthCookie } from '../helpers/db-real.mjs';
 import { buildApp } from './helpers/app.mjs';
-import { crediteBugetareAnCurent } from '../../services/buget-an.mjs';
+import { crediteBugetareCol10 } from '../../services/buget-an.mjs';
 
 const d = describe.skipIf(!hasTestDb());
 const CUR = new Date().getFullYear();
@@ -47,7 +47,7 @@ d('Card ALOP — ramas_an_curent oglindește garda noua-lichidare', () => {
     if (!a.df_id) return null;
     const { rows: [df] } = await pool.query(
       'SELECT rows_ctrl FROM formulare_df WHERE id=$1', [a.df_id]);
-    const buget = crediteBugetareAnCurent(df?.rows_ctrl) || 0;
+    const buget = crediteBugetareCol10(df?.rows_ctrl) || 0;
     const { rows: [arh] } = await pool.query(
       `SELECT COALESCE(SUM(co.s),0) AS total FROM alop_ord_cicluri c
          CROSS JOIN LATERAL (
@@ -135,13 +135,13 @@ d('Card ALOP — ramas_an_curent oglindește garda noua-lichidare', () => {
     return res.body.alop.credite_bugetare_an_curent;
   }
 
-  it('credite_bugetare_an_curent = col.10 (crediteBugetareAnCurent din rows_ctrl)', async () => {
+  it('credite_bugetare_an_curent = col.10 (crediteBugetareCol10 din rows_ctrl)', async () => {
     const dfId = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat', nrUnic: 'DF-CB',
       rowsCtrl: [{ sum_rezv_crdt_bug_act: '29000' }] });
     const alopId = await seedAlop({ orgId: 1, createdBy: 1, status: 'lichidare', dfId });
     const { rows: [df] } = await pool.query('SELECT rows_ctrl FROM formulare_df WHERE id=$1', [dfId]);
     const credite = await cardCredite(alopId);
-    expect(Number(credite)).toBe(crediteBugetareAnCurent(df.rows_ctrl)); // = col.10
+    expect(Number(credite)).toBe(crediteBugetareCol10(df.rows_ctrl)); // = col.10
     expect(Number(credite)).toBe(29000);
   });
 

@@ -1,7 +1,7 @@
 // server/tests/unit/buget-an.test.mjs
 // FEATURE buget multi-anual (v3.9.558) — teste pure pentru helper-ul de buget pe an de exercițiu.
 import { describe, it, expect } from 'vitest';
-import { bugetPentruAnul, bandaPentruOffset, crediteBugetareAnCurent } from '../../services/buget-an.mjs';
+import { bugetPentruAnul, bandaPentruOffset, crediteBugetareCol10 } from '../../services/buget-an.mjs';
 
 const ROWS = [
   {
@@ -80,29 +80,29 @@ describe('bugetPentruAnul', () => {
 });
 
 // fix 12 (v3.9.582): plafonul de ordonanțare = credite bugetare col.10 din rows_ctrl.
-describe('crediteBugetareAnCurent', () => {
+describe('crediteBugetareCol10', () => {
   it('SUMĂ peste sum_rezv_crdt_bug_act (col.10)', () => {
     const rows = [{ sum_rezv_crdt_bug_act: '150000' }, { sum_rezv_crdt_bug_act: '50000' }];
-    expect(crediteBugetareAnCurent(rows)).toBe(200000);
+    expect(crediteBugetareCol10(rows)).toBe(200000);
   });
   it('un singur rând', () => {
-    expect(crediteBugetareAnCurent([{ sum_rezv_crdt_bug_act: '150000' }])).toBe(150000);
+    expect(crediteBugetareCol10([{ sum_rezv_crdt_bug_act: '150000' }])).toBe(150000);
   });
   it('gol/non-array → 0', () => {
-    expect(crediteBugetareAnCurent([])).toBe(0);
-    expect(crediteBugetareAnCurent(null)).toBe(0);
-    expect(crediteBugetareAnCurent(undefined)).toBe(0);
+    expect(crediteBugetareCol10([])).toBe(0);
+    expect(crediteBugetareCol10(null)).toBe(0);
+    expect(crediteBugetareCol10(undefined)).toBe(0);
   });
   it('ignoră alte coloane (col.7 credite de angajament) — DOAR col.10', () => {
     const rows = [{ sum_rezv_crdt_ang_act: '999999', sum_rezv_crdt_bug_act: '1000' }];
-    expect(crediteBugetareAnCurent(rows)).toBe(1000);
+    expect(crediteBugetareCol10(rows)).toBe(1000);
   });
   it('parsează valori cu spații și virgulă zecimală', () => {
     const rows = [{ sum_rezv_crdt_bug_act: '1 234,50' }, { sum_rezv_crdt_bug_act: '0,50' }];
-    expect(crediteBugetareAnCurent(rows)).toBeCloseTo(1235.0);
+    expect(crediteBugetareCol10(rows)).toBeCloseTo(1235.0);
   });
   it('celule lipsă/invalide → 0 pe acel rând', () => {
     const rows = [{ sum_rezv_crdt_bug_act: '500' }, { /* fără col.10 */ alt: 'x' }];
-    expect(crediteBugetareAnCurent(rows)).toBe(500);
+    expect(crediteBugetareCol10(rows)).toBe(500);
   });
 });

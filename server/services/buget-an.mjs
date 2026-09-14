@@ -17,7 +17,9 @@
 // `an_referinta` NULL/absent (DF legacy, create înainte de migrarea 085) → return null
 // („nedeclarat"), ca apelantul să aplice decizia owner (block mono-an pe `ancrt`).
 //
-// Funcția e PURĂ (fără I/O) și acoperită de teste unit. NU o cupla de pool/req.
+// Funcțiile de buget sunt PURE (fără I/O) și acoperite de teste unit. NU le cupla de pool/req.
+// SINGURA excepție, deliberată: `anExercitiuCurent()` citește ceasul (#204) — stă aici fiindcă
+// aici trăiește semantica anului de exercițiu, nu fiindcă ar fi pură.
 
 /** Mapă offset (an_exercitiu − an_referinta) → cheia benzii din rows_plati. */
 export function bandaPentruOffset(offset) {
@@ -27,6 +29,39 @@ export function bandaPentruOffset(offset) {
   if (offset === 2) return 'plati_estim_an_np2';
   if (offset === 3) return 'plati_estim_an_np3';
   return 'plati_estim_ani_ulter'; // offset > 3
+}
+
+/**
+ * Anul de exercițiu curent al sistemului. SURSĂ UNICĂ (#204).
+ *
+ * ⛔ Valoarea NU vine niciodată dintr-o cerere HTTP. Locurile care o folosesc alimentează
+ *    PORȚI DE SCRIERE (plafon ordonanțare/plată, baza cardului ALOP); dacă anul ar fi
+ *    parametru de cerere, un client care trimite an=2025 ar primi alt plafon, tăcut.
+ *    Vezi tests/unit/an-nu-din-cerere.test.mjs (#203), care apără regula.
+ *
+ * Rapoartele READ-ONLY sunt altceva: acolo anul VINE de la utilizator prin `?an=`
+ * (/api/clasa8, /admin/alop/stats — #203). Nu confunda cele două.
+ *
+ * Azi = anul calendaristic. Aici se va schimba când apare revizia de început de an
+ * (fereastra primelor 3 zile lucrătoare din ianuarie, în care exercițiul curent al unui
+ * dosar poate fi încă anul precedent). ACESTA e motivul pentru care funcția există.
+ */
+export function anExercitiuCurent() {
+  return new Date().getFullYear();
+}
+
+/**
+ * Emite un literal SQL întreg pentru anul de exercițiu. Gardă: #204.
+ * Fragmentele SQL din routes/alop.mjs (sqlBandaRowsPlati, sqlOrdonantatAnCurent) INTERPOLEAZĂ
+ * anul (legarea ca $N ar fi cerut modificarea array-ului de parametri în handlerele listei
+ * ALOP). Interpolarea e sigură DOAR pentru că valoarea trece prin garda asta: orice non-întreg
+ * aruncă, deci în SQL ajunge exclusiv un literal numeric produs de anExercitiuCurent().
+ */
+export function sqlAn(an) {
+  if (!Number.isInteger(an)) {
+    throw new Error(`sqlAn: an de exercițiu invalid (${an}). Sursa unică e anExercitiuCurent().`);
+  }
+  return String(an);
 }
 
 /** Parsare numerică tolerantă (string cu spații/virgulă zecimală → number; gol/invalid → 0). */
@@ -65,11 +100,13 @@ export function bugetPentruAnul(rowsPlati, anReferinta, anExercitiu) {
  * `num()` tolerează formatul RON („150000,00") — în practică `getNC()` (core.js) salvează deja
  * număr-string curat (punct zecimal) prin `String(pMR(...))`, deci JS și fragmentul SQL
  * (`sqlCrediteBugetareCol10` din alop.mjs / `computeOrdBudgetContext`) coincid pe date reale.
- * Funcție PURĂ — fără I/O.
+ * Funcție PURĂ — fără I/O. NU primește și NU filtrează pe niciun an — sumează col.10 a DF-ului
+ * legat; „anul" plafonului e dat de revizia activă a DF-ului, nu de un parametru (#204: fostul
+ * nume, cu „AnCurent" în el, sugera o filtrare pe an care nu exista).
  * @param {Array<Object>} rowsCtrl formulare_df.rows_ctrl (Secțiunea B)
  * @returns {number} SUM(sum_rezv_crdt_bug_act) peste rânduri (0 dacă gol/absent)
  */
-export function crediteBugetareAnCurent(rowsCtrl) {
+export function crediteBugetareCol10(rowsCtrl) {
   const rows = Array.isArray(rowsCtrl) ? rowsCtrl : [];
   return rows.reduce((s, r) => s + num(r && r.sum_rezv_crdt_bug_act), 0);
 }
