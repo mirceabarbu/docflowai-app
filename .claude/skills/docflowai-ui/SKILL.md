@@ -215,8 +215,11 @@ Lipsa headerului → `403 csrf_invalid`. Model viu: `setari/entitlements.js`.
 - Responsive obligatoriu: orice layout multi-coloană trebuie să colapseze pe
   mobil. Breakpoint-uri folosite în proiect: **640px** (grile → 1 col),
   **768px** (drawer full-width, stats 2 col), **900px** (`.vf-grid-2` → 1 col).
-- La orice modificare frontend: bump `package.json` + `CACHE_VERSION` în
-  `public/sw.js` + cache busting `?v=<versiune>` în HTML-urile atinse.
+- Cache busting (aliniat la `CLAUDE.md` §„Cache busting", #204): `package.json` se
+  bumpează la orice lot livrabil. `?v=` se bumpează **țintit**, doar pe asset-urile
+  efectiv atinse (`sed` pe numele asset-ului, nu în masă). `CACHE_VERSION` din
+  `public/sw.js` se bumpează **doar dacă** un fișier din `PRECACHE_ASSETS` s-a schimbat —
+  NU la orice modificare frontend.
 - Adăugiri în `components.css`/`tokens.css`: **strict aditive**, la finalul
   fișierului, fără a modifica reguli existente; nu duplica o clasă existentă.
 
@@ -232,7 +235,8 @@ Lipsa headerului → `403 csrf_invalid`. Model viu: `setari/entitlements.js`.
 8. `font-family:inherit` (nu `font:inherit`)?
 9. Layout-ul colapsează corect pe mobil (breakpoint-urile de mai sus)?
 10. Iconițe din sprite `/icons.svg#ico-...`, nu SVG inline?
-11. Bump versiune + `sw.js` `CACHE_VERSION` + cache busting `?v=` făcut?
+11. Bump `package.json` + `?v=` țintit pe asset-urile atinse făcut? `CACHE_VERSION` bumpat
+    **doar dacă** un fișier din `PRECACHE_ASSETS` (`sw.js`) s-a schimbat?
 12. Vizual: noul element e indistinct de un echivalent existent în aplicație?
 
 Dacă oricare răspuns e „nu", nu e gata.
