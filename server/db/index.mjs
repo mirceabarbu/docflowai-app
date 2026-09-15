@@ -2901,18 +2901,24 @@ export async function migrateForTests() {
 
 export async function initDbWithRetry() {
   const delays = [1000, 2000, 4000, 8000, 15000];
+  let lastError = null;
   for (let i = 0; i < delays.length; i++) {
     try {
       logger.info({ attempt: i+1, total: delays.length }, 'DB init attempt...');
       await initDbOnce();
       return;
     } catch(e) {
+      lastError = e;
       DB_READY = false; DB_LAST_ERROR = String(e?.message || e);
       logger.error({ err: e }, 'DB init failed');
       await new Promise(r => setTimeout(r, delays[i]));
     }
   }
-  logger.error('DB init failed permanent. Exiting.');
+  // #207 — înainte, funcția se întorcea NORMAL după ultima eșuare: mesajul spunea
+  // „Exiting" dar procesul continua, runMigrationsV4 reușea și markDbReady() declara
+  // baza gata cu schema inline INCOMPLETĂ. Acum aruncă — deployment-ul se oprește.
+  logger.error({ err: lastError }, 'DB init failed permanent după toate încercările — oprire.');
+  throw lastError || new Error('db_init_failed_permanent');
 }
 
 // Cache org default cu TTL 5 minute (nu infinit)

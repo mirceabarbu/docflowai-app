@@ -2086,5 +2086,11 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
     } catch(e) {
       logger.warn({ err: e }, 'startup: cleanup notificări vechi — eroare (non-fatal)');
     }
-  }).catch(() => {}); // initDbWithRetry gestionează propriile erori intern
+  }).catch((e) => {
+    // #207 — initDbWithRetry aruncă acum după epuizarea încercărilor. Fail-closed
+    // explicit: nu servim trafic cu schema inline incompletă. (Înainte: `.catch(() => {})`
+    // înghițea totul, pe premisa falsă că initDbWithRetry „gestionează propriile erori intern".)
+    logger.error({ err: e }, 'Boot DB eșuat definitiv — oprire proces.');
+    process.exit(1);
+  });
 });

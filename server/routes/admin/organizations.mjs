@@ -421,6 +421,13 @@ router.get('/admin/organizations/:id/signing', async (req, res) => {
   if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
   const orgId = parseInt(req.params.id);
   if (!orgId) return res.status(400).json({ error: 'invalid_id' });
+  // #207 — org_admin putea citi configurația de semnare a ALTEI organizații
+  // (clientId, kid, redirectUri, idpUrl, apiUrl, publicKeyPem, existența secretelor).
+  // Cheia privată era deja mascată, dar restul e metadata cross-tenant.
+  // 404, nu 403: nu confirmăm existența organizației.
+  if (actor.role === 'org_admin' && Number(actor.orgId) !== orgId) {
+    return res.status(404).json({ error: 'org_not_found' });
+  }
   try {
     const { rows } = await pool.query(
       'SELECT id, name, signing_providers_enabled, signing_providers_config FROM organizations WHERE id=$1',

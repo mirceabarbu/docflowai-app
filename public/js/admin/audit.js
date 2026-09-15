@@ -38,6 +38,7 @@
     'SIGN_FAILED':                   'Semnare eșuată',
     'STS_CANCELLED':                 'Sesiune STS anulată de semnatar',
     'P0_06_OBSERVED_UNSIGNED':       'PDF uploadat fără semnătură nouă (observare)',
+    'P0_06_REJECTED_UNSIGNED':       'PDF uploadat fără semnătură nouă — respins',
 
     // ─── Delegări ─────────────────────────────────────────────────────
     'DELEGATE':                      'Delegare semnătură',
