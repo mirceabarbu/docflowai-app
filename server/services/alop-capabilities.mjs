@@ -20,6 +20,7 @@ export function computeAlopCapabilities(alop, actor, opts = {}) {
     can_delete: false,
     can_start_noua_ordonantare: false,
     can_refresh: false,
+    can_reia_plata: false,  // #209 — responsabilul CAB poate relua confirmarea plății (ciclu curent)
   };
   if (!alop) return caps;
 
@@ -74,6 +75,13 @@ export function computeAlopCapabilities(alop, actor, opts = {}) {
   // „Confirmă Plata" nu se randa DELOC pentru CAB, în timp ce garda #126 B1 îl rezervă tocmai
   // lor. Rezultat: nimeni nu putea confirma plata, în afară de cineva simultan creator ȘI CAB.
   caps.is_cab = isCabDept(opts.actorComp, opts.cabComp);
+
+  // #209 — „Reia confirmarea plății": DOAR responsabilul CAB, DOAR pe un dosar cu plata
+  // confirmată în ciclul curent (status 'completed' + plata_confirmed_at). Setat ÎNAINTE de
+  // return-ul devreme (dosarul e, prin definiție, completed). Serverul rămâne poarta
+  // (409 ciclu_avansat / nu_e_confirmata, 403 doar_responsabil_cab) — aici e doar afișare.
+  caps.can_reia_plata = caps.is_cab && caps.is_completed && !caps.is_cancelled
+    && !!alop.plata_confirmed_at;
 
   if (caps.is_completed || caps.is_cancelled || (!caps.is_owner && !caps.is_cab)) return caps;
 

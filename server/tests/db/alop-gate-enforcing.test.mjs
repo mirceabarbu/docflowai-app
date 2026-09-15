@@ -31,6 +31,7 @@ const VALID = [
   ['ordonantare', 'plata'], ['ordonantare', 'cancelled'],
   ['plata', 'completed'], ['plata', 'cancelled'],
   ['lichidare', 'angajare'], // #164 — admin-cancel pe DF (migrația 110)
+  ['completed', 'plata'],    // #209 — reluarea confirmării plății (migrația 112)
 ];
 
 d('#138 — poarta ALOP blochează (migrarea 109)', () => {

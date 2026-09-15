@@ -787,6 +787,11 @@ function renderAlopDetail(a,container){
     if(caps.can_delete){
       actionsHtml+=`<button class="df-action-btn danger" onclick="cancelAlop('${id}')">${_alopIcoBtn('ico-trash')}Șterge</button>`;
     }
+    // #209 — „Reia confirmarea plății": DOAR din caps.can_reia_plata (responsabil CAB, dosar
+    // confirmat în ciclul curent). Serverul e poarta (409 ciclu_avansat / 403); aici doar afișare.
+    if(caps.can_reia_plata){
+      actionsHtml+=`<button class="df-action-btn" onclick="alopReiaPlata('${id}')" title="Desface confirmarea plății din ciclul curent, cu motiv scris, ca să poată fi refăcută corect">${_alopIcoBtn('ico-rotate-ccw')}Reia confirmarea plății</button>`;
+    }
   }
 
   const _totalCicluri=(a.cicluri_istorice?.length||0)+1;
@@ -1273,17 +1278,58 @@ function closePlataModal(){
   _plataAlopId=null;
 }
 
+// #209 (Etapa B) — reluarea confirmării plății: motiv obligatoriu, confirmare explicită.
+async function alopReiaPlata(id){
+  if(!id||id==='null')return;
+  const motiv=(prompt('Reia confirmarea plății\n\nConfirmarea curentă va fi desfăcută (valorile vechi rămân în audit), iar dosarul revine în faza Plată. Scrieți motivul (minim 10 caractere):')||'').trim();
+  if(!motiv)return;
+  if(motiv.length<10){alert('Motivul e obligatoriu (minim 10 caractere).');return;}
+  if(!confirm('Confirmați reluarea? Suma, numărul de OP și data plății din ciclul curent vor fi golite.'))return;
+  try{
+    const r=await DFApi.fetch(`/api/alop/${encodeURIComponent(id)}/plata/reia`,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({motiv}),
+    });
+    const data=await r.json();
+    if(!r.ok){alert(data.message||data.error||'Eroare la reluarea confirmării');return;}
+    const v=data.vechi||{};
+    alert(`Confirmarea a fost reluată. Valori vechi (păstrate în audit): OP ${v.plata_nr_ordin||'—'}, ${fMR(parseFloat(v.plata_suma_efectiva||0))} RON.\n\nAcum puteți accepta liniile OPME lipsă din raportul importului sau confirma manual plata cu lista completă de OP-uri.`);
+    openAlop(id);loadAlop();loadAlopStats();
+  }catch(e){alert('Eroare: '+e.message);}
+}
+
+// #209 (Etapa C) — replică a `parseNrOrdinList` (server/services/plata-ordin.mjs), doar UX;
+// serverul validează autoritar (400 nr_ordin_invalid).
+function _parseNrOrdinListClient(raw){
+  const s=String(raw||'').trim();
+  if(!s)return{ok:false,message:'Completați numărul ordinului de plată.'};
+  if(/[;|]/.test(s))return{ok:false,message:'Numerele ordinelor de plată se separă prin virgulă (ex: 2791, 2792).'};
+  const tokens=s.split(',').map(t=>t.trim()).filter(Boolean);
+  for(const t of tokens){
+    if(!/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(t))return{ok:false,message:`Ordinul de plată „${t}" nu e valid: folosiți numere (ex: 2791), separate prin virgulă.`};
+  }
+  return{ok:true,value:tokens.join(', ')};
+}
+
 async function confirmPlata(){
   if(!_plataAlopId)return;
-  const nr=(document.getElementById('plata-nr-ordin')?.value||'').trim();
+  const nrRaw=(document.getElementById('plata-nr-ordin')?.value||'').trim();
   const dt=document.getElementById('plata-data')?.value||'';
   const suma=pMR(document.getElementById('plata-suma')?.value)||0;
-  if(!nr){alert('Completați numărul ordinului de plată.');return;}
+  if(!nrRaw){alert('Completați numărul ordinului de plată.');return;}
+  const nrParsed=_parseNrOrdinListClient(nrRaw);
+  if(!nrParsed.ok){alert(nrParsed.message);return;}
+  const nr=nrParsed.value;
   if(!dt){alert('Completați data plății.');return;}
   if(suma<=0){alert('Completați suma efectiv plătită.');return;}
   if(_plataOrdValoare>0&&suma>_plataOrdValoare){
     alert(`Suma introdusă (${fMR(suma)} RON) depășește suma ordonanțată (${fMR(_plataOrdValoare)} RON). Corectați suma.`);
     return;
+  }
+  // #209: diferența SUB valoarea ORD-ului e INFORMATIVĂ, nu blocantă — plățile parțiale
+  // (tranșe, conturi diferite) sunt legitime. Utilizatorul confirmă explicit că a văzut-o.
+  if(_plataOrdValoare>0&&suma<_plataOrdValoare-0.005){
+    const dif=_plataOrdValoare-suma;
+    if(!confirm(`Suma introdusă (${fMR(suma)} RON) e cu ${fMR(dif)} RON sub valoarea ORD-ului de ${fMR(_plataOrdValoare)} RON.\n\nDacă plata s-a făcut în mai multe tranșe / din conturi diferite, treceți toate OP-urile (separate prin virgulă) și suma lor totală. Continuați cu suma introdusă?`))return;
   }
   const body={
     nr_ordin_plata:nr,

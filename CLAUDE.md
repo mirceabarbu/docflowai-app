@@ -1431,6 +1431,8 @@ Schema ALOP este împărțită între un fișier SQL inițial și migrații inli
 | server/db/index.mjs                       | 094_alop_state_guard   | poarta de stări, mod OBSERVARE (RAISE WARNING) |
 | server/db/index.mjs                       | 103_alop_matrix_admin_cancel | + `plata→ordonantare` în matrice (admin-cancel #113) |
 | server/db/index.mjs                       | 109_alop_state_gate_enforce | FLIP: poarta BLOCHEAZĂ (RAISE EXCEPTION) — matrice identică cu 103 |
+| server/db/index.mjs                       | 110_alop_matrix_undo_df | + `lichidare→angajare` în matrice (admin-cancel pe DF, #164) |
+| server/db/index.mjs                       | 112_alop_matrix_reia_plata | + `completed→plata` în matrice (reluarea confirmării plății de către CAB, #209) |
 
 Pentru orice nouă migrație ALOP/formulare, urmează regula stabilită:
 ALTER inline în db/index.mjs cu pattern `id: 'NNN_descriere'` și SQL idempotent.

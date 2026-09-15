@@ -21,6 +21,7 @@ const { formulareDbRouter } = await import('../../../routes/formulare/index.mjs'
 const alopRouter = (await import('../../../routes/alop.mjs')).default;
 const flowsCrudRouter = (await import('../../../routes/flows/crud.mjs')).default;
 const registraturaRouter = (await import('../../../routes/registratura.mjs')).default;
+const opmeRouter = (await import('../../../routes/opme.mjs')).default; // #209
 
 export function buildApp() {
   const app = express();
@@ -31,5 +32,6 @@ export function buildApp() {
   app.use('/', alopRouter);
   app.use('/', flowsCrudRouter);
   app.use('/', registraturaRouter);
+  app.use('/', opmeRouter);
   return app;
 }

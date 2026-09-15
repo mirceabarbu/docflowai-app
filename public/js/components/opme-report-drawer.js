@@ -19,7 +19,7 @@
   const csrf = () => (window.df && window.df.getCsrf ? window.df.getCsrf() : '');
 
   let _rootEl = null;
-  let _state = { importId: null, data: null, filter: 'all', onRematch: null, canRematch: false };
+  let _state = { importId: null, data: null, filter: 'all', onRematch: null, canRematch: false, canAccept: false };
 
   function ensureDOM() {
     if (_rootEl) return;
@@ -114,6 +114,9 @@
     else                         filtered = lines;
 
     const canRematch = _state.canRematch || false;
+    // #209: dreptul de a accepta o potrivire vine EXCLUSIV de la server (`can_accept`).
+    const canAccept = _state.canAccept === true;
+    const ACCEPTABLE = { unmatched: 1, partial: 1, ambiguous: 1 };
 
     body.innerHTML = `
       <div class="df-opme-stats">
@@ -153,11 +156,12 @@
               <th class="num">Sumă</th>
               <th>Status</th>
               <th>ALOP</th>
+              ${canAccept ? '<th></th>' : ''}
             </tr>
           </thead>
           <tbody>
             ${filtered.length === 0
-              ? `<tr><td colspan="8" class="df-opme-lines__empty">Nicio linie de afișat.</td></tr>`
+              ? `<tr><td colspan="${canAccept ? 9 : 8}" class="df-opme-lines__empty">Nicio linie de afișat.</td></tr>`
               : filtered.map(l => `
               <tr title="${esc(l.match_notes || '')}">
                 <td>${esc(l.nr_op || '—')}</td>
@@ -170,6 +174,9 @@
                 <td>${l.matched_alop_id
                     ? `<a href="javascript:void(0)" data-alop-id="${esc(l.matched_alop_id)}" class="df-opme-lines__alop-link">${esc(l.alop_titlu || l.df_nr || l.matched_alop_id.slice(0,8))}</a>`
                     : '—'}</td>
+                ${canAccept ? `<td>${ACCEPTABLE[l.match_status]
+                    ? `<button type="button" class="df-action-btn sm df-opme-accept-btn" data-line-id="${esc(l.id)}" title="Acceptă potrivirea (responsabil CAB)">Acceptă potrivirea</button>`
+                    : ''}</td>` : ''}
               </tr>`).join('')}
           </tbody>
         </table>
@@ -202,6 +209,13 @@
     });
     const rb = body.querySelector('#df-opme-btn-rematch');
     if (rb) rb.addEventListener('click', rematch);
+    body.querySelectorAll('.df-opme-accept-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        const id = b.getAttribute('data-line-id');
+        const line = (lines || []).find(x => String(x.id) === String(id));
+        if (line) openAcceptDialog(line);
+      });
+    });
     const cb = body.querySelector('#df-opme-btn-close');
     if (cb) cb.addEventListener('click', close);
   }
@@ -218,6 +232,7 @@
       }
       _state.data = await r.json();
       _state.canRematch = canR;
+      _state.canAccept = _state.data && _state.data.can_accept === true;
       render();
     } catch (e) {
       const body = _rootEl.querySelector('#df-opme-drawer-body');
@@ -261,6 +276,119 @@
     }
   }
 
+  // ── #209 — dialog „Acceptă potrivirea" (responsabil CAB) ───────────────────
+  let _acceptEl = null;
+  function ensureAcceptDOM() {
+    if (_acceptEl) return;
+    const w = document.createElement('div');
+    w.className = 'df-modal-bg';
+    w.id = 'df-opme-accept-modal';
+    w.innerHTML = `
+      <div class="df-modal" style="max-width:560px" role="dialog" aria-modal="true" aria-labelledby="df-opme-accept-title">
+        <h3 id="df-opme-accept-title">Acceptă potrivirea OP-ului</h3>
+        <div id="df-opme-accept-line" style="font-size:.82rem;color:var(--df-text-2);margin-bottom:12px"></div>
+        <div class="df-frow">
+          <label for="df-opme-accept-alop">Dosar ALOP</label>
+          <select id="df-opme-accept-alop"></select>
+        </div>
+        <div class="df-frow">
+          <label for="df-opme-accept-motiv">Motiv (obligatoriu, minim 10 caractere)</label>
+          <textarea id="df-opme-accept-motiv" rows="3" placeholder="Ex: verificat extrasul de cont — IBAN secundar al aceluiași furnizor"></textarea>
+        </div>
+        <div style="font-size:.78rem;color:#f59e0b;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:8px 10px;margin-top:6px">
+          ⚠️ Acceptarea confirmă că plata a fost verificată în extrasul de cont. Linia devine potrivire manuală,
+          iar dosarul se confirmă automat dacă suma tuturor OP-urilor legate acoperă valoarea ordonanțării.
+        </div>
+        <div id="df-opme-accept-err" style="display:none;font-size:.8rem;color:#ef4444;margin-top:8px"></div>
+        <div class="df-modal-acts">
+          <button type="button" class="df-action-btn" id="df-opme-accept-cancel">Renunță</button>
+          <button type="button" class="df-action-btn primary" id="df-opme-accept-ok">Acceptă potrivirea</button>
+        </div>
+      </div>`;
+    document.body.appendChild(w);
+    _acceptEl = w;
+    w.addEventListener('click', e => { if (e.target === w) closeAcceptDialog(); });
+    w.querySelector('#df-opme-accept-cancel').addEventListener('click', closeAcceptDialog);
+  }
+  function closeAcceptDialog() {
+    if (_acceptEl) _acceptEl.classList.remove('open');
+  }
+  async function openAcceptDialog(line) {
+    ensureAcceptDOM();
+    const el = _acceptEl;
+    el.querySelector('#df-opme-accept-line').innerHTML =
+      `<strong>OP ${esc(line.nr_op || '—')}</strong> · ${esc(fmtRON(line.suma_op))} · ${esc(line.den_beneficiar || '')} (CIF ${esc(line.cif_beneficiar || '—')})`
+      + (line.match_notes ? `<div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Motivul respingerii automate: ${esc(line.match_notes)}</div>` : '');
+    const sel = el.querySelector('#df-opme-accept-alop');
+    sel.innerHTML = '<option value="">Se încarcă dosarele…</option>';
+    el.querySelector('#df-opme-accept-motiv').value = '';
+    const err = el.querySelector('#df-opme-accept-err');
+    err.style.display = 'none'; err.textContent = '';
+    el.classList.add('open');
+
+    // Dosarele în faza de plată (+ cel deja legat, dacă e în altă fază — ex. confirmat greșit).
+    const opts = [];
+    const seen = new Set();
+    if (line.matched_alop_id) {
+      opts.push({ id: line.matched_alop_id, label: `${line.alop_titlu || line.df_nr || line.matched_alop_id.slice(0, 8)} (legat de matcher)` });
+      seen.add(line.matched_alop_id);
+    }
+    try {
+      const r = await fetch('/api/alop?status=plata&limit=100', { credentials: 'include' });
+      if (r.ok) {
+        const j = await r.json();
+        for (const a of (j.alop || [])) {
+          if (seen.has(a.id)) continue;
+          seen.add(a.id);
+          opts.push({ id: a.id, label: `${a.titlu || a.df_nr || a.id.slice(0, 8)}${a.df_nr ? ' · DF ' + a.df_nr : ''}` });
+        }
+      }
+    } catch (_) { /* lista rămâne cu dosarul pre-legat, dacă există */ }
+    sel.innerHTML = '<option value="">— alege dosarul —</option>'
+      + opts.map(o => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join('');
+    if (line.matched_alop_id) sel.value = line.matched_alop_id;
+
+    const ok = el.querySelector('#df-opme-accept-ok');
+    ok.onclick = async () => {
+      const alopId = sel.value;
+      const motiv = el.querySelector('#df-opme-accept-motiv').value.trim();
+      if (!alopId) { err.textContent = 'Selectați dosarul ALOP.'; err.style.display = ''; return; }
+      if (motiv.length < 10) { err.textContent = 'Motivul e obligatoriu (minim 10 caractere).'; err.style.display = ''; return; }
+      ok.disabled = true;
+      try {
+        const r = await fetch(`/api/opme/lines/${encodeURIComponent(line.id)}/accept`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf() },
+          body: JSON.stringify({ alopId, motiv }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.message || j.error || `HTTP ${r.status}`);
+        closeAcceptDialog();
+        const toast = (m, k) => (window.DFOpmeToast && window.DFOpmeToast.show) ? window.DFOpmeToast.show(m, k) : alert(m);
+        const d = j.details || {};
+        const f = v => fmtRON(v);
+        if (j.result === 'matched') {
+          toast(`Dosar închis: plata confirmată automat cu ${f(d.actual)} (${d.line_count} OP-uri).`, 'ok');
+        } else if (j.result === 'partial') {
+          toast(`Linia a fost acceptată. Dosarul rămâne PARȚIAL: ${f(d.actual)} din ${f(d.expected)}.`, 'warn');
+        } else if (j.result === 'overpay') {
+          toast(`Linia a fost acceptată, dar suma OP-urilor (${f(d.actual)}) depășește ordonanțarea (${f(d.expected)}). Verificați liniile legate.`, 'warn');
+        } else if (j.result === 'already_confirmed') {
+          toast('Linia a fost acceptată, dar dosarul are DEJA o plată confirmată — reluați confirmarea plății din ecranul dosarului („Reia confirmarea plății"), apoi matcher-ul va reagrega OP-urile.', 'warn');
+          if (typeof window.openAlop === 'function' && confirm('Deschideți dosarul acum pentru a relua confirmarea plății?')) {
+            close(); window.openAlop(alopId); return;
+          }
+        } else {
+          toast(`Linia a fost acceptată (${j.result}).`, 'ok');
+        }
+        await load(_state.importId);
+        if (typeof _state.onRematch === 'function') { try { _state.onRematch(null); } catch (_) {} }
+      } catch (e) {
+        err.textContent = 'Eroare: ' + e.message; err.style.display = '';
+      } finally { ok.disabled = false; }
+    };
+  }
+
   function open(opts) {
     ensureDOM();
     _state.importId = (opts && opts.importId) || null;
@@ -278,7 +406,7 @@
     if (!_rootEl) return;
     _rootEl.classList.remove('is-open');
     _rootEl.style.display = 'none';
-    _state = { importId: null, data: null, filter: 'all', onRematch: null, canRematch: false };
+    _state = { importId: null, data: null, filter: 'all', onRematch: null, canRematch: false, canAccept: false };
   }
 
   window.DFOpmeReportDrawer = { open, close };

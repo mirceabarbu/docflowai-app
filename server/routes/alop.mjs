@@ -34,6 +34,7 @@ import { crediteBugetareCol10, anExercitiuCurent, sqlAn } from '../services/buge
 import { derivaCol3, sumaOrdonantataDosar, verificaPlafonOrdonantare, sumaCol3PerCheie } from '../services/ord-lant.mjs';
 import { dosarKeyExpr } from '../services/df-dosar-key.mjs';
 import { copyFormularAttachmentsToFlow } from '../services/formular-flow-attachments.mjs';
+import { parseNrOrdinList } from '../services/plata-ordin.mjs';
 import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import {
   sqlDosarAreFluxActiv, sqlDosarAreAprobat,
@@ -1885,7 +1886,16 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
       }
     }
 
-    const { notes, nr_ordin_plata, data_plata, suma_efectiva, observatii } = req.body;
+    const { notes, data_plata, suma_efectiva, observatii } = req.body;
+    // #209 (Etapa C): `plata_nr_ordin` poate fi o LISTĂ de OP-uri separate prin virgulă
+    // (formatul pe care matcher-ul OPME îl scrie deja). Normalizat + validat aici; gol ⇒ null
+    // (comportament istoric: numărul nu era obligatoriu pe server).
+    let nr_ordin_plata = null;
+    if (req.body.nr_ordin_plata != null && String(req.body.nr_ordin_plata).trim() !== '') {
+      const parsed = parseNrOrdinList(req.body.nr_ordin_plata);
+      if (!parsed.ok) return res.status(400).json({ error: parsed.error, message: parsed.message });
+      nr_ordin_plata = parsed.value;
+    }
     const sumaEfectivaNum = (suma_efectiva === undefined || suma_efectiva === null || suma_efectiva === '')
       ? null : Number(suma_efectiva);
 
@@ -1954,6 +1964,119 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
   } catch (e) {
     logger.error({ err: e }, 'alop confirma-plata error');
     res.status(500).json({ error: e.message || 'server_error' });
+  }
+});
+
+// ── POST /api/alop/:id/plata/reia — #209 (Etapa B): RELUAREA confirmării plății ──────
+// Desface o confirmare de plată (greșită / incompletă) ca matcher-ul OPME sau CAB-ul s-o
+// poată reface corect. Scriere FINANCIARĂ pe un dosar închis ⇒ toate gărzile sunt
+// obligatorii, motivul e scris, iar TOATE valorile vechi ajung în audit.
+//   • doar responsabilul CAB (isCabDept), ca la confirma-plata; ⛔ org_admin NU e exceptat.
+//   • doar dacă plata E confirmată (altfel 409 nu_e_confirmata);
+//   • doar în CICLUL CURENT, neavansat (altfel 409 ciclu_avansat — REFUZ, nu improvizație);
+//   • `suma_totala_platita` (ciclurile arhivate) NU se atinge NICIODATĂ;
+//   • liniile OPME 'auto'/'manual' legate de dosar RĂMÂN legate — reluarea desface
+//     confirmarea de pe ALOP, nu potrivirile; matcher-ul le reagregă la următoarea acceptare.
+// Coloanele resetate OGLINDESC lista din reset-ul de ciclu (noua-lichidare, mai jos), MINUS
+// `suma_totala_platita`, `ciclu_curent`, `ord_*` și câmpurile de lichidare (neatinse).
+// NU recheamă matcher-ul: dacă liniile deja legate ar acoperi ORD-ul, ar reconfirma pe loc
+// exact starea pe care CAB-ul tocmai a desfăcut-o; reagregarea se face explicit, la acceptare.
+router.post('/api/alop/:id/plata/reia', _csrf, async (req, res) => {
+  if (!req.params.id || req.params.id === 'null' || req.params.id === 'undefined') {
+    return res.status(400).json({ error: 'id_invalid' });
+  }
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  const motiv = String(req.body?.motiv || '').trim();
+  if (motiv.length < 10) {
+    return res.status(400).json({
+      error: 'motiv_obligatoriu',
+      message: 'Motivul reluării e obligatoriu (minim 10 caractere).',
+    });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [alop] } = await client.query(
+      'SELECT * FROM alop_instances WHERE id=$1 AND org_id=$2 AND cancelled_at IS NULL FOR UPDATE',
+      [req.params.id, actor.orgId]
+    );
+    if (!alop) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' }); }
+
+    const { actorComp, cabComp } = await loadActorCompAndCab(client, actor.userId, actor.orgId);
+    if (!isCabDept(actorComp, cabComp)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        error: 'doar_responsabil_cab',
+        message: 'Doar responsabilul CAB poate relua confirmarea plății.',
+      });
+    }
+    if (!alop.plata_confirmed_at) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'nu_e_confirmata', message: 'Plata nu este confirmată pe acest dosar.' });
+    }
+
+    // Ciclu avansat = confirmarea NU mai aparține ciclului curent. Reset-ul de ciclu
+    // (noua-lichidare) golește plata_confirmed_at, deci o confirmare vie e prin construcție a
+    // ciclului curent; verificăm totuși EXPLICIT: (a) dosarul trebuie să fie 'completed' (starea
+    // în care lasă confirmarea), (b) niciun ciclu arhivat nu poate fi mai nou decât confirmarea
+    // sau să poarte numărul ciclului curent. Orice inconsecvență ⇒ REFUZ.
+    const { rows: cicl } = await client.query(
+      `SELECT COUNT(*)::int AS n FROM alop_ord_cicluri
+        WHERE alop_id=$1 AND (created_at >= $2 OR ciclu_nr >= COALESCE($3, 1))`,
+      [alop.id, alop.plata_confirmed_at, alop.ciclu_curent]
+    );
+    if (alop.status !== 'completed' || cicl[0].n > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'ciclu_avansat',
+        message: 'Dosarul a avansat într-un ciclu nou; confirmarea unui ciclu închis nu poate fi reluată.',
+      });
+    }
+
+    // DATE-ul vine din pg ca Date la miezul nopții LOCALE; serializat prin JSON ar aluneca
+    // cu fusul orar (2026-09-03 → „2026-09-02T21:00:00Z"). În audit rămâne ziua calendaristică.
+    const _ymd = (v) => (v instanceof Date && !isNaN(v))
+      ? `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`
+      : (v ?? null);
+    const vechi = {
+      plata_nr_ordin: alop.plata_nr_ordin, plata_suma_efectiva: alop.plata_suma_efectiva,
+      plata_data: _ymd(alop.plata_data), plata_source: alop.plata_source,
+      plata_confirmed_by: alop.plata_confirmed_by, plata_confirmed_at: alop.plata_confirmed_at,
+      plata_observatii: alop.plata_observatii, plata_notes: alop.plata_notes,
+      status: alop.status, completed_at: alop.completed_at, ciclu_curent: alop.ciclu_curent,
+    };
+
+    const { rows: [updated] } = await client.query(`
+      UPDATE alop_instances SET
+        plata_confirmed_by = NULL, plata_confirmed_at = NULL,
+        plata_nr_ordin = NULL, plata_data = NULL,
+        plata_suma_efectiva = NULL, plata_observatii = NULL, plata_notes = NULL,
+        plata_source = 'manual',
+        status = 'plata', completed_at = NULL,
+        updated_at = NOW(), updated_by = $3
+      WHERE id = $1 AND org_id = $2
+        AND plata_confirmed_at IS NOT NULL
+      RETURNING *
+    `, [alop.id, actor.orgId, actor.userId]);
+    if (!updated) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'nu_e_confirmata' }); }
+
+    await client.query(`
+      INSERT INTO audit_log (flow_id, org_id, event_type, actor_email, payload)
+      VALUES (NULL, $1, 'plata_confirmare_reluata', $2, $3::jsonb)
+    `, [actor.orgId, actor.email || null, JSON.stringify({
+      alop_id: alop.id, motiv, actor_user_id: actor.userId, actor_email: actor.email || null,
+      vechi,
+    })]);
+    await client.query('COMMIT');
+    logger.info({ alopId: alop.id, actor: actor.userId }, '[ALOP] #209 confirmare plată reluată');
+    res.json({ ok: true, alop: updated, vechi });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    logger.error({ err: e }, 'alop plata/reia error');
+    res.status(500).json({ error: 'server_error' });
+  } finally {
+    client.release();
   }
 });
 

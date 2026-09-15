@@ -1483,8 +1483,9 @@
     <div style="display:grid;gap:10px;margin-top:12px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <div>
-          <label class="alop-lbl">Nr. ordin de plată <span style="color:#ef4444">*</span></label>
-          <input id="plata-nr-ordin" type="text" placeholder="Ex: OP-2026-042"/>
+          <label class="alop-lbl">Nr. ordin(e) de plată <span style="color:#ef4444">*</span></label>
+          <input id="plata-nr-ordin" type="text" placeholder="Ex: 2791, 2792"/>
+          <div style="font-size:.7rem;color:var(--df-text-3);margin-top:3px">Mai multe OP-uri: separate prin virgulă (plată în tranșe / din conturi diferite).</div>
         </div>
         <div>
           <label class="alop-lbl">Data plății <span style="color:#ef4444">*</span></label>
@@ -1502,6 +1503,7 @@
       <div>
         <label class="alop-lbl">Suma efectiv plătită (lei) <span style="color:#ef4444">*</span></label>
         <input id="plata-suma" type="text" inputmode="decimal" data-money="true" placeholder="0,00"/>
+        <div style="font-size:.7rem;color:var(--df-text-3);margin-top:3px">La mai multe OP-uri, treceți suma lor totală. O sumă sub valoarea ORD-ului e semnalată, nu blocată.</div>
       </div>
       <div>
         <label class="alop-lbl">Observații (opțional)</label>
@@ -1529,9 +1531,9 @@
 <script src="/js/shared/audit-labels.js?v=3.9.834"></script>
 <!-- #175 — fără `defer`: harta rol→atribut trebuie să existe înainte de consumator. -->
 <script src="/js/shared/alop-roluri.js?v=3.9.830"></script>
-<script src="/js/formular/alop.js?v=3.9.841" defer></script>
+<script src="/js/formular/alop.js?v=3.9.862" defer></script>
 <script src="/js/components/opme-import-modal.js?v=3.9.760" defer></script>
-<script src="/js/components/opme-report-drawer.js?v=3.9.693" defer></script>
+<script src="/js/components/opme-report-drawer.js?v=3.9.862" defer></script>
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.856" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.839" defer></script>
