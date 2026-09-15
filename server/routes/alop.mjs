@@ -1971,7 +1971,10 @@ router.post('/api/alop/:id/confirma-plata', _csrf, async (req, res) => {
 // Desface o confirmare de plată (greșită / incompletă) ca matcher-ul OPME sau CAB-ul s-o
 // poată reface corect. Scriere FINANCIARĂ pe un dosar închis ⇒ toate gărzile sunt
 // obligatorii, motivul e scris, iar TOATE valorile vechi ajung în audit.
-//   • doar responsabilul CAB (isCabDept), ca la confirma-plata; ⛔ org_admin NU e exceptat.
+//   • responsabilul CAB (isCabDept) SAU admin/org_admin (#210) — inconsecvent să-i excludem
+//     exact de aici când, în același fișier de OPME, admin/org_admin pot deja importa,
+//     re-rula matching-ul și accepta linii respinse; controlul real rămâne motivul scris
+//     obligatoriu + auditul cu valorile vechi, nu poarta de rol.
 //   • doar dacă plata E confirmată (altfel 409 nu_e_confirmata);
 //   • doar în CICLUL CURENT, neavansat (altfel 409 ciclu_avansat — REFUZ, nu improvizație);
 //   • `suma_totala_platita` (ciclurile arhivate) NU se atinge NICIODATĂ;
@@ -2003,12 +2006,15 @@ router.post('/api/alop/:id/plata/reia', _csrf, async (req, res) => {
     );
     if (!alop) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' }); }
 
+    // #210: aceeași regulă lărgită ca la acceptarea liniilor OPME — admin/org_admin nu mai
+    // sunt excluși de la această cale excepțională (motiv scris + audit rămân obligatorii).
+    const isAdminLike = actor.role === 'admin' || (actor.role === 'org_admin' && !!actor.orgId);
     const { actorComp, cabComp } = await loadActorCompAndCab(client, actor.userId, actor.orgId);
-    if (!isCabDept(actorComp, cabComp)) {
+    if (!isAdminLike && !isCabDept(actorComp, cabComp)) {
       await client.query('ROLLBACK');
       return res.status(403).json({
         error: 'doar_responsabil_cab',
-        message: 'Doar responsabilul CAB poate relua confirmarea plății.',
+        message: 'Doar responsabilul CAB sau un administrator poate relua confirmarea plății.',
       });
     }
     if (!alop.plata_confirmed_at) {

@@ -168,10 +168,11 @@ d('#209 B — POST /api/alop/:id/plata/reia', () => {
     expect((await getAlop(alopId)).status).toBe('plata');
   });
 
-  it('12. non-CAB (inițiator, coleg, org_admin) ⇒ 403, zero scrieri', async () => {
+  it('12. non-CAB, non-admin (inițiator, coleg) ⇒ 403, zero scrieri', async () => {
+    // #210: org_admin nu mai e în acest lot — a devenit un caz POZITIV (200), acoperit
+    // în server/tests/db/plata-reia-poarta.test.mjs alături de admin.
     const { alopId } = await seedConfirmat();
-    const oadm = await seedUser({ orgId: 1, email: 'oadm@x.ro', role: 'org_admin', compartiment: ALT, nume: 'OADM' });
-    for (const [uid, role] of [[initId, 'user'], [altId, 'user'], [oadm, 'org_admin']]) {
+    for (const [uid, role] of [[initId, 'user'], [altId, 'user']]) {
       const res = await request(app).post(`/api/alop/${alopId}/plata/reia`)
         .set('Cookie', ck(uid, role)).send({ motiv: MOTIV });
       expect(res.status).toBe(403);
