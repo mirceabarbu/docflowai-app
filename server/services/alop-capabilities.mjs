@@ -80,7 +80,14 @@ export function computeAlopCapabilities(alop, actor, opts = {}) {
   // confirmată în ciclul curent (status 'completed' + plata_confirmed_at). Setat ÎNAINTE de
   // return-ul devreme (dosarul e, prin definiție, completed). Serverul rămâne poarta
   // (409 ciclu_avansat / nu_e_confirmata, 403 doar_responsabil_cab) — aici e doar afișare.
-  caps.can_reia_plata = caps.is_cab && caps.is_completed && !caps.is_cancelled
+  // #211 — aceeași regulă ca poarta rutei POST /api/alop/:id/plata/reia după #210:
+  // admin OR (org_admin cu orgId) OR isCabDept. Înainte era doar `caps.is_cab`, deci un
+  // utilizator `admin` nu vedea butonul „Reia confirmarea plății", deși ruta l-ar fi
+  // acceptat — al treilea caz al aceluiași tipar (vezi și can_accept din opme.mjs,
+  // reparat la #210).
+  // ⚠️ Dacă poarta rutei se schimbă, SE SCHIMBĂ ȘI AICI. Testul de echivalență o apără.
+  const _isAdminLike = actor?.role === 'admin' || (actor?.role === 'org_admin' && !!actor?.orgId);
+  caps.can_reia_plata = (caps.is_cab || _isAdminLike) && caps.is_completed && !caps.is_cancelled
     && !!alop.plata_confirmed_at;
 
   if (caps.is_completed || caps.is_cancelled || (!caps.is_owner && !caps.is_cab)) return caps;
