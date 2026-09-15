@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { hasTestDb, migrate, truncateAll, pool,
-         seedOrgUser, seedDf, seedOrd, seedAlop, getDf, getOrd, makeAuthCookie } from '../helpers/db-real.mjs';
+         seedOrgUser, seedUser, seedDf, seedOrd, seedAlop, getDf, getOrd, makeAuthCookie } from '../helpers/db-real.mjs';
 import { buildApp } from './helpers/app.mjs';
 import { MIGRATIONS } from '../../db/index.mjs';
 import { matchImport } from '../../services/opme-matcher.mjs';
@@ -54,8 +54,12 @@ d('coduri de angajament canonice cu MAJUSCULE', () => {
 
   // ── #8 — calea de scriere prin rute normalizează la MAJUSCULE ────────────────
   it('#8 DF PUT rows_ctrl cod minuscul ⇒ în bază e MAJUSCULE', async () => {
-    const dfId = await seedDf({ orgId, createdBy: userId, status: 'draft' });
-    const r = await request(app).put(`/api/formulare-df/${dfId}`).set('Cookie', cookie)
+    // #206 — `rows_ctrl` (Secțiunea B) e atributul responsabilului CAB: PUT-ul îl face P2 PUR
+    // (user atribuit, creatorul e altcineva). Mecanica normalizării e independentă de actor.
+    const p2Id = await seedUser({ orgId, email: 'p2-up@x.ro', compartiment: 'CAB' });
+    const dfId = await seedDf({ orgId, createdBy: userId, status: 'draft', assignedTo: p2Id });
+    const r = await request(app).put(`/api/formulare-df/${dfId}`)
+      .set('Cookie', makeAuthCookie({ userId: p2Id, role: 'user', orgId }))
       .send({ rows_ctrl: [{ cod_angajament: 'abc', indicator_angajament: 'x1', program: 'p' }] });
     expect(r.status).toBe(200);
     const df = await getDf(dfId);

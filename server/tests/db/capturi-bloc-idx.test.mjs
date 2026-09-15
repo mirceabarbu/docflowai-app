@@ -13,7 +13,7 @@ import request from 'supertest';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { hasTestDb, migrate, truncateAll, pool,
-         seedOrgUser, seedDf, seedOrd, makeAuthCookie } from '../helpers/db-real.mjs';
+         seedOrgUser, seedUser, seedDf, seedOrd, makeAuthCookie } from '../helpers/db-real.mjs';
 
 vi.mock('../../middleware/logger.mjs', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(),
@@ -35,6 +35,11 @@ function buildRealApp() {
 const CSRF = 'test-csrf-token-cap-bloc';
 const authz = (u) => `${makeAuthCookie(u)}; csrf_token=${CSRF}`;
 const P1 = { userId: 1, role: 'user', orgId: 1, email: 'p1@x.ro' };
+// #206 — capturile pe DF sunt atributul responsabilului CAB: upload-ul pe DF îl face P2 PUR
+// (user 2 = `assigned_to`, creatorul e altcineva). Mecanica bloc_idx e independentă de actor.
+// ORD nu e sub poartă (#206, în afara scopului) — acolo P1 rămâne actorul. GET rămâne pe P1
+// (canViewFormular: creatorul vede capturile).
+const P2 = { userId: 2, role: 'user', orgId: 1, email: 'p2@x.ro' };
 
 const d = describe.skipIf(!hasTestDb());
 
@@ -45,17 +50,18 @@ d('#128n — capturi per bloc de furnizor (bloc_idx)', () => {
   beforeEach(async () => {
     await truncateAll();
     ({ orgId } = await seedOrgUser({ role: 'user', email: 'p1@x.ro', compartiment: 'Achizitii' }));
+    await seedUser({ orgId, email: 'p2@x.ro', compartiment: 'CAB' });
     ordId = await seedOrd({ orgId, createdBy: 1, status: 'draft', nrOrd: 'ORD-128N-1' });
-    dfId  = await seedDf({ orgId, createdBy: 1, status: 'draft', nrUnic: 'DF-128N-1' });
+    dfId  = await seedDf({ orgId, createdBy: 1, status: 'draft', assignedTo: 2, nrUnic: 'DF-128N-1' });
     app = buildRealApp();
   });
   afterAll(() => pool.end());
 
   // `qs` = query string COMPLET (ex. '', '?bloc=1', '?slot=2&bloc=1') — testăm și absența lui.
-  const upload = (type, id, qs, { filename = 'captura.png', body = 'PNG-BYTES' } = {}) =>
+  const upload = (type, id, qs, { filename = 'captura.png', body = 'PNG-BYTES', as = (type === 'df' ? P2 : P1) } = {}) =>
     request(app)
       .post(`/api/formulare-capturi/${type}/${id}${qs}`)
-      .set('Cookie', authz(P1))
+      .set('Cookie', authz(as))
       .set('x-csrf-token', CSRF)
       .set('Content-Type', 'image/png')
       .set('X-Filename', filename)
