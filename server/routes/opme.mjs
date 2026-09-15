@@ -424,13 +424,16 @@ router.get('/api/opme/imports/:id', async (req, res) => {
       return acc;
     }, { auto: 0, manual: 0, ambiguous: 0, unmatched: 0, partial: 0, pending: 0 });
 
-    // #209: dreptul de a ACCEPTA o linie respinsă vine de la server — aceeași poartă
-    // ca la acceptare (`isCabDept`), nu dedus în frontend.
-    let canAccept = false;
-    try {
-      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
-      canAccept = isCabDept(actorComp, cabComp);
-    } catch (_e) { canAccept = false; }
+    // #209/#210: dreptul de a ACCEPTA o linie respinsă vine de la server — oglinda EXACTĂ
+    // a porții de acceptare (`opme.mjs:~568`). Dacă cele două diverg, ori butonul apare și
+    // acțiunea dă 403, ori invers.
+    let canAccept = actor.role === 'admin' || (actor.role === 'org_admin' && !!actor.orgId);
+    if (!canAccept) {
+      try {
+        const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+        canAccept = isCabDept(actorComp, cabComp);
+      } catch (_e) { canAccept = false; }
+    }
 
     const h = header[0];
     res.json({
@@ -563,13 +566,21 @@ router.post('/api/opme/lines/:id/accept', csrfMiddleware, async (req, res) => {
       await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' });
     }
 
-    // 2. Poarta: responsabilul CAB (isCabDept — aceeași ca în alop.mjs).
+    // 2. Poarta (#210): responsabilul CAB SAU admin/org_admin. Oglinda EXACTĂ a `canAccept`
+    //    din ruta de raport (`opme.mjs:~429`) — dacă diverg, butonul și acțiunea nu mai concordă.
+    //    Motivul lărgirii: în același fișier, admin și org_admin pot deja importa OPME (:101),
+    //    RE-RULA matching-ul (:643) — care rescrie match_status pe zeci de linii — și exporta
+    //    (:686). Excluderea lor exact de la acceptarea unei linii era inconsecvență, nu politică.
+    //    ⛔ NU folosi _hasOpmeImportRole: aceea permite și oricui e assigned_to pe un DF/ORD,
+    //    și colegilor de compartiment ai unui responsabil CAB — mult mai larg decât s-a aprobat.
+    //    Controlul real rămâne motivul scris obligatoriu + auditul.
+    const isAdminLike = actor.role === 'admin' || (actor.role === 'org_admin' && !!actor.orgId);
     const { actorComp, cabComp } = await loadActorCompAndCab(client, actor.userId, actor.orgId);
-    if (!isCabDept(actorComp, cabComp)) {
+    if (!isAdminLike && !isCabDept(actorComp, cabComp)) {
       await client.query('ROLLBACK');
       return res.status(403).json({
         error: 'doar_responsabil_cab',
-        message: 'Doar responsabilul CAB poate accepta o potrivire OPME.',
+        message: 'Doar responsabilul CAB sau un administrator poate accepta o potrivire OPME.',
       });
     }
 
