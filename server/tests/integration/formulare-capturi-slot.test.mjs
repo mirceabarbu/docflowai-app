@@ -76,10 +76,14 @@ beforeEach(() => {
 });
 
 describe('POST /api/formulare-capturi/:type/:id cu slot', () => {
-  it('POST cu ?slot=2 → DELETE doar slot=2, INSERT cu slot=2', async () => {
+  // #205 — înlocuirea capturii din slot e o SINGURĂ interogare atomică (INSERT ... ON CONFLICT
+  // pe cheia (form_type, form_id, slot, COALESCE(bloc_idx,0))), nu DELETE + INSERT separate
+  // (cursă: două cereri paralele ștergeau amândouă, a doua lovea indexul unic cu 500).
+  // Intenția rămâne aceeași ca la v3.9.499: „slot 2 nu atinge slot 1" — cheia de conflict
+  // conține slotul, deci un upload pe slot 2 nu poate înlocui decât rândul slotului 2.
+  it('POST cu ?slot=2 → fără DELETE; un singur INSERT ON CONFLICT cu cheia (slot=2, bloc=0)', async () => {
     dbModule.pool.query
       .mockResolvedValueOnce({ rows: [{ created_by: 1, assigned_to: 1, status: 'pending_p2' }], rowCount: 1 })
-      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
       .mockResolvedValueOnce({ rows: [{ id: 'cap-new', filename: 'x.png', mimetype: 'image/png', size_bytes: 100, slot: 2, created_at: '2026-05-22' }], rowCount: 1 });
 
     const res = await request(createTestApp())
@@ -91,20 +95,26 @@ describe('POST /api/formulare-capturi/:type/:id cu slot', () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
 
+    // #205 — NICIUN DELETE: ștergerea separată era jumătatea vulnerabilă a cursei.
     const deleteCall = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('DELETE FROM formulare_capturi') &&
-      String(c[0]).includes('slot=$3')
+      String(c[0]).includes('DELETE FROM formulare_capturi')
     );
-    expect(deleteCall, 'DELETE cu slot scope nu a fost apelat').toBeDefined();
-    // #128n — cheia DELETE-ului include acum blocul de furnizor (absent din query ⇒ 0).
-    expect(deleteCall[1]).toEqual(['ord', ORD_ID, 2, 0]);
+    expect(deleteCall, 'DELETE separat NU trebuie emis (#205: ON CONFLICT atomic)').toBeUndefined();
 
-    const insertCall = dbModule.pool.query.mock.calls.find(c =>
-      String(c[0]).includes('INSERT INTO formulare_capturi') &&
-      String(c[0]).includes('slot')
+    const insertCalls = dbModule.pool.query.mock.calls.filter(c =>
+      String(c[0]).includes('INSERT INTO formulare_capturi')
     );
-    expect(insertCall).toBeDefined();
-    expect(insertCall[1][7]).toBe(2);
+    expect(insertCalls).toHaveLength(1);
+    const [sql, params] = insertCalls[0];
+    // Ținta ON CONFLICT trebuie să fie EXACT expresia indexului unic din migrarea 107 —
+    // cu `bloc_idx` simplu, Postgres nu găsește constrângerea și aruncă la EXECUȚIE.
+    expect(sql.replace(/\s+/g, ' ')).toContain('ON CONFLICT (form_type, form_id, slot, (COALESCE(bloc_idx, 0))) DO UPDATE SET');
+    // Cheia: (type, id, slot=2, bloc=0) — slot 2 nu poate înlocui decât rândul slotului 2.
+    // #128n — blocul de furnizor face parte din cheie (absent din query ⇒ 0).
+    expect(params.slice(0, 2)).toEqual(['ord', ORD_ID]);
+    expect(params[7]).toBe(2);   // slot
+    expect(params[8]).toBe(0);   // bloc_idx
+    expect(res.body.captura).toMatchObject({ id: 'cap-new', slot: 2 });
   });
 
   it('POST fără ?slot → default slot=1', async () => {

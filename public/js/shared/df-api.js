@@ -170,9 +170,26 @@
     return res;
   }
 
+  // #205 — un răspuns de proxy („upstream error") nu e JSON. Fără garda asta,
+  // utilizatorul primește „Unexpected token 'u'" în loc de un mesaj util.
+  // Același mod de eșec ca la #125 (STS: „Unexpected end of JSON input").
+  // Helper pentru CALL-SITE-uri; `res.clone().json()`-urile din dfFetch rămân separate
+  // (sunt în try/catch și citesc corpul de eroare, alt scop).
+  async function dfJson(res) {
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (!ct.includes('application/json')) {
+      const err = new Error('Serverul nu a răspuns corect. Reîncarcă pagina și încearcă din nou.');
+      err.nonJson = true;
+      err.httpStatus = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+
   // ── API public ───────────────────────────────────────────────────────────────
   window.DFApi = {
     fetch: dfFetch,
+    json: dfJson,
     getCsrf: getCsrf,
     setCsrf: setCsrf,
     REVOKED_CODES: REVOKED_CODES,

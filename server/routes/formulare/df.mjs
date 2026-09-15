@@ -417,7 +417,25 @@ router.put('/api/formulare-df/:id', _csrf, async (req, res) => {
       }
     }
 
-    const allowedFields = isP2 && !isP1 ? DF_P2_FIELDS : [...DF_P1_FIELDS, ...DF_P2_FIELDS];
+    // #206 — Secțiunea B (`rows_ctrl` și celelalte câmpuri de control) e atributul
+    // responsabilului CAB, conform normelor ALOP. Filtrul era ASIMETRIC: P2 pur primea
+    // doar DF_P2_FIELDS, dar P1 primea AMBELE seturi, deci un inițiator putea scrie
+    // Secțiunea B direct pe API, ocolind interfața care i-o ascunde.
+    //
+    // Cine e simultan P1 și P2 (comune mici — aceeași persoană e inițiator și responsabil
+    // CAB, vezi #131c) primește AMBELE seturi: are dreptul prin al doilea rol.
+    //
+    // #206 — cab_dept (membru al compartimentului CAB) păstrează AMBELE seturi:
+    // e responsabilul căruia îi aparține Secțiunea B, iar dreptul lui de a edita și
+    // Secțiunea A e o funcție intenționată (ALOP-CAB „editează tot"), ancorată de
+    // cab-dept-visibility #8. Lotul închide DOAR gaura P1-pur → rows_ctrl.
+    const isAdminLike = ['admin', 'org_admin'].includes(actor.role);
+    const isCabDeptRole = authz.role === 'cab_dept';
+    const allowedFields = (isAdminLike || isCabDeptRole || (isP1 && isP2))
+      ? [...DF_P1_FIELDS, ...DF_P2_FIELDS]
+      : isP2 ? DF_P2_FIELDS
+      : isP1 ? DF_P1_FIELDS
+      : [];
     const data = pick(req.body || {}, allowedFields);
 
     // Coduri de angajament canonice cu MAJUSCULE (repară potrivirea OPME — vezi

@@ -163,10 +163,14 @@ d('formulare-atasamente — authz centralizat prin middleware real (B1/B4)', () 
   });
 
   // ── capturi: același authz centralizat (B1 acoperă și formulare-capturi) ────────
-  it('capturi: coleg comp upload 200 + GET 200; user fără drepturi 403', async () => {
+  // #206 — capturile pe DF sunt atributul responsabilului CAB: upload-ul reușit îl face colegul
+  // din compartimentul P2 (`p2_comp`, user 4); colegul P1 (`comp`, user 3) e refuzat de poarta
+  // nouă cu 403 `doar_responsabil_cab` (înainte: 200 — testul descria exact golul închis).
+  // GET rămâne permis colegului P1 (canViewFormular: vede, nu încarcă).
+  it('capturi: coleg P2 (p2_comp) upload 200 + coleg P1 GET 200; coleg P1 upload 403 doar_responsabil_cab; user fără drepturi 403', async () => {
     const upC = await request(app)
       .post(`/api/formulare-capturi/df/${dfId}`)
-      .set('Cookie', authz({ userId: 3, role: 'user', orgId: 1, email: 'coleg-p1@x.ro' }))
+      .set('Cookie', authz({ userId: 4, role: 'user', orgId: 1, email: 'coleg-p2@x.ro' }))
       .set('x-csrf-token', CSRF)
       .set('Content-Type', 'image/png')
       .send(Buffer.from('PNG-BYTES'));
@@ -175,6 +179,15 @@ d('formulare-atasamente — authz centralizat prin middleware real (B1/B4)', () 
     const get3 = await request(app).get(`/api/formulare-capturi/df/${dfId}`)
       .set('Cookie', authz({ userId: 3, role: 'user', orgId: 1, email: 'coleg-p1@x.ro' }));
     expect(get3.status).toBe(200);
+
+    const up3 = await request(app)
+      .post(`/api/formulare-capturi/df/${dfId}`)
+      .set('Cookie', authz({ userId: 3, role: 'user', orgId: 1, email: 'coleg-p1@x.ro' }))
+      .set('x-csrf-token', CSRF)
+      .set('Content-Type', 'image/png')
+      .send(Buffer.from('PNG-P1'));
+    expect(up3.status).toBe(403);
+    expect(up3.body.error).toBe('doar_responsabil_cab');
 
     const up5 = await request(app)
       .post(`/api/formulare-capturi/df/${dfId}`)

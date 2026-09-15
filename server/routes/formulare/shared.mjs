@@ -50,8 +50,11 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
   const table = type === 'df' ? 'formulare_df' : 'formulare_ord';
 
   try {
+    // #206 — `p2_compartiment` e necesar porții de mai jos: fără el, `canEditFormular` nu
+    // evaluează niciodată ramura `p2_comp` (#131a) și poarta ar refuza membrii
+    // compartimentului CAB atribuit. Coloana există pe AMBELE tabele (migrarea 108).
     const { rows: existing } = await pool.query(
-      `SELECT created_by, assigned_to, status FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
+      `SELECT created_by, assigned_to, status, p2_compartiment FROM ${table} WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`,
       [id, actor.orgId]
     );
     if (!existing.length) return res.status(404).json({ error: 'not_found' });
@@ -61,6 +64,24 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
     const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
     const authz = await canEditFormular(pool, actor, doc, actorComp, { cabComp });
     if (!authz.allowed) return res.status(403).json({ error: 'forbidden' });
+
+    // #206 — capturile de ecran de pe DF sunt atributul responsabilului CAB (norme ALOP),
+    // ca și Secțiunea B. Handlerul se uita doar la `allowed`, ignorând `role`, deci P1
+    // trecea ca `creator`. Poarta se aplică DOAR pe `df`: rolurile P1/P2 pe ORD au altă
+    // semantică, iar o poartă greșită acolo ar bloca un flux funcțional (#206, în afara scopului).
+    // `cab_dept` e acceptat aici EXACT ca în filtrul de câmpuri din `PUT /api/formulare-df/:id`
+    // (df.mjs) — cele două porți trebuie să trateze rolurile identic.
+    if (type === 'df' && !['admin', 'org_admin'].includes(actor.role)) {
+      const esteP2 = doc.assigned_to === actor.userId
+                  || authz.role === 'p2_comp'
+                  || authz.role === 'cab_dept';
+      if (!esteP2) {
+        logger.warn({ type, id, actorRole: authz.role, actor: actor.email },
+          '#206 captura DF refuzată: nu e responsabil CAB');
+        return res.status(403).json({ error: 'doar_responsabil_cab',
+          message: 'Capturile de ecran se încarcă de responsabilul CAB.' });
+      }
+    }
 
     // Citim body raw (imagine)
     const chunks = [];
@@ -80,19 +101,27 @@ router.post('/api/formulare-capturi/:type/:id', _csrf, async (req, res) => {
     const slotRaw = parseInt(req.query.slot || '1', 10);
     const slot = (slotRaw === 1 || slotRaw === 2) ? slotRaw : 1;
     // #128n: blocul de furnizor (ORD multi-bloc), ortogonal pe slot — exact ca la atașamente.
-    // ⚠️ Fără `bloc_idx` în cheia DELETE-ului, captura furnizorului 2 o ȘTERGE pe a
-    // furnizorului 1, tăcut, iar utilizatorul vede confirmare de succes. Ăsta e bug-ul
-    // pe care îl repară lotul; regula „o captură per slot" devine „per (slot, bloc)".
+    // ⚠️ Fără `bloc_idx` în cheia de înlocuire, captura furnizorului 2 o ȘTERGE pe a
+    // furnizorului 1, tăcut, iar utilizatorul vede confirmare de succes. Regula „o captură
+    // per slot" e „per (slot, bloc)" — cimentată de indexul unic din migrarea 107.
     // Rândurile legacy au `bloc_idx` NULL ⇒ `COALESCE(bloc_idx, 0)` le citește ca blocul 0.
     const blocIdx = _blocIdx(req);
-    await pool.query(
-      'DELETE FROM formulare_capturi WHERE form_type=$1 AND form_id=$2 AND slot=$3 AND COALESCE(bloc_idx, 0)=$4',
-      [type, id, slot, blocIdx]
-    );
-
+    // #205 — DELETE+INSERT ca două interogări separate producea o cursă: două cereri
+    // paralele pe același (slot, bloc) ștergeau amândouă, apoi a doua lovea indexul unic
+    // cu 500. ON CONFLICT face înlocuirea atomic, deci a doua apăsare devine inofensivă.
+    // ⚠️ Ținta ON CONFLICT e EXACT expresia indexului `uniq_formulare_capturi_form_slot_bloc`
+    // (migrarea 107), inclusiv `(COALESCE(bloc_idx, 0))` — cu `bloc_idx` simplu, Postgres
+    // nu găsește constrângerea și aruncă la EXECUȚIE, nu la scriere.
     const { rows: inserted } = await pool.query(`
       INSERT INTO formulare_capturi (form_type, form_id, uploaded_by, filename, mimetype, size_bytes, data, slot, bloc_idx)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (form_type, form_id, slot, (COALESCE(bloc_idx, 0)))
+      DO UPDATE SET uploaded_by = EXCLUDED.uploaded_by,
+                    filename    = EXCLUDED.filename,
+                    mimetype    = EXCLUDED.mimetype,
+                    size_bytes  = EXCLUDED.size_bytes,
+                    data        = EXCLUDED.data,
+                    created_at  = NOW()
       RETURNING id, filename, mimetype, size_bytes, slot, bloc_idx, created_at
     `, [type, id, actor.userId, filename, mimetype, data.length, data, slot, blocIdx]);
 
