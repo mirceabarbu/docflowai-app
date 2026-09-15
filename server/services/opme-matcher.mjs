@@ -449,14 +449,22 @@ async function _processAlop(client, args) {
   //     filtrate în JS per bloc (evită liniile altui ALOP cu alt cod/indicator la același
   //     beneficiar, ȘI combinațiile încrucișate triplet-dintr-un-bloc / CIF-din-altul).
   //     Garda matched_alop_id protejează liniile deja legate de alt ALOP.
+  //     #209: liniile deja LEGATE de acest ALOP în ciclul curent ('manual' = acceptată
+  //     explicit de responsabilul CAB; 'auto' = potrivită anterior, relevantă după o
+  //     reluare a confirmării) intră și ele în agregare, indiferent de CIF.
   const { rows: poolLines } = await client.query(`
     SELECT id, cod_angajament, indicator_angajament, cif_beneficiar, iban_beneficiar,
-           suma_op, nr_op, opme_import_id
+           suma_op, nr_op, opme_import_id, match_status
       FROM opme_lines
      WHERE org_id = $1
-       AND TRIM(cif_beneficiar) = ANY($2::text[])
-       AND match_status IN ('pending','unmatched','partial')
-       AND (matched_alop_id IS NULL OR matched_alop_id = $3)
+       AND (
+            (TRIM(cif_beneficiar) = ANY($2::text[])
+             AND match_status IN ('pending','unmatched','partial')
+             AND (matched_alop_id IS NULL OR matched_alop_id = $3))
+         OR (match_status IN ('auto','manual')
+             AND matched_alop_id = $3
+             AND matched_ciclu_id IS NULL)
+       )
   `, [org_id, cifuri, alopId]);
 
   const lineIds = new Set();
@@ -468,9 +476,14 @@ async function _processAlop(client, args) {
     const ind = (ln.indicator_angajament || '').trim();
     // #126 C + #128d: regula per bloc, prin ACELAȘI helper ca la selecția candidaților —
     // altfel o linie s-ar potrivi la selecție dar nu s-ar agrega la sumă (#115).
-    const hit = _potrivireBloc(profile, {
-      cif: (ln.cif_beneficiar || '').trim(), cod, ind, iban: ln.iban_beneficiar,
-    });
+    // #209: o linie acceptată MANUAL de responsabilul CAB (cu motiv scris, în audit) e
+    // de încredere prin decizie umană — nu se mai trece prin regula de bloc (IBAN diferit /
+    // date insuficiente sunt exact motivele pentru care a fost respinsă automat).
+    const hit = ln.match_status === 'manual'
+      ? { profil: { bloc_idx: null }, noIban: false, ibanRespins: false }
+      : _potrivireBloc(profile, {
+          cif: (ln.cif_beneficiar || '').trim(), cod, ind, iban: ln.iban_beneficiar,
+        });
     if (!hit.profil) continue;
     if (hit.noIban) {
       logger.info({ alop_id: alopId, line_id: ln.id, bloc_idx: hit.profil.bloc_idx },
@@ -558,12 +571,14 @@ async function _processAlop(client, args) {
     ? `Plată parțială ${actual.toFixed(2)} din ${expected.toFixed(2)} RON`
     : `Suma OPME (${actual.toFixed(2)}) depășește valoarea ORD (${expected.toFixed(2)} RON)`;
   if (lineArr.length) {
+    // #209: liniile acceptate manual de CAB își păstrează statusul și motivul scris.
     await client.query(`
       UPDATE opme_lines
          SET match_status='partial',
              matched_alop_id=$2,
              match_notes=$3
        WHERE id = ANY($1::uuid[])
+         AND match_status IS DISTINCT FROM 'manual'
     `, [lineArr, alopId, partialNote]);
   }
   return {
@@ -581,6 +596,8 @@ async function _markLine(client, lineId, status, note) {
 
 async function _bulkMarkMatched(client, lineIds, alopId, status) {
   if (!lineIds.length) return;
+  // #209: o linie 'manual' (acceptată de CAB) NU se rescrie — `match_notes` poartă motivul
+  // deciziei și nota inițială de respingere; ambele sunt informație de audit.
   await client.query(`
     UPDATE opme_lines
        SET match_status=$3,
@@ -589,6 +606,7 @@ async function _bulkMarkMatched(client, lineIds, alopId, status) {
            matched_at=NOW(),
            match_notes=NULL
      WHERE id = ANY($1::uuid[])
+       AND match_status IS DISTINCT FROM 'manual'
   `, [lineIds, alopId, status]);
 }
 

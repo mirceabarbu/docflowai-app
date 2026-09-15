@@ -246,3 +246,30 @@ describe('computeAlopCapabilities — #130 CAB (is_cab, membru CAB non-creator v
     expect(c2.phase_action).toBeNull();
   });
 });
+
+// #209 — „Reia confirmarea plății": doar CAB, doar dosar completed cu plata confirmată.
+describe('computeAlopCapabilities — can_reia_plata (#209)', () => {
+  const NON_OWNER = { userId: 2, role: 'user', orgId: 1 };
+  const CAB_OPTS = { actorComp: 'Serviciul Buget', cabComp: 'Serviciul Buget' };
+  it('CAB + completed + plata_confirmed_at → true (setat înaintea return-ului devreme)', () => {
+    const c = computeAlopCapabilities(
+      A({ created_by: 1, status: 'completed', plata_confirmed_at: '2026-09-03T10:00:00Z' }), NON_OWNER, CAB_OPTS);
+    expect(c.can_reia_plata).toBe(true);
+    expect(c.phase_action).toBeNull();
+  });
+  it('non-CAB (chiar creator/admin) → false', () => {
+    const c1 = computeAlopCapabilities(
+      A({ created_by: 1, status: 'completed', plata_confirmed_at: '2026-09-03T10:00:00Z' }), ACTOR);
+    expect(c1.can_reia_plata).toBe(false);
+    const c2 = computeAlopCapabilities(
+      A({ created_by: 1, status: 'completed', plata_confirmed_at: '2026-09-03T10:00:00Z' }),
+      { userId: 9, role: 'admin' }, { actorComp: 'Alt', cabComp: 'Serviciul Buget' });
+    expect(c2.can_reia_plata).toBe(false);
+  });
+  it('CAB dar neconfirmat / în plata / cancelled → false', () => {
+    expect(computeAlopCapabilities(A({ status: 'completed' }), NON_OWNER, CAB_OPTS).can_reia_plata).toBe(false);
+    expect(computeAlopCapabilities(A({ status: 'plata' }), NON_OWNER, CAB_OPTS).can_reia_plata).toBe(false);
+    expect(computeAlopCapabilities(
+      A({ status: 'cancelled', plata_confirmed_at: '2026-09-03T10:00:00Z' }), NON_OWNER, CAB_OPTS).can_reia_plata).toBe(false);
+  });
+});

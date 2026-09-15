@@ -2682,6 +2682,54 @@ export const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_clasa8_buget_versions_org_an
         ON clasa8_buget_versions(org_id, an, version_no DESC);
     `
+  },
+  {
+    // #209 — `completed → plata` devine tranziție LEGALĂ în matricea porții.
+    //
+    // MOTIV: `POST /api/alop/:id/plata/reia` (routes/alop.mjs) DESFACE o confirmare de plată
+    // greșită/incompletă din ciclul CURENT (incidentul MORANI, 15.09.2026: furnizor plătit din
+    // două conturi, dosar confirmat manual doar cu al doilea OP) și readuce dosarul în 'plata',
+    // ca matcher-ul OPME / CAB-ul s-o refacă cu suma și lista completă de OP-uri. Fără această
+    // migrație, poarta (109/110, ENFORCING) aruncă `check_violation` și ruta întoarce 500 —
+    // exact „calea legitimă ratată de recon se manifestă ca eroare vizibilă".
+    //
+    // Corpul e IDENTIC cu 110 (poarta rămâne pe RAISE EXCEPTION — ⛔ NU o coborî la
+    // RAISE WARNING), cu O SINGURĂ modificare: 'plata' adăugat la ieșirile din 'completed'.
+    // Simetric cu 'plata' → 'ordonantare' (103) și 'lichidare' → 'angajare' (110): un undo
+    // administrativ, rezervat responsabilului CAB, cu motiv scris și valorile vechi în audit.
+    // Zero UPDATE/DELETE — migrația nu atinge date.
+    id: '112_alop_matrix_reia_plata',
+    sql: `
+      CREATE OR REPLACE FUNCTION alop_status_guard() RETURNS TRIGGER AS $fn$
+      DECLARE
+        allowed TEXT[];
+      BEGIN
+        IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+          RETURN NEW;
+        END IF;
+
+        allowed := CASE OLD.status
+          WHEN 'draft'       THEN ARRAY['angajare','lichidare','cancelled']
+          WHEN 'angajare'    THEN ARRAY['lichidare','plata','cancelled']
+          WHEN 'lichidare'   THEN ARRAY['ordonantare','angajare','cancelled']
+          WHEN 'ordonantare' THEN ARRAY['plata','cancelled']
+          WHEN 'plata'       THEN ARRAY['completed','cancelled','ordonantare']
+          WHEN 'completed'   THEN ARRAY['lichidare','plata']
+          WHEN 'cancelled'   THEN ARRAY[]::TEXT[]
+          ELSE ARRAY[]::TEXT[]
+        END;
+
+        IF NOT (NEW.status = ANY(allowed)) THEN
+          RAISE EXCEPTION 'ALOP transition violation: % -> % (alop_id=%)',
+            OLD.status, NEW.status, NEW.id
+            USING ERRCODE = 'check_violation';
+        END IF;
+
+        RETURN NEW;
+      END $fn$ LANGUAGE plpgsql;
+      -- ⛔ Fără DROP/CREATE TRIGGER: trigger-ul trg_alop_status_guard (094) rămâne legat de
+      -- această funcție (CREATE OR REPLACE păstrează legătura). alop_instances neatins.
+    `
   }
 ];
 

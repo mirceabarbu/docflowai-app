@@ -16,7 +16,8 @@ import { csrfMiddleware } from '../middleware/csrf.mjs';
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
 import { parseOpmePdf } from '../services/opme-parser.mjs';
-import { matchImport, summarizeReport } from '../services/opme-matcher.mjs';
+import { matchImport, summarizeReport, tryAutoConfirmAlop } from '../services/opme-matcher.mjs';
+import { loadActorCompAndCab, isCabDept } from '../services/authz-formular.mjs';
 
 const router = Router();
 
@@ -423,8 +424,17 @@ router.get('/api/opme/imports/:id', async (req, res) => {
       return acc;
     }, { auto: 0, manual: 0, ambiguous: 0, unmatched: 0, partial: 0, pending: 0 });
 
+    // #209: dreptul de a ACCEPTA o linie respinsă vine de la server — aceeași poartă
+    // ca la acceptare (`isCabDept`), nu dedus în frontend.
+    let canAccept = false;
+    try {
+      const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      canAccept = isCabDept(actorComp, cabComp);
+    } catch (_e) { canAccept = false; }
+
     const h = header[0];
     res.json({
+      can_accept: canAccept,
       import: {
         id: h.id, nr_document: h.nr_document, data_op: h.data_op,
         an_r: h.an_r, luna_r: h.luna_r,
@@ -497,6 +507,129 @@ router.get('/api/opme/lines/by-alop/:alopId', async (req, res) => {
   } catch (e) {
     logger.error({ err: e, alopId }, 'opme lines by-alop error');
     res.status(500).json({ error: 'server_error' });
+  }
+});
+
+// ── POST /api/opme/lines/:id/accept — #209 (calea A): responsabilul CAB acceptă o linie ──
+// OPME respinsă/parțială și o leagă de un dosar ALOP, cu MOTIV scris. Linia devine
+// 'manual'; apoi matcher-ul e rechemat pe acel ALOP, ÎN ACEEAȘI TRANZACȚIE, și confirmă
+// singur când suma tuturor OP-urilor legate == valoarea ORD-ului. Zero logică nouă de
+// confirmare aici: `_processAlop` (via `tryAutoConfirmAlop({ client })`) rămâne sursa unică.
+router.post('/api/opme/lines/:id/accept', csrfMiddleware, async (req, res) => {
+  if (_requireDb(res)) return;
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  if (!actor.orgId) return res.status(403).json({ error: 'org_required' });
+
+  const lineId = req.params.id;
+  if (!lineId || lineId === 'null' || lineId === 'undefined' || !/^[0-9a-f-]{36}$/i.test(lineId)) {
+    return res.status(400).json({ error: 'id_invalid' });
+  }
+  const alopId = String(req.body?.alopId || '').trim();
+  const motiv  = String(req.body?.motiv || '').trim();
+  if (!alopId || !/^[0-9a-f-]{36}$/i.test(alopId)) {
+    return res.status(400).json({ error: 'alop_id_invalid', message: 'Selectați dosarul ALOP.' });
+  }
+  if (motiv.length < 10) {
+    return res.status(400).json({
+      error: 'motiv_obligatoriu',
+      message: 'Motivul acceptării e obligatoriu (minim 10 caractere) — e justificarea unei decizii financiare.',
+    });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. FOR UPDATE pe ALOP (același choke-point ca matcher-ul / confirma-plata), apoi linia.
+    const { rows: aRows } = await client.query(
+      `SELECT id, org_id, status, plata_confirmed_at, ciclu_curent
+         FROM alop_instances WHERE id=$1 AND org_id=$2 AND cancelled_at IS NULL FOR UPDATE`,
+      [alopId, actor.orgId]
+    );
+    if (!aRows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' }); }
+    const alop = aRows[0];
+
+    const { rows: lRows } = await client.query(
+      `SELECT id, org_id, nr_op, suma_op, match_status, match_notes, matched_alop_id
+         FROM opme_lines WHERE id=$1 AND org_id=$2 FOR UPDATE`,
+      [lineId, actor.orgId]
+    );
+    if (!lRows[0]) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' }); }
+    const line = lRows[0];
+    // 4. Tenant: linia, dosarul și actorul în ACEEAȘI organizație (deja filtrat prin org_id
+    //    în ambele SELECT-uri; verificarea explicită rămâne ca plasă).
+    if (String(line.org_id) !== String(alop.org_id) || String(alop.org_id) !== String(actor.orgId)) {
+      await client.query('ROLLBACK'); return res.status(404).json({ error: 'not_found' });
+    }
+
+    // 2. Poarta: responsabilul CAB (isCabDept — aceeași ca în alop.mjs).
+    const { actorComp, cabComp } = await loadActorCompAndCab(client, actor.userId, actor.orgId);
+    if (!isCabDept(actorComp, cabComp)) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        error: 'doar_responsabil_cab',
+        message: 'Doar responsabilul CAB poate accepta o potrivire OPME.',
+      });
+    }
+
+    // 3. Doar linii respinse/parțiale/ambigue. Una deja potrivită ('auto'/'manual') ⇒ 409.
+    if (!['unmatched', 'partial', 'ambiguous'].includes(line.match_status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'deja_potrivita', match_status: line.match_status });
+    }
+
+    // 5. Linia devine 'manual'. Nota veche (motivul respingerii automate) se PĂSTREAZĂ.
+    const notaVeche = line.match_notes || '';
+    const notaNoua = `Acceptat manual de ${actor.email || actor.userId}: ${motiv}`
+      + (notaVeche ? ` [anterior: ${notaVeche}]` : '');
+    await client.query(`
+      UPDATE opme_lines
+         SET match_status='manual', matched_at=NOW(), matched_alop_id=$2,
+             matched_ciclu_id=NULL, match_notes=$3
+       WHERE id=$1
+    `, [lineId, alopId, notaNoua]);
+
+    // 6. Audit, cu valorile vechi.
+    await client.query(`
+      INSERT INTO audit_log (flow_id, org_id, event_type, actor_email, payload)
+      VALUES (NULL, $1, 'opme_line_accepted_manual', $2, $3::jsonb)
+    `, [actor.orgId, actor.email || null, JSON.stringify({
+      line_id: lineId, alop_id: alopId, nr_op: line.nr_op, suma_op: line.suma_op,
+      match_status_vechi: line.match_status, match_notes_vechi: notaVeche,
+      matched_alop_id_vechi: line.matched_alop_id, motiv,
+      actor_user_id: actor.userId, actor_email: actor.email || null,
+    })]);
+
+    // 7. Matcher-ul, pe ACELAȘI client (fără conexiune nouă). `already_confirmed` e un
+    //    răspuns legitim: dosarul are deja o plată confirmată ⇒ reluare mai întâi (Etapa B);
+    //    linia rămâne acceptată și va fi agregată după reluare.
+    let result = 'already_confirmed';
+    let details = null;
+    if (!alop.plata_confirmed_at) {
+      const out = await tryAutoConfirmAlop(alopId, { client, actorUserId: actor.userId });
+      details = out.details?.[0] || null;
+      result = details?.result || out.reason;
+    }
+    await client.query('COMMIT');
+
+    const { rows: after } = await pool.query(
+      'SELECT status, plata_confirmed_at, plata_suma_efectiva, plata_nr_ordin FROM alop_instances WHERE id=$1',
+      [alopId]
+    );
+    res.json({
+      ok: true,
+      result,
+      details,
+      line: { id: lineId, match_status: 'manual', matched_alop_id: alopId, match_notes: notaNoua },
+      alop: after[0] || null,
+    });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    logger.error({ err: e, lineId }, 'opme accept line error');
+    res.status(500).json({ error: 'server_error' });
+  } finally {
+    client.release();
   }
 });
 
