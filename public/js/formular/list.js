@@ -951,7 +951,7 @@ function _renderLstTable(rows,type){
       ?`<span style="vertical-align:middle;margin-left:4px;padding:1px 7px;border-radius:8px;font-size:.65rem;font-weight:600;background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.3)" title="Alt document folosește același număr unic — verificați dacă nu trebuia o revizie">⚠ nr. partajat</span>`
       :'';
     return`<tr onclick="openDocFromList('${type}','${safeId}')" style="cursor:pointer">
-      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}${nrPartajatBadge}</a><button type="button" class="trasab-inline-btn" onclick="event.stopPropagation();openTrasabilitate('${type}','${safeId}');return false" title="Vezi trasabilitate (lanț DF↔ALOP↔ORD)">🔗</button>${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
+      <td><a href="#" onclick="openDocFromList('${type}','${safeId}');return false" style="font-weight:500">${nr}${revBadgeLst}${istoricBadgeLst}${nrPartajatBadge}</a><button type="button" class="trasab-inline-btn" onclick="event.stopPropagation();openTrasabilitate('${type}','${safeId}');return false" title="Vezi trasabilitate (lanț DF↔ALOP↔ORD)">🔗</button>${(row.flow_id&&row.flow_viu)?`<a class="flux-inline-btn" href="/flow.html?flow=${encodeURIComponent(row.flow_id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Deschide fluxul de semnare">✍️</a>`:''}${titlu?`<br><small style="color:#666">${titlu}</small>`:''}
       </td>
       <td>${esc(row.initiator||'—')}</td>
       <td>${esc(row.initiator_comp||'—')}</td>

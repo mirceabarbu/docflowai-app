@@ -637,6 +637,7 @@ router.get('/api/formulare/list', async (req, res) => {
           fd.subtitlu_df AS titlu,
           fd.created_by,
           fd.flow_id,
+          (f.id IS NOT NULL AND f.deleted_at IS NULL) AS flow_viu,
           COALESCE(fd.revizie_nr, 0) AS revizie_nr,
           COALESCE(fd.este_revizie, FALSE) AS este_revizie,
           -- #126 A3: lanțul de revizii se cheie pe DOSARUL ALOP — un dosar STRĂIN
@@ -824,6 +825,7 @@ router.get('/api/formulare/list', async (req, res) => {
           fo.beneficiar AS titlu,
           fo.created_by,
           fo.flow_id,
+          (f.id IS NOT NULL AND f.deleted_at IS NULL) AS flow_viu,
           COALESCE(
             CASE WHEN fo.status = 'completed'
                       AND fo.flow_id IS NOT NULL

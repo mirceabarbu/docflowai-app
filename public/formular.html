@@ -1535,7 +1535,7 @@
 <script src="/js/formular/draft.js?v=3.9.768" defer></script>
 <script src="/js/formular/clasa8.js?v=3.9.856" defer></script>
 <script src="/js/formular/facturi.js?v=3.9.839" defer></script>
-<script src="/js/formular/list.js?v=3.9.858" defer></script>
+<script src="/js/formular/list.js?v=3.9.861" defer></script>
 <script src="/js/formular/trasabilitate.js?v=3.9.839" defer></script>
 <script src="/js/formular/doc.js?v=3.9.858" defer></script>
 <script src="/js/shared/att-preview.js?v=3.9.693" defer></script>
@@ -1742,6 +1742,20 @@
     transition: background 0.15s, color 0.15s;
   }
   .trasab-inline-btn:hover { background: rgba(124,58,237,0.18); color: #c4b5fd; }
+
+  /* Buton inline ✍️ — deschide fluxul de semnare, lângă butonul de trasabilitate */
+  .flux-inline-btn {
+    background: transparent; border: none;
+    color: var(--df-text-4, #94a3b8);
+    cursor: pointer;
+    padding: 1px 5px; margin-left: 6px;
+    border-radius: 5px; font-size: 0.85rem;
+    vertical-align: middle;
+    text-decoration: none;
+    display: inline-block;
+    transition: background 0.15s, color 0.15s;
+  }
+  .flux-inline-btn:hover { background: rgba(124,58,237,0.18); color: #c4b5fd; }
 
   @media (max-width: 640px) {
     .trasab-modal-card { max-height: calc(100vh - 24px); }
