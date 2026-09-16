@@ -11,6 +11,7 @@
 
 import { pool } from '../db/index.mjs';
 import { logger } from '../middleware/logger.mjs';
+import { isModuleEnabledForOrg } from './entitlements.mjs';
 
 function _fmt(pattern, { nr, d }) {
   const dd = String(d.getDate()).padStart(2, '0');
@@ -37,6 +38,9 @@ function _fmt(pattern, { nr, d }) {
  * @param {string} [p.destinatar]
  * @param {string} [p.compartiment]
  * @param {number} [p.createdBy]
+ * @param {string} [p.doarDacaModululEActiv] — #214: cheia modulului (ex. 'registratura'). Dacă e
+ *   dată, o poziție NOUĂ se alocă doar dacă modulul e activ pe ORGANIZAȚIE
+ *   (`isModuleEnabledForOrg`). O poziție deja existentă pentru aceeași sursă se întoarce oricum.
  * @returns {Promise<{numar:number,numarFormat:string,data:string,an:number}|null>}
  */
 export async function allocateNumber(p = {}) {
@@ -73,6 +77,20 @@ export async function allocateNumber(p = {}) {
         data: new Date(r.data_inreg).toISOString(),
         an: r.an,
       };
+    }
+
+    // 1b. #214 — modulul dezactivat pe organizație ⇒ NU se consumă un număr nou.
+    //     Pe același client de tranzacție (fără conexiune nouă). Poziția existentă (pasul 1)
+    //     a fost deja întoarsă mai sus, deci istoricul rămâne neatins. O eroare aici cade în
+    //     catch-ul funcției ⇒ ROLLBACK ⇒ null ⇒ flux fără număr (fail-closed pe numerotare).
+    if (p.doarDacaModululEActiv) {
+      const activ = await isModuleEnabledForOrg(client, {
+        moduleKey: String(p.doarDacaModululEActiv), orgId,
+      });
+      if (!activ) {
+        await client.query('COMMIT');
+        return null;
+      }
     }
 
     // 2. Upsert seria + incrementare atomică a contorului.

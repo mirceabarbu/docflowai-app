@@ -22,6 +22,27 @@ import { allocateNumber } from '../services/registratura.mjs';
 const router = Router();
 const _csrf = csrfMiddleware;
 
+// #214 — poarta modulului, O SINGURĂ DATĂ pentru tot prefixul /api/registratura/.
+// Înainte, doar POST /intrari verifica modulul; lista, exportul, statusul, legarea,
+// atașamentele și asignatarii răspundeau oricui din organizație. Regula e cea per
+// utilizator (isModuleEnabled: user > comp > org > catalog) — accesul la ecran, nu
+// numerotarea (aceea e per organizație, în allocateNumber). `/api/me/can-registratura`
+// e în afara prefixului și rămâne liberă: ea e cea care îi spune interfeței să ascundă ecranul.
+router.use('/api/registratura', async (req, res, next) => {
+  const actor = requireAuth(req, res);
+  if (!actor) return;
+  try {
+    const can = await isModuleEnabled(pool, {
+      moduleKey: 'registratura', userId: actor.id || actor.userId, orgId: actor.orgId,
+    });
+    if (!can) return res.status(403).json({ error: 'module_disabled' });
+    return next();
+  } catch (e) {
+    logger.warn({ err: e }, 'registratura: verificarea modulului a eșuat');
+    return res.status(503).json({ error: 'entitlements_unavailable' });
+  }
+});
+
 // Termene legale implicite per registru (zile calendaristice).
 const TERMEN_REGISTRU = { general: null, petitii: 30, '544': 10 };
 
@@ -187,11 +208,7 @@ router.post('/api/registratura/intrari', _csrf, async (req, res) => {
   if (!actor) return;
   if (!_db(res)) return;
   try {
-    const can = await isModuleEnabled(pool, {
-      moduleKey: 'registratura', userId: actor.id || actor.userId, orgId: actor.orgId,
-    });
-    if (!can) return res.status(403).json({ error: 'module_disabled' });
-
+    // #214: poarta modulului e acum pe tot prefixul (router.use de mai sus).
     const b = req.body || {};
     // 'general' = serie comună cu ieșirile (numerotare continuă).
     // petiții/544 = serii proprii (legi speciale). Default = general.
