@@ -174,7 +174,7 @@
                 <td>${l.matched_alop_id
                     ? `<a href="javascript:void(0)" data-alop-id="${esc(l.matched_alop_id)}" class="df-opme-lines__alop-link">${esc(l.alop_titlu || l.df_nr || l.matched_alop_id.slice(0,8))}</a>`
                     : '—'}</td>
-                ${canAccept ? `<td>${ACCEPTABLE[l.match_status]
+                ${canAccept ? `<td>${(ACCEPTABLE[l.match_status] && !l.matched_ciclu_id)
                     ? `<button type="button" class="df-action-btn sm df-opme-accept-btn" data-line-id="${esc(l.id)}" title="Acceptă potrivirea (responsabil CAB)">Acceptă potrivirea</button>`
                     : ''}</td>` : ''}
               </tr>`).join('')}
@@ -326,10 +326,15 @@
     err.style.display = 'none'; err.textContent = '';
     el.classList.add('open');
 
-    // Dosarele în faza de plată (+ cel deja legat, dacă e în altă fază — ex. confirmat greșit).
+    // Dosarele în faza de plată (+ cel deja legat, DOAR dacă e în plată sau confirmat în ciclul
+    // curent — calea de corectare #209). #213: înainte se oferea indiferent de fază, iar o plată
+    // dintr-un ciclu închis ajungea pe ciclul curent (incident RATBV). Aceeași regulă ca poarta
+    // rutei (opme.mjs, pasul 3c); serverul rămâne poarta.
     const opts = [];
     const seen = new Set();
-    if (line.matched_alop_id) {
+    const preLegat = !!line.matched_alop_id && !line.matched_ciclu_id
+      && ['plata', 'completed'].includes(line.alop_status);
+    if (preLegat) {
       opts.push({ id: line.matched_alop_id, label: `${line.alop_titlu || line.df_nr || line.matched_alop_id.slice(0, 8)} (legat de matcher)` });
       seen.add(line.matched_alop_id);
     }
@@ -346,7 +351,7 @@
     } catch (_) { /* lista rămâne cu dosarul pre-legat, dacă există */ }
     sel.innerHTML = '<option value="">— alege dosarul —</option>'
       + opts.map(o => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join('');
-    if (line.matched_alop_id) sel.value = line.matched_alop_id;
+    if (preLegat) sel.value = line.matched_alop_id;
 
     const ok = el.querySelector('#df-opme-accept-ok');
     ok.onclick = async () => {

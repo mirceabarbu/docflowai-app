@@ -452,6 +452,8 @@ async function _processAlop(client, args) {
   //     #209: liniile deja LEGATE de acest ALOP în ciclul curent ('manual' = acceptată
   //     explicit de responsabilul CAB; 'auto' = potrivită anterior, relevantă după o
   //     reluare a confirmării) intră și ele în agregare, indiferent de CIF.
+  //     #213: o linie legată de un ciclu ARHIVAT (matched_ciclu_id setat) aparține acelui ciclu
+  //     și nu intră în suma ciclului curent — pe AMBELE ramuri (incident RATBV, 16.09.2026).
   const { rows: poolLines } = await client.query(`
     SELECT id, cod_angajament, indicator_angajament, cif_beneficiar, iban_beneficiar,
            suma_op, nr_op, opme_import_id, match_status
@@ -460,6 +462,7 @@ async function _processAlop(client, args) {
        AND (
             (TRIM(cif_beneficiar) = ANY($2::text[])
              AND match_status IN ('pending','unmatched','partial')
+             AND matched_ciclu_id IS NULL
              AND (matched_alop_id IS NULL OR matched_alop_id = $3))
          OR (match_status IN ('auto','manual')
              AND matched_alop_id = $3
@@ -588,9 +591,12 @@ async function _processAlop(client, args) {
   };
 }
 
+// Chemat DOAR cu 'unmatched' / 'ambiguous'. #213: o linie nepotrivită nu mai arată spre niciun
+// dosar — pointerul rămas (matched_alop_id de la o potrivire anterioară) era cel care făcea
+// dialogul de acceptare să preselecteze un dosar aflat în altă fază (incident RATBV, 16.09.2026).
 async function _markLine(client, lineId, status, note) {
   await client.query(`
-    UPDATE opme_lines SET match_status=$2, match_notes=$3 WHERE id=$1
+    UPDATE opme_lines SET match_status=$2, match_notes=$3, matched_alop_id=NULL, matched_ciclu_id=NULL WHERE id=$1
   `, [lineId, status, note]);
 }
 
