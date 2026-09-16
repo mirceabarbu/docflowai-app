@@ -41,6 +41,26 @@ export function isCabDept(actorComp, cabComp) {
   return !!cabComp && !!actorComp && actorComp === cabComp;
 }
 
+/**
+ * #216 — Cine poate vedea jurnalul de audit al unui DF/ORD.
+ * SURSA UNICĂ pentru poarta `GET /api/formulare-audit/:type/:id` ȘI pentru câmpul `can_audit`
+ * din `GET /api/formulare/list` (butonul „Audit document"). Nu duplica regula în browser.
+ *
+ *   admin      ⇒ orice organizație (comportamentul dinainte)
+ *   alt org    ⇒ nu
+ *   org_admin  ⇒ da
+ *   altfel     ⇒ membru al compartimentului CAB al organizației
+ *
+ * `docOrgId` absent ⇒ aceeași organizație (listele sunt deja scopate pe org).
+ */
+export function canViewFormularAudit(actor, { actorComp = '', cabComp = '', docOrgId = null } = {}) {
+  if (!actor) return false;
+  if (actor.role === 'admin') return true;
+  if (docOrgId != null && String(docOrgId) !== String(actor.orgId)) return false;
+  if (actor.role === 'org_admin') return true;
+  return isCabDept(actorComp, cabComp);
+}
+
 // FEAT ALOP-CAB: încarcă ÎNTR-UN SINGUR query compartimentul actorului ȘI cab_compartiment-ul
 // org-ului. O singură rundă la DB (nu două) — contorul de query-uri per handler rămâne cel de
 // dinainte (`loadActorComp`), deci testele mock poziționale nu se decalează. Cheia `compartiment`

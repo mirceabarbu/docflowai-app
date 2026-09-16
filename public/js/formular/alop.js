@@ -27,6 +27,9 @@
 
   // -- Cross-module: leaga document la ALOP ---------------------------------
 // ── Helper: leagă document la ALOP imediat (idempotent, async cu logging) ──────
+// #215 — coduri cu care serverul refuză legarea unui document de ALT dosar decât al lui.
+// Apar când `window._alopContext` a rămas de la un dosar deschis anterior.
+const _LINK_ALT_DOSAR = new Set(['ord_alt_dosar', 'ord_deja_legat', 'df_alt_dosar', 'df_deja_legat', 'dosar_nu_e_in_ordonantare']);
 async function _alopLinkDoc(ft, docId){
   const alopId=window._alopContext?.alopId;
   if(!alopId||!docId)return;
@@ -43,6 +46,15 @@ async function _alopLinkDoc(ft, docId){
     if(r.ok)console.log(`✅ link-df ok:`,alopId,docId);
     else{
       console.warn(`ALOP ${endpoint} warn:`,j.error);
+      // #215 — documentul nu aparține dosarului reținut în browser. Serverul a refuzat corect;
+      // banda roșie de mai jos ar sfătui exact greșeala („legați documentul din dosarul ALOP").
+      // Uităm contextul, ca salvările următoare (autosave) să nu mai încerce legarea.
+      if(r.status===409&&_LINK_ALT_DOSAR.has(j.error)){
+        window._alopContext=null;
+        try{sessionStorage.removeItem('_alopContext');}catch(_){}
+        setS(`Documentul a fost salvat. Nu a fost atașat dosarului ALOP deschis anterior: ${esc(j.message||j.error)}`,'info');
+        return;
+      }
       // v3.9.554 (A3): eroarea de legare nu mai e silențioasă — fără asta, documentul
       // pare salvat OK dar ALOP-ul rămâne „Fără DF" și utilizatorul nu află.
       setS(`Documentul a fost salvat, dar legarea la dosarul ALOP a eșuat: ${esc(j.message||j.error||('HTTP '+r.status))}. Reîncercați salvarea sau legați documentul din dosarul ALOP.`,'err');

@@ -102,7 +102,10 @@ d('#185 — link-df pe o revizie a aceluiași dosar', () => {
   });
 
   // ── 4 ⭐ Numerele duplicate NU păcălesc cheia ──────────────────────────────
-  it('două DF din dosare DIFERITE cu ACELAȘI nr_unic_inreg → 404 (cheia e dosarul, nu numărul)', async () => {
+  // #215: garda de proveniență (`df_alt_dosar`) refuză ÎNAINTE de UPDATE — dfQ are
+  // source_alop_id = alopQ ≠ alopP. Înainte răspunsul era 404 (UPDATE fără rând + dosar
+  // diferit); invariantul verificat — pointerul lui P NU se mută — e neschimbat.
+  it('două DF din dosare DIFERITE cu ACELAȘI nr_unic_inreg → 409 df_alt_dosar (cheia e dosarul, nu numărul)', async () => {
     const alopP = await seedAlop({ orgId: 1, createdBy: 1, status: 'angajare', titlu: 'Dosar P' });
     const alopQ = await seedAlop({ orgId: 1, createdBy: 1, status: 'draft', titlu: 'Dosar Q' });
     const dfP = await seedDf({ orgId: 1, createdBy: 1, status: 'aprobat',
@@ -114,8 +117,8 @@ d('#185 — link-df pe o revizie a aceluiași dosar', () => {
     const res = await request(app).post(`/api/alop/${alopP}/link-df`)
       .set('Cookie', p1()).send({ df_id: dfQ });
 
-    expect(res.status).toBe(404);
-    expect(res.body.error).toBe('not_found');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('df_alt_dosar');
     expect((await getAlop(alopP)).df_id).toBe(dfP);
   });
 

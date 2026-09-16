@@ -425,6 +425,9 @@ const createFlow = async (req, res) => {
         sursaId: flowId,
         sursaTip: 'flow',
         flowId,
+        // #214: numerotarea automată respectă modulul Registratură, la nivel de ORGANIZAȚIE.
+        // Dezactivat ⇒ _reg = null ⇒ subsolul PDF fără „Nr. inreg." (ramura existentă).
+        doarDacaModululEActiv: 'registratura',
         obiect: docName || '',
         expeditor: initInstitutie || '',
         compartiment: initCompartiment || null,

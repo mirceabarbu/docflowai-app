@@ -105,6 +105,39 @@ export async function isModuleEnabled(pool, ctx) {
   return value;
 }
 
+/**
+ * #214 — Rezolvă dacă un modul e activ pentru ORGANIZAȚIE, ignorând override-urile user/comp.
+ * Regula: override `org` > `module_catalog.default_enabled` (doar `active=true`) > false.
+ *
+ * Folosire: decizii care trebuie să fie IDENTICE pentru toți utilizatorii unei organizații
+ * (ex. numerotarea automată a fluxurilor în Registratură — o serie de numere nu poate avea
+ * goluri după cine a lansat fluxul). Pentru acces la ecrane/rute rămâne `isModuleEnabled`.
+ *
+ * Acceptă un Pool SAU un client de tranzacție (orice obiect cu `.query`). NU prinde erorile —
+ * apelantul decide ce înseamnă „nu știu" (la numerotare: fără număr).
+ *
+ * @param {{ query: Function }} db
+ * @param {{ moduleKey: string, orgId: number|string }} ctx
+ * @returns {Promise<boolean>}
+ */
+export async function isModuleEnabledForOrg(db, { moduleKey, orgId } = {}) {
+  const key = String(moduleKey || '').trim();
+  if (!key || orgId == null || orgId === '') return false;
+  const { rows: ov } = await db.query(
+    `SELECT enabled FROM module_entitlements
+      WHERE module_key = $1 AND scope_type = 'org' AND scope_id = $2::text
+      LIMIT 1`,
+    [key, String(orgId)]
+  );
+  if (ov && ov.length) return !!ov[0].enabled;
+  const { rows: cat } = await db.query(
+    'SELECT default_enabled FROM module_catalog WHERE module_key=$1 AND active=true',
+    [key]
+  );
+  if (!cat || !cat.length) return false;
+  return !!cat[0].default_enabled;
+}
+
 async function _computeEnabled(pool, { moduleKey, userId, compartiment, orgId }) {
   let rows = [];
   try {
