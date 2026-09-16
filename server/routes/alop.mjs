@@ -1241,10 +1241,26 @@ router.post('/api/alop/:id/link-df', _csrf, async (req, res) => {
     }
 
     const { rows: dfRows } = await pool.query(
-      'SELECT id FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+      'SELECT id, source_alop_id FROM formulare_df WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
       [df_id, actor.orgId]
     );
     if (!dfRows[0]) return res.status(404).json({ error: 'df_not_found' });
+
+    // #215 — proveniența, simetric cu link-ord. Un DF creat dintr-un dosar (orice revizie a
+    // lui păstrează `source_alop_id`) nu se leagă de alt dosar. Fără gardă, un context rămas
+    // în browser lega o revizie în lucru a dosarului A de un dosar B nou (df_id NULL) și îl
+    // muta pe B din `draft` în `angajare`. DF-urile vechi, fără proveniență, trec ca înainte.
+    {
+      const _src = dfRows[0].source_alop_id;
+      if (_src && String(_src).toLowerCase() !== String(req.params.id).toLowerCase()) {
+        logger.warn({ alopId: req.params.id, dfId: df_id, sourceAlopId: _src },
+          '[ALOP] link-df REFUZAT: DF-ul aparține altui dosar (#215)');
+        return res.status(409).json({
+          error: 'df_alt_dosar',
+          message: 'Acest Document de Fundamentare aparține altui dosar ALOP.',
+        });
+      }
+    }
 
     const { rows: conflict } = await pool.query(
       `SELECT id FROM alop_instances WHERE df_id=$1 AND id!=$2 AND cancelled_at IS NULL`,
@@ -1645,10 +1661,60 @@ router.post('/api/alop/:id/link-ord', _csrf, async (req, res) => {
     }
 
     const { rows: ordRows } = await pool.query(
-      'SELECT id FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
+      'SELECT id, source_alop_id FROM formulare_ord WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL',
       [ord_id, actor.orgId]
     );
     if (!ordRows[0]) return res.status(404).json({ error: 'ord_not_found' });
+
+    // #215 — gărzi DOAR pentru o legare NOUĂ. Incident 16.09.2026: ORD 47842 (RATBV) a ajuns
+    // și pe dosarul „CONSUM CARBURANT", aflat în lichidare. Frontendul cheamă link-ord la
+    // fiecare salvare cu dosarul reținut în browser; singura gardă era „dosarul-țintă n-are
+    // încă un ORD". Reapelul idempotent (același ORD deja legat) trece ca înainte, în orice
+    // fază — autosave-ul unui ORD aprobat nu trebuie să producă 409.
+    const _ordLegatDeja = String(alopRows[0].ord_id || '').toLowerCase() === String(ord_id).toLowerCase();
+    if (!_ordLegatDeja) {
+      // (a) Proveniența: un ORD creat dintr-un dosar aparține acelui dosar.
+      const _src = ordRows[0].source_alop_id;
+      if (_src && String(_src).toLowerCase() !== String(req.params.id).toLowerCase()) {
+        logger.warn({ alopId: req.params.id, ordId: ord_id, sourceAlopId: _src },
+          '[ALOP] link-ord REFUZAT: ORD-ul aparține altui dosar (#215)');
+        return res.status(409).json({
+          error: 'ord_alt_dosar',
+          message: 'Această ordonanțare aparține altui dosar ALOP.',
+        });
+      }
+      // (b) Conflict — simetric cu `df_deja_legat` din link-df: ORD curent pe alt dosar activ,
+      //     sau ORD dintr-un ciclu arhivat al altui dosar.
+      const { rows: _conflict } = await pool.query(
+        `SELECT 1 FROM alop_instances
+          WHERE ord_id = $1 AND id <> $2 AND cancelled_at IS NULL
+         UNION ALL
+         SELECT 1 FROM alop_ord_cicluri
+          WHERE ord_id = $1 AND alop_id <> $2
+         LIMIT 1`,
+        [ord_id, req.params.id]
+      );
+      if (_conflict.length) {
+        logger.warn({ alopId: req.params.id, ordId: ord_id },
+          '[ALOP] link-ord REFUZAT: ORD-ul e deja pe alt dosar (#215)');
+        return res.status(409).json({
+          error: 'ord_deja_legat',
+          message: 'Această ordonanțare este deja asociată unui alt dosar ALOP.',
+        });
+      }
+      // (c) Faza: ORD-ul se completează doar din ordonanțare.
+      const { rows: _st } = await pool.query(
+        'SELECT status FROM alop_instances WHERE id=$1 AND org_id=$2',
+        [req.params.id, actor.orgId]
+      );
+      if (_st[0]?.status !== 'ordonantare') {
+        return res.status(409).json({
+          error: 'dosar_nu_e_in_ordonantare',
+          status: _st[0]?.status || null,
+          message: 'Dosarul ALOP nu este în faza de ordonanțare.',
+        });
+      }
+    }
 
     const { rows } = await pool.query(`
       UPDATE alop_instances
