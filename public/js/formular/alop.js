@@ -1480,6 +1480,7 @@ async function alopRevizuiesteDF(alopId,dfId){
   window._alopLinkDoc               = _alopLinkDoc;
   window.openOpmeImport             = openOpmeImport;
   window.openOpmeLinesForAlop       = openOpmeLinesForAlop;
+  window.alopReiaPlata              = alopReiaPlata;
 
   window.df = window.df || {};
   window.df._formularAlopLoaded = true;
