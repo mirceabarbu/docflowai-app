@@ -19,7 +19,7 @@ import { pool } from '../../db/index.mjs';
 import { listFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import { isAdminOrOrgAdmin } from '../admin/_helpers.mjs';
 import { isPlatformAdmin } from '../../services/authz-scope.mjs';
-import { loadActorCompAndCab, isCabDept, canEditFormular, canViewFormular } from '../../services/authz-formular.mjs';
+import { loadActorCompAndCab, isCabDept, canEditFormular, canViewFormular, canViewFormularAudit } from '../../services/authz-formular.mjs';
 import { requireDb } from './_helpers.mjs';
 import { dosarKeyExpr } from '../../services/df-dosar-key.mjs';
 import { dfAprobatSql, docAprobatSql } from '../../services/df-aprobat-sql.mjs';
@@ -504,6 +504,7 @@ router.get('/api/formulare/list', async (req, res) => {
   // ramura de vizibilitate de mai jos, iar `narrowCanDeleteRows` are nevoie de el după
   // query. Rămâne '' pentru admin/org_admin (care oricum trec pe `isOrgManager`).
   let lstActorComp = '';
+  let lstCabComp = '';   // #216 — pentru `can_audit`
 
   const { type = 'df', status, from, to, comp, init, p2, nr, page = '1', limit = '20', all } = req.query;
   // #133a — modul EXPORT: aceeași interogare, aceleași `conds`, aceeași autorizare;
@@ -528,6 +529,7 @@ router.get('/api/formulare/list', async (req, res) => {
           // sus, fără filtru de compartiment/inițiator). #105d: org-scope=isPlatform, vizibilitate în-org=isOrgManager.
           const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
           lstActorComp = actorComp;   // #143b — înainte de orice return timpuriu pe ramura CAB
+          lstCabComp = cabComp;       // #216
           if (!isCabDept(actorComp, cabComp)) {
             const u1 = params.push(actor.userId);
             const u2 = params.push(actor.userId);
@@ -717,6 +719,9 @@ router.get('/api/formulare/list', async (req, res) => {
 
       const { rows } = await pool.query(sql, params);
       narrowCanDeleteRows(rows, { isOrgManager, actorComp: lstActorComp });
+      // #216 — butonul „Audit document": aceeași decizie ca poarta rutei de audit.
+      { const _ca = canViewFormularAudit(actor, { actorComp: lstActorComp, cabComp: lstCabComp });
+        for (const r of rows) r.can_audit = _ca; }
       const total = rows.length ? parseInt(rows[0].total) : 0;
       res.json({ ok: true, rows: rows.map(r => { const { total: _, ...rest } = r; return rest; }), total });
 
@@ -732,6 +737,7 @@ router.get('/api/formulare/list', async (req, res) => {
           // sus, fără filtru de compartiment/inițiator). #105d: org-scope=isPlatform, vizibilitate în-org=isOrgManager.
           const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
           lstActorComp = actorComp;   // #143b — vezi comentariul din ramura DF
+          lstCabComp = cabComp;       // #216
           if (!isCabDept(actorComp, cabComp)) {
             const u1 = params.push(actor.userId);
             const u2 = params.push(actor.userId);
@@ -886,6 +892,9 @@ router.get('/api/formulare/list', async (req, res) => {
 
       const { rows } = await pool.query(sql, params);
       narrowCanDeleteRows(rows, { isOrgManager, actorComp: lstActorComp });
+      // #216 — butonul „Audit document": aceeași decizie ca poarta rutei de audit.
+      { const _ca = canViewFormularAudit(actor, { actorComp: lstActorComp, cabComp: lstCabComp });
+        for (const r of rows) r.can_audit = _ca; }
       const total = rows.length ? parseInt(rows[0].total) : 0;
       res.json({ ok: true, rows: rows.map(r => { const { total: _, ...rest } = r; return rest; }), total });
     }
@@ -909,7 +918,20 @@ router.get('/api/formulare/list', async (req, res) => {
 router.get('/api/formulare-audit/:type/:id', async (req, res) => {
   if (requireDb(res)) return;
   const actor = requireAuth(req, res); if (!actor) return;
-  if (!isAdminOrOrgAdmin(actor)) return res.status(403).json({ error: 'forbidden' });
+  // #216 — auditul e vizibil și compartimentului CAB. Decizia: canViewFormularAudit (sursa unică,
+  // aceeași ca `can_audit` din listă). Non-adminii sunt refuzați ÎNAINTE de a căuta documentul,
+  // ca un id inexistent să nu se distingă de unul interzis. Căutare eșuată ⇒ 403 (fail-closed).
+  let auditComps = { actorComp: '', cabComp: '' };
+  if (!isAdminOrOrgAdmin(actor)) {
+    try {
+      const c = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+      auditComps = { actorComp: c?.actorComp || '', cabComp: c?.cabComp || '' };
+    } catch (e) {
+      logger.warn({ err: e, userId: actor.userId }, 'formulare-audit: compartimentul nu a putut fi citit — refuz');
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    if (!canViewFormularAudit(actor, auditComps)) return res.status(403).json({ error: 'forbidden' });
+  }
 
   const type = String(req.params.type || '').toLowerCase();
   if (type !== 'df' && type !== 'ord') return res.status(400).json({ error: 'invalid_type' });
@@ -932,8 +954,8 @@ router.get('/api/formulare-audit/:type/:id', async (req, res) => {
     if (!docRows.length) return res.status(404).json({ error: 'not_found' });
     const doc = docRows[0];
 
-    // Scoping org_admin: vede doar org-ul propriu
-    if (actor.role === 'org_admin' && doc.org_id !== actor.orgId)
+    // Scoping pe organizație (org_admin și CAB) — #216: aceeași funcție ca poarta de mai sus.
+    if (!canViewFormularAudit(actor, { ...auditComps, docOrgId: doc.org_id }))
       return res.status(403).json({ error: 'forbidden' });
 
     const events = await listFormularAudit(type, id);

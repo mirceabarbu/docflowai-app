@@ -932,8 +932,8 @@ function _renderLstTable(rows,type){
     const cancelBtn=canDelete
       ?`<button class="df-action-btn danger sm" onclick="stergeDoc('${type}','${esc(row.id)}')" title="Șterge">🗑</button>`
       :'';
-    const isAdm=window.ST?.user?.role==='admin'||window.ST?.user?.role==='org_admin';
-    const auditBtn=isAdm
+    // #216 — vizibilitatea vine de la server (`can_audit`, aceeași funcție ca poarta rutei).
+    const auditBtn=row.can_audit===true
       ?`<button class="df-action-btn teal sm" onclick="openFormAudit('${type}','${esc(row.id)}')" title="Audit document"><svg class="df-ico"><use href="/icons.svg?v=3.9.540#ico-clipboard"/></svg></button>`
       :'';
     const safeId=esc(row.id);
