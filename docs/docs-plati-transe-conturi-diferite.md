@@ -41,8 +41,9 @@ Utilizatorul a confirmat manual doar al doilea, iar dosarul a apărut plătit cu
 
 ## Cine poate face asta
 
-**Doar responsabilul CAB** — membru al compartimentului CAB al organizației. Nu inițiatorul, nu
-un coleg de compartiment, nu administratorul de organizație doar pentru că e administrator.
+**Responsabilul CAB** — membru al compartimentului CAB al organizației — **sau un administrator**
+(administratorul platformei ori administratorul organizației; lărgire introdusă la #210). Nu
+inițiatorul, nu un coleg de compartiment.
 
 Dreptul e verificat pe server. Dacă butoanele nu apar, nu e o problemă de interfață.
 
@@ -74,6 +75,15 @@ Cazul cel mai frecvent. Importul a adus OP-urile, dar matcher-ul le-a respins.
 
 ⭐ Nota originală de respingere **se păstrează** alături de motivul tău. Motivul pentru care
 sistemul a respins inițial linia rămâne vizibil.
+
+⚠️ **Dosarul trebuie să fie în faza de plată** — în starea „plată" sau cu plata confirmată în
+ciclul curent. Un dosar trecut deja la ciclul următor (în lichidare sau ordonanțare) nu apare în
+listă, iar serverul refuză acceptarea. Motivul: orice OP existent aparține atunci unui ciclu
+anterior; acceptat pe dosar, ar fi adunat la plata ciclului care urmează.
+
+Liniile care aparțin unui **ciclu arhivat** nu mai au butonul „Acceptă potrivirea" și nu sunt
+redeschise de „Re-rulează matching". Dacă o plată trebuie legată de un ciclu închis, nu se face din
+aplicație: se tratează separat, cu script SQL (precedent: SQL-213d, dosarul RATBV, 16.09.2026).
 
 ### B. Nu ai OP-urile în platformă — **confirmare manuală cu listă**
 

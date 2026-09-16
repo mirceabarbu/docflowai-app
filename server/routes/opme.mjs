@@ -411,6 +411,7 @@ router.get('/api/opme/imports/:id', async (req, res) => {
         l.matched_alop_id, l.matched_ciclu_id, l.matched_at,
         l.match_status, l.match_notes,
         a.titlu AS alop_titlu,
+        a.status AS alop_status,
         df.nr_unic_inreg AS df_nr
       FROM opme_lines l
       LEFT JOIN alop_instances a ON a.id = l.matched_alop_id
@@ -554,7 +555,7 @@ router.post('/api/opme/lines/:id/accept', csrfMiddleware, async (req, res) => {
     const alop = aRows[0];
 
     const { rows: lRows } = await client.query(
-      `SELECT id, org_id, nr_op, suma_op, match_status, match_notes, matched_alop_id
+      `SELECT id, org_id, nr_op, suma_op, match_status, match_notes, matched_alop_id, matched_ciclu_id
          FROM opme_lines WHERE id=$1 AND org_id=$2 FOR UPDATE`,
       [lineId, actor.orgId]
     );
@@ -588,6 +589,32 @@ router.post('/api/opme/lines/:id/accept', csrfMiddleware, async (req, res) => {
     if (!['unmatched', 'partial', 'ambiguous'].includes(line.match_status)) {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'deja_potrivita', match_status: line.match_status });
+    }
+
+    // 3b. #213 — o linie legată de un ciclu ARHIVAT e istorie: acceptarea ar pune
+    //     matched_ciclu_id = NULL și ar muta plata pe ciclul curent (incident RATBV, 16.09.2026).
+    if (line.matched_ciclu_id) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'linie_ciclu_arhivat',
+        message: 'Linia aparține unui ciclu de plată deja arhivat și nu se mai poate accepta pe dosar.',
+      });
+    }
+
+    // 3c. #213 — doar pe un dosar al cărui ciclu curent e în faza de plată: `plata`, sau
+    //     `completed` (plată confirmată în ciclul curent — calea de corectare #209, urmată de
+    //     „Reia confirmarea plății"). În lichidare/ordonanțare, orice OP existent aparține unui
+    //     ciclu anterior; acceptat aici, ar fi adunat la plata ciclului care urmează.
+    //     ⛔ Legarea unei plăți de un ciclu închis NU se face din aplicație (decizie de produs).
+    if (!['plata', 'completed'].includes(alop.status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'dosar_nu_e_in_plata',
+        status: alop.status,
+        message: 'Dosarul nu este în faza de plată. O plată OPME se acceptă doar pe un dosar în plată '
+          + 'sau cu plata confirmată în ciclul curent. Dacă OP-ul aparține unui ciclu deja închis, '
+          + 'nu se acceptă din aplicație.',
+      });
     }
 
     // 5. Linia devine 'manual'. Nota veche (motivul respingerii automate) se PĂSTREAZĂ.
@@ -668,13 +695,16 @@ router.post('/api/opme/imports/:id/rematch', csrfMiddleware, async (req, res) =>
     if (!dup[0]) return res.status(404).json({ error: 'not_found' });
 
     // Re-deschide pending pentru toate liniile care NU sunt deja 'auto' sau 'manual'
-    // (idempotent — liniile confirmate rămân neatinse).
+    // (idempotent — liniile confirmate rămân neatinse). #213: liniile legate de un ciclu
+    // ARHIVAT (matched_ciclu_id setat) sunt istorie și rămân neatinse — redeschise, ar fi
+    // reevaluate pe ciclul curent al aceluiași dosar (incident RATBV, 16.09.2026).
     await pool.query(`
       UPDATE opme_lines
          SET match_status='pending', match_notes=NULL
        WHERE opme_import_id = $1
          AND org_id = $2
          AND match_status IN ('unmatched','ambiguous','partial')
+         AND matched_ciclu_id IS NULL
     `, [importId, actor.orgId]);
 
     // Erorile per-grup vin în match_report.errors; matchImport aruncă DOAR la
@@ -814,6 +844,7 @@ router.post('/api/opme/rematch-all', csrfMiddleware, async (req, res) => {
              SET match_status='pending', match_notes=NULL
            WHERE opme_import_id = $1 AND org_id = $2
              AND match_status IN ('unmatched','ambiguous','partial')
+             AND matched_ciclu_id IS NULL
         `, [imp.id, actor.orgId]);
 
         const rep = await matchImport(imp.id);
