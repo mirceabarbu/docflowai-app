@@ -879,6 +879,9 @@ async function loadList(){
     const rows=j.rows||[];
     const total=j.total||0;
     _setLstCount(total);   // și pe ramura goală: „0 documente" e exact confirmarea de care are nevoie
+    // #218 — pagină dincolo de ultima (listă micșorată între timp): o singură reîncercare pe
+    // pagina 1. Garda `page>1` oprește orice buclă: a doua cerere are deja page=1.
+    if(!rows.length&&_lstState.page>1){_lstState.page=1;return loadList();}
     if(!rows.length){if(em)em.style.display='';}
     else{_renderLstTable(rows,_lstState.type);_renderLstPagin(total,_lstState.page,_lstState.limit);}
   }catch(e){if(ld)ld.style.display='none';if(em){em.textContent='Eroare la încărcarea listei.';em.style.display='';}_setLstCount(null);}
@@ -1024,9 +1027,14 @@ async function stergeDoc(type,id){
     loadList();
   }catch(e){alert('Eroare: '+e.message);}
 }
+// #218 — orice schimbare de FILTRU readuce lista la pagina 1 (tiparul din alop.js,
+// `_alopFilterChanged`). Fără asta, de pe pagina 3 din „Toate", un filtru cu o singură pagină
+// de rezultate cerea OFFSET 40 ⇒ zero rânduri ⇒ „0 documente", ca și cum filtrul n-ar găsi nimic.
+// ⛔ NU se folosește la întoarcerea din document / după salvare: acolo pagina se păstrează.
+function _lstFilterChanged(){ _lstState.page=1; loadList(); }
 function debouncedLoadList(){
   clearTimeout(_lstDebTimer);
-  _lstDebTimer=setTimeout(()=>loadList(),400);
+  _lstDebTimer=setTimeout(()=>_lstFilterChanged(),400);   // #218 — căutare = filtru ⇒ pagina 1
 }
 function resetFilters(){
   const st=document.getElementById('flt-status');if(st)st.value='all';
@@ -1126,6 +1134,7 @@ function _populateCompartimente(){
   window.openDocFromList        = openDocFromList;
   window.stergeDoc              = stergeDoc;
   window.debouncedLoadList      = debouncedLoadList;
+  window._lstFilterChanged      = _lstFilterChanged;
   window.resetFilters           = resetFilters;
 
   window.loadDfAprobate         = loadDfAprobate;
