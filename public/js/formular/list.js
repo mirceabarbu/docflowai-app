@@ -957,7 +957,9 @@ function _renderLstTable(rows,type){
       <td>${esc(row.initiator_comp||'—')}</td>
       <td>${row.p2_compartiment
         ? `<span title="Atribuit întregului compartiment — oricine din el poate completa">👥 ${esc(row.p2_compartiment)}</span>`
-        : esc(row.p2||'—')}</td>
+        : esc(row.p2||'—')}${row.p2_ultim_cab
+        ? `<div style="font-size:.75rem;color:var(--df-text-3);margin-top:2px" title="Ultimul utilizator din compartimentul CAB care a lucrat pe document">ultim: ${esc(row.p2_ultim_cab)}${row.p2_ultim_cab_at?' · '+_fmtDate(row.p2_ultim_cab_at):''}</div>`
+        : ''}</td>
       <td class="lst-col-ord" style="text-align:right;white-space:nowrap">${_lstBani(row.ord_valoare)}</td>
       <td class="lst-col-ord" style="text-align:right;white-space:nowrap">${_lstPlata(row.plata_suma,row.ord_valoare)}</td>
       <td>${_stBadge(row.badge_status)}</td>
@@ -1067,11 +1069,11 @@ async function exportLista(){
 
     let aoa,numericCols,sheet,filename;
     if(type==='df'){
-      aoa=[['Nr.','Titlu','Revizie','Inițiator','Compartiment','Responsabil CAB','Status','Creat la','Actualizat la','Actualizat de']];
+      aoa=[['Nr.','Titlu','Revizie','Inițiator','Compartiment','Responsabil CAB','Ultimul din CAB','Status','Creat la','Actualizat la','Actualizat de']];
       rows.forEach(row=>{
         aoa.push([
           row.nr||'', row.titlu||'', 'R'+(row.revizie_nr||0),
-          row.initiator||'', row.initiator_comp||'', respCab(row),
+          row.initiator||'', row.initiator_comp||'', respCab(row), row.p2_ultim_cab||'',
           stLabel(row), fmtDt(row.created_at), fmtDt(row.updated_at), row.updated_by_nume||'',
         ]);
       });
@@ -1079,16 +1081,16 @@ async function exportLista(){
       sheet='Documente de Fundamentare';
       filename='DF_';
     }else{
-      aoa=[['Nr.','Furnizor','Inițiator','Compartiment','Responsabil CAB','Valoare ORD','Plată','Status','Creat la','Actualizat la','Actualizat de']];
+      aoa=[['Nr.','Furnizor','Inițiator','Compartiment','Responsabil CAB','Ultimul din CAB','Valoare ORD','Plată','Status','Creat la','Actualizat la','Actualizat de']];
       rows.forEach(row=>{
         aoa.push([
-          row.nr||'', row.titlu||'', row.initiator||'', row.initiator_comp||'', respCab(row),
+          row.nr||'', row.titlu||'', row.initiator||'', row.initiator_comp||'', respCab(row), row.p2_ultim_cab||'',
           Number(row.ord_valoare)||0,
           row.plata_suma==null?'—':Number(row.plata_suma),
           stLabel(row), fmtDt(row.created_at), fmtDt(row.updated_at), row.updated_by_nume||'',
         ]);
       });
-      numericCols=[5,6];
+      numericCols=[6,7];
       sheet='Ordonanțări de Plată';
       filename='ORD_';
     }

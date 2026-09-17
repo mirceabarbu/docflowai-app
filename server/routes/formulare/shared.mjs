@@ -613,8 +613,10 @@ router.get('/api/formulare/list', async (req, res) => {
         const iB = params.push(likeP2);
         // #131a — cu atribuire pe COMPARTIMENT, u2 e NULL (assigned_to NULL) ⇒ fără această
         // ramură documentul n-ar fi găsit niciodată de filtru. Refolosim indexul deja împins.
+        // #217 — găsește documentul și după ultimul din CAB care a lucrat pe el (LATERAL pcab).
         conds.push(`(u2.email ILIKE $${iA} OR u2.nume ILIKE $${iB}
-                     OR TRIM(COALESCE(fd.p2_compartiment,'')) ILIKE $${iA})`);
+                     OR TRIM(COALESCE(fd.p2_compartiment,'')) ILIKE $${iA}
+                     OR pcab.nume ILIKE $${iB} OR pcab.email ILIKE $${iA})`);
       }
       if (nr) {
         // #121: căutarea după Nr. la DF acoperă și denumirea ALOP-ului legat —
@@ -693,6 +695,10 @@ router.get('/api/formulare/list', async (req, res) => {
           -- #131a — Responsabil CAB = persoana (u2) SAU compartimentul atribuit.
           COALESCE(u2.nume, u2.email, NULLIF(TRIM(fd.p2_compartiment),'')) AS p2,
           NULLIF(TRIM(fd.p2_compartiment),'') AS p2_compartiment,
+          -- #217 — ultimul din CAB care a lucrat pe document (vezi LATERAL pcab). NULL la atribuire
+          -- pe persoană când e chiar persoana atribuită — decizia de afișare stă aici, nu în browser.
+          CASE WHEN pcab.uid IS DISTINCT FROM fd.assigned_to THEN pcab.nume END AS p2_ultim_cab,
+          CASE WHEN pcab.uid IS DISTINCT FROM fd.assigned_to THEN pcab.at   END AS p2_ultim_cab_at,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           -- #143b — DOAR partea de stare. Proprietatea (creator / coleg de compartiment /
           -- admin) se aplica in JS imediat dupa query, prin helperul din
@@ -712,6 +718,32 @@ router.get('/api/formulare/list', async (req, res) => {
         LEFT JOIN users u1 ON u1.id = fd.created_by
         LEFT JOIN users u2 ON u2.id = fd.assigned_to
         LEFT JOIN users u3 ON u3.id = fd.updated_by
+        -- #217 — ultimul utilizator din CAB-ul organizației documentului care a lucrat pe el:
+        -- cel mai recent dintre evenimentele de audit și ultima salvare. Regula CAB = isCabDept
+        -- (TRIM, egalitate exactă, șir gol exclus), pe compartimentul de AZI, aceeași organizație.
+        -- Fără parametri noi (params e pozițional).
+        LEFT JOIN organizations o_cab ON o_cab.id = fd.org_id
+        LEFT JOIN LATERAL (
+          SELECT x.uid, x.nume, x.email, x.at
+            FROM (
+              SELECT uc.id AS uid, COALESCE(NULLIF(uc.nume,''), uc.email) AS nume, uc.email,
+                     fa.created_at AS at
+                FROM formulare_audit fa
+                JOIN users uc ON uc.id = fa.actor_id
+               WHERE fa.form_type = 'df' AND fa.form_id = fd.id
+                 AND uc.org_id = fd.org_id
+                 AND TRIM(COALESCE(uc.compartiment,'')) <> ''
+                 AND TRIM(COALESCE(uc.compartiment,'')) = TRIM(COALESCE(o_cab.cab_compartiment,''))
+              UNION ALL
+              SELECT u3.id, COALESCE(NULLIF(u3.nume,''), u3.email), u3.email, fd.updated_at
+               WHERE u3.id IS NOT NULL
+                 AND u3.org_id = fd.org_id
+                 AND TRIM(COALESCE(u3.compartiment,'')) <> ''
+                 AND TRIM(COALESCE(u3.compartiment,'')) = TRIM(COALESCE(o_cab.cab_compartiment,''))
+            ) x
+           ORDER BY x.at DESC
+           LIMIT 1
+        ) pcab ON TRUE
         LEFT JOIN flows f  ON f.id::text = fd.flow_id
         ${where}
         ORDER BY fd.updated_at DESC
@@ -811,8 +843,10 @@ router.get('/api/formulare/list', async (req, res) => {
         const iB = params.push(likeP2);
         // #131a — cu atribuire pe COMPARTIMENT, u2 e NULL (assigned_to NULL) ⇒ fără această
         // ramură documentul n-ar fi găsit niciodată de filtru. Refolosim indexul deja împins.
+        // #217 — găsește documentul și după ultimul din CAB care a lucrat pe el (LATERAL pcab).
         conds.push(`(u2.email ILIKE $${iA} OR u2.nume ILIKE $${iB}
-                     OR TRIM(COALESCE(fo.p2_compartiment,'')) ILIKE $${iA})`);
+                     OR TRIM(COALESCE(fo.p2_compartiment,'')) ILIKE $${iA}
+                     OR pcab.nume ILIKE $${iB} OR pcab.email ILIKE $${iA})`);
       }
       if (nr) {
         // #121: căutarea după Nr. la ORD acoperă și denumirea furnizorului (fo.beneficiar).
@@ -876,6 +910,10 @@ router.get('/api/formulare/list', async (req, res) => {
           -- #131a — Responsabil CAB = persoana (u2) SAU compartimentul atribuit.
           COALESCE(u2.nume, u2.email, NULLIF(TRIM(fo.p2_compartiment),'')) AS p2,
           NULLIF(TRIM(fo.p2_compartiment),'') AS p2_compartiment,
+          -- #217 — ultimul din CAB care a lucrat pe document (vezi LATERAL pcab). NULL la atribuire
+          -- pe persoană când e chiar persoana atribuită — decizia de afișare stă aici, nu în browser.
+          CASE WHEN pcab.uid IS DISTINCT FROM fo.assigned_to THEN pcab.nume END AS p2_ultim_cab,
+          CASE WHEN pcab.uid IS DISTINCT FROM fo.assigned_to THEN pcab.at   END AS p2_ultim_cab_at,
           COALESCE(u3.nume, u3.email) AS updated_by_nume,
           -- #143b — vezi comentariul din ramura DF: aici ramane doar starea.
           (fo.flow_id IS NULL) AS can_delete,
@@ -885,6 +923,32 @@ router.get('/api/formulare/list', async (req, res) => {
         LEFT JOIN users u1 ON u1.id = fo.created_by
         LEFT JOIN users u2 ON u2.id = fo.assigned_to
         LEFT JOIN users u3 ON u3.id = fo.updated_by
+        -- #217 — ultimul utilizator din CAB-ul organizației documentului care a lucrat pe el:
+        -- cel mai recent dintre evenimentele de audit și ultima salvare. Regula CAB = isCabDept
+        -- (TRIM, egalitate exactă, șir gol exclus), pe compartimentul de AZI, aceeași organizație.
+        -- Fără parametri noi (params e pozițional).
+        LEFT JOIN organizations o_cab ON o_cab.id = fo.org_id
+        LEFT JOIN LATERAL (
+          SELECT x.uid, x.nume, x.email, x.at
+            FROM (
+              SELECT uc.id AS uid, COALESCE(NULLIF(uc.nume,''), uc.email) AS nume, uc.email,
+                     fa.created_at AS at
+                FROM formulare_audit fa
+                JOIN users uc ON uc.id = fa.actor_id
+               WHERE fa.form_type = 'ord' AND fa.form_id = fo.id
+                 AND uc.org_id = fo.org_id
+                 AND TRIM(COALESCE(uc.compartiment,'')) <> ''
+                 AND TRIM(COALESCE(uc.compartiment,'')) = TRIM(COALESCE(o_cab.cab_compartiment,''))
+              UNION ALL
+              SELECT u3.id, COALESCE(NULLIF(u3.nume,''), u3.email), u3.email, fo.updated_at
+               WHERE u3.id IS NOT NULL
+                 AND u3.org_id = fo.org_id
+                 AND TRIM(COALESCE(u3.compartiment,'')) <> ''
+                 AND TRIM(COALESCE(u3.compartiment,'')) = TRIM(COALESCE(o_cab.cab_compartiment,''))
+            ) x
+           ORDER BY x.at DESC
+           LIMIT 1
+        ) pcab ON TRUE
         LEFT JOIN flows f  ON f.id::text = fo.flow_id
         ${where}
         ORDER BY fo.updated_at DESC
