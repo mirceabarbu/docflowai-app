@@ -46,6 +46,7 @@ const INVOCATIONS = [
   { module: 'alop-dosar-sql.mjs', export: 'sqlRevizieInLucruNr', args: ['a'] },
   { module: 'alop-dosar-sql.mjs', export: 'sqlRevizieInVigoareId', args: ['a'] },
   { module: 'alop-dosar-sql.mjs', export: 'sqlRevizieInVigoareNr', args: ['a'] },
+  { module: 'alop-dosar-sql.mjs', export: 'sqlRevizieInVigoareFlowId', args: ['a'] },   // #220
 
   { module: 'authz-scope.mjs', export: 'orgScopeSql', args: [{ role: 'user', orgId: 7 }, 'a', []] },
 

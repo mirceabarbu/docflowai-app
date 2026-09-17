@@ -343,6 +343,7 @@ async function populateOrd(doc){
   const dfId=document.getElementById('o-df-id');if(dfId)dfId.value=doc.df_id||'';
   _renderDfSelect(doc.nr_unic_inreg?('DF '+doc.nr_unic_inreg):'DF legat');
   lockDfSelectIfLinked(); // ORD legat de DF → referința DF needitabilă (ciclu ALOP)
+  setOrdDfSalvat(doc); renderOrdDfAprobatChip();   // #220
   // Context buget an exercițiu pentru atenționarea inline — REZOLVAT de backend pe GET detaliu
   // (paritate cu garda hard). Setat ÎNAINTE de upTot() ca verificarea live să-l vadă.
   if(doc.buget_an_curent!=null){
@@ -1244,6 +1245,9 @@ function newDoc(ft){
     // eticheta reținută de la documentul precedent (SPA — nu se reîncarcă pagina).
     const dfId=document.getElementById('o-df-id');if(dfId)dfId.value='';
     _renderDfSelect('');
+    // #220 — ORD nou ⇒ chip-ul „DF aprobat" al documentului precedent dispare (SPA): starea
+    // salvată e ștearsă, iar condiția `s.ordId !== ST.docId.ordnt` golește gazda.
+    setOrdDfSalvat(null); renderOrdDfAprobatChip();
     lockDfSelectIfLinked(); // ORD nou fără DF → select-ul rămâne selectabil (enabled)
     lockOrdIdentityCols(); // ORD nou fără DF → coloanele de identitate editabile
     _resetOrdBuget(); // fără DF selectat → fără context de plafon (se încarcă la DF-select)
@@ -1683,6 +1687,39 @@ function previewAttFromChip(ft, slot, idx, bloc = 0){
   const url = `/api/formulare-atasamente/${ftType(ft)}/${docId}/${encodeURIComponent(item.id)}`;
   const name = item.filename || item.name || 'fișier';
   window.openAttPreview?.(url, name, item.mime_type || '');
+}
+
+// #220 — chip „DF aprobat" în formularul ORD. Reflectă DOAR starea salvată (decizia 3): dacă
+// selecția din `o-df-sel` diferă de DF-ul salvat al ORD-ului deschis, chip-ul e gol.
+let _ordDfSalvat = null;   // { ordId, dfId, nr, rev, semnat }
+function setOrdDfSalvat(doc){
+  _ordDfSalvat = (doc && doc.id) ? {
+    ordId: doc.id, dfId: doc.df_id || null, nr: doc.df_nr || doc.nr_unic_inreg || '',
+    rev: doc.df_revizie_nr || 0, semnat: doc.df_aprobat_semnat === true,
+  } : null;
+}
+function renderOrdDfAprobatChip(){
+  const host = document.getElementById('o-df-aprobat-chip');
+  if (!host) return;
+  const s = _ordDfSalvat;
+  const curDf = document.getElementById('o-df-id')?.value || '';
+  if (!s || !s.semnat || !s.dfId || s.ordId !== ST.docId?.ordnt || curDf !== String(s.dfId)) {
+    host.innerHTML = '';
+    return;
+  }
+  const url = `/api/formulare-ord/${encodeURIComponent(s.ordId)}/df-aprobat.pdf`;
+  const name = `DF ${s.nr} R${s.rev} — semnat.pdf`;
+  host.innerHTML = renderFileItem({
+    filename: name, mimeType: 'application/pdf',
+    canPreview: true, previewOnclick: 'previewOrdDfAprobat();return false;',
+    downloadHref: url, downloadName: name,
+    canDelete: false,
+  });
+}
+function previewOrdDfAprobat(){
+  const s = _ordDfSalvat; if (!s) return;
+  const url = `/api/formulare-ord/${encodeURIComponent(s.ordId)}/df-aprobat.pdf`;
+  window.openAttPreview?.(url, `DF ${s.nr} R${s.rev} — semnat.pdf`, 'application/pdf');
 }
 
 async function remAttServer(idx,lid,did,attId,btn){
@@ -2481,6 +2518,9 @@ function resetF(ft){
   window.renderAttachments          = renderAttachments;
   window.remAttServer               = remAttServer;
   window.previewAttFromChip         = previewAttFromChip;
+  window.renderOrdDfAprobatChip     = renderOrdDfAprobatChip;   // #220
+  window.previewOrdDfAprobat        = previewOrdDfAprobat;      // #220
+  window._setOrdDfSalvat            = setOrdDfSalvat;           // #220 — seam de test (ca _attIds)
 
   // Validation
   window._validateDf                = _validateDf;

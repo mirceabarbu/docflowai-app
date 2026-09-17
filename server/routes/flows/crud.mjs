@@ -13,6 +13,7 @@ import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-atta
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 import { normalizeRecipients } from '../../services/flow-transmit.mjs';
 import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
+import { sendFlowSignedPdf } from '../../services/flow-signed-pdf.mjs';
 import { liveFlowSql } from '../../services/flow-provenance.mjs';
 import { DOC_KINDS } from '../../services/flow-doc-claim.mjs';
 import { resolveActorOr } from '../../services/actor-identity.mjs';
@@ -685,22 +686,8 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
       return res.status(403).json({ error: 'forbidden', message: 'Acces interzis la acest document.' });
     }
     const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
-    const b64 = data.signedPdfB64;
-    if (!b64 || typeof b64 !== 'string') {
-      if (data.storage === 'drive' && data.driveFileIdFinal) {
-        try {
-          const { streamFromDrive } = await import('../../drive.mjs');
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
-          await streamFromDrive(data.driveFileIdFinal, res); return;
-        } catch(driveErr) { return res.status(502).json({ error: 'drive_unavailable' }); }
-      }
-      return res.status(404).json({ error: 'signed_pdf_missing' });
-    }
-    const raw = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
-    return res.status(200).send(Buffer.from(raw, 'base64'));
+    // #220 — livrarea (bază / Drive) e în services/flow-signed-pdf.mjs, partajată cu ruta DF din ORD.
+    return await sendFlowSignedPdf(res, data, req.params.flowId);
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 

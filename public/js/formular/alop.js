@@ -861,7 +861,7 @@ function renderAlopDetail(a,container){
             const _parts = [_est, _df, _bug].filter(Boolean);
             return `<div style="font-size:.85rem;margin-top:4px;display:flex;align-items:center;flex-wrap:wrap">${_parts.join(_sepHtml)}</div>`;
           })()}
-          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${_revStare.vigoare!=null?`DF în vigoare: <span class="df-revizie-badge${_revStare.vigoare>0?' revizie-activa':''}">R${_revStare.vigoare}</span>${_revStare.vigoare>0?`<span>Revizia ${_revStare.vigoare}</span>`:`<span>Revizia inițială</span>`}`:`<span style="color:#fbbf24;font-weight:600">Fără revizie aprobată</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}${_revStare.lucru!=null?`<span style="color:#fbbf24;font-weight:600" title="Revizie derivată pe dosarul ALOP: există o revizie neaprobată cu număr mai mare decât cea în vigoare.">· Revizie în lucru: R${_revStare.lucru}</span>`:''}${_revStare.incoerent?`<span style="color:#f87171;font-weight:600" title="Legătura ALOP→DF indică R${a.df_revizie_nr||0}, care nu este revizia în vigoare. Cifrele DF din antet provin din R${a.df_revizie_nr||0} și trebuie verificate.">⚠ legătură DF de verificat</span>`:''}</div>`:''}
+          ${a.df_id?`<div style="font-size:.78rem;color:var(--df-text-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">${_revStare.vigoare!=null?`DF în vigoare: <span class="df-revizie-badge${_revStare.vigoare>0?' revizie-activa':''}">R${_revStare.vigoare}</span>${_revStare.vigoare>0?`<span>Revizia ${_revStare.vigoare}</span>`:`<span>Revizia inițială</span>`}`:`<span style="color:#fbbf24;font-weight:600">Fără revizie aprobată</span>`}${a.df_nr?`<span style="color:var(--df-text-2);font-weight:600">· Nr. ${a.df_nr}</span>`:''}${(_revStare.vigoare!=null&&a.df_revizie_vigoare_flow_id)?`<a href="#" style="color:var(--df-accent,#818cf8);font-weight:600;text-decoration:none" title="Previzualizează PDF-ul semnat al reviziei în vigoare" onclick="previewDfVigoare('${esc(a.df_revizie_vigoare_flow_id)}','${esc(String(a.df_nr||''))}',${Number(_revStare.vigoare)||0});return false;">· 🔍 Previzualizează</a>`:''}${a.df_este_revizie_an_urmator?`<span style="color:#fbbf24;font-size:.72rem">· an următor</span>`:''}${_revStare.lucru!=null?`<span style="color:#fbbf24;font-weight:600" title="Revizie derivată pe dosarul ALOP: există o revizie neaprobată cu număr mai mare decât cea în vigoare.">· Revizie în lucru: R${_revStare.lucru}</span>`:''}${_revStare.incoerent?`<span style="color:#f87171;font-weight:600" title="Legătura ALOP→DF indică R${a.df_revizie_nr||0}, care nu este revizia în vigoare. Cifrele DF din antet provin din R${a.df_revizie_nr||0} și trebuie verificate.">⚠ legătură DF de verificat</span>`:''}</div>`:''}
           <div style="font-size:.74rem;color:var(--df-text-3);margin-top:4px">Creat de ${esc(a.creator_name||'?')} · ${fmtDate(a.created_at)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
@@ -1092,6 +1092,13 @@ async function alopDeschideORD(alopId,btn){
     }
   }catch(e){console.error('alopDeschideORD',e);}
   finally{_dfOpenInFlight=null;if(btn)btn.disabled=false;}
+}
+// #220 — PDF-ul semnat al reviziei ÎN VIGOARE a dosarului, prin ruta existentă a fluxului
+// (autorizarea #153: dreptul de a vedea DF-ul). Deschide modalul global de preview.
+function previewDfVigoare(flowId, nr, rev){
+  if (!flowId) return;
+  window.openAttPreview?.(`/flows/${encodeURIComponent(flowId)}/signed-pdf`,
+    `DF ${nr} R${rev} — semnat.pdf`, 'application/pdf');
 }
 // Fallback sync (folosit intern de alopLaunchDfFlow/OrdFlow când nu există doc)
 function alopGoToDF(alopId){
@@ -1493,6 +1500,7 @@ async function alopRevizuiesteDF(alopId,dfId){
   window.openOpmeImport             = openOpmeImport;
   window.openOpmeLinesForAlop       = openOpmeLinesForAlop;
   window.alopReiaPlata              = alopReiaPlata;
+  window.previewDfVigoare           = previewDfVigoare;   // #220
 
   window.df = window.df || {};
   window.df._formularAlopLoaded = true;

@@ -168,3 +168,6 @@ export const sqlRevizieInVigoareId = (a = 'a') => revizieInVigoare('fdrv.id', a)
 /** Numarul (revizie_nr) reviziei in vigoare a dosarului, sau NULL. */
 export const sqlRevizieInVigoareNr = (a = 'a') =>
   revizieInVigoare('COALESCE(fdrv.revizie_nr, 0)', a);
+
+/** #220 — Fluxul (flow_id) reviziei in vigoare a dosarului, sau NULL. Pentru previzualizarea PDF-ului semnat. */
+export const sqlRevizieInVigoareFlowId = (a = 'a') => revizieInVigoare('fdrv.flow_id', a);

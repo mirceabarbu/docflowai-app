@@ -39,7 +39,7 @@ import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import {
   sqlDosarAreFluxActiv, sqlDosarAreAprobat,
   sqlRevizieInLucruId, sqlRevizieInLucruNr,
-  sqlRevizieInVigoareNr,
+  sqlRevizieInVigoareNr, sqlRevizieInVigoareFlowId,
 } from '../services/alop-dosar-sql.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
@@ -73,6 +73,7 @@ const SQL_ALOP_REVIZIE_LUCRU_NR = sqlRevizieInLucruNr('a');
 // ca frontend-ul să deducă „în vigoare" din pointer (df.revizie_nr) — singura
 // sursă din care se putea naște contradicția „în vigoare Rn / în lucru Rn".
 const SQL_ALOP_REVIZIE_VIGOARE_NR = sqlRevizieInVigoareNr('a');
+const SQL_ALOP_REVIZIE_VIGOARE_FLOW = sqlRevizieInVigoareFlowId('a');   // #220 — doar detaliul
 
 // ⚠️ #134f — prima condiție a ramurii „revizie_flux" era `SQL_ALOP_DF_ARE_REVIZIE`, adică
 // „revizia POINTATĂ de a.df_id are revizie_nr > 0". Sub noua semantică (`df_id` = revizia ÎN
@@ -792,6 +793,7 @@ router.get('/api/alop/:id', async (req, res) => {
         ${SQL_ALOP_REVIZIE_LUCRU_ID} AS df_revizie_lucru_id,
         ${SQL_ALOP_REVIZIE_LUCRU_NR} AS df_revizie_lucru_nr,
         ${SQL_ALOP_REVIZIE_VIGOARE_NR} AS df_revizie_vigoare_nr,
+        ${SQL_ALOP_REVIZIE_VIGOARE_FLOW} AS df_revizie_vigoare_flow_id,
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS ord_aprobat,

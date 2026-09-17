@@ -333,7 +333,10 @@ const ANCORE_PERMISE = {
     'o-df-sel': [3, 'GLOBAL PRIN DESIGN — un singur DF per ORD (reconul #128a). 5→3 la #167: ' +
       'populateOrd și resetul din newDoc nu mai ating selectul direct, ci cheamă _renderDfSelect ' +
       '(list.js), singurul loc care îl randează — vezi invariantul select⟷hidden'],
-    'o-df-id': [5, 'GLOBAL PRIN DESIGN — id-ul DF-ului legat, unic pe document'],
+    'o-df-id': [6, 'GLOBAL PRIN DESIGN — id-ul DF-ului legat, unic pe document. 5→6 la #220: ' +
+      'renderOrdDfAprobatChip CITEȘTE hidden-ul ca să ascundă chip-ul când selecția diferă de DF-ul salvat'],
+    'o-df-aprobat-chip': [1, 'GLOBAL PRIN DESIGN — #220: gazda chip-ului „DF aprobat", unică pe document ' +
+      '(un singur DF per ORD), randată doar de renderOrdDfAprobatChip'],
     'o-tbody': [7, 'BLOCUL 0 — fallback pentru pagini/teste fără [data-bloc]. #128l a rezolvat ' +
       'ultimele două excepții reale (pre-checkul din showP2Modal și validateSecB); ce a rămas ' +
       'e fallback sau resetare de DOM (newDoc/resetF golesc blocul 0 după resetOrdBlocuri)'],
