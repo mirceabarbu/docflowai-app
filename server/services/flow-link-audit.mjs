@@ -10,6 +10,10 @@
  * (flow_id NULL), iar E acoperă pointerul GREȘIT — non-NULL, dar pe un flux care nu e
  * valid semnat, în timp ce ALT flux valid semnat revendică documentul (DF 45748, 01.09.2026).
  *
+ * Clasa F (`document_alt_dosar`, #219) iese din perechea document↔flux: un DF/ORD legat ca
+ * document CURENT de un dosar ALOP diferit de cel din proveniență (`source_alop_id`), sau, fără
+ * proveniență, de mai multe dosare active deodată (ORD 47842, 16.09.2026).
+ *
  * ⛔ ZERO scrieri. Acest modul NU repară nimic — semnalează, decizia e a omului
  * (un document semnat nu se re-leagă tăcut de un flux ales de o euristică).
  *
@@ -26,7 +30,7 @@
 
 import { validSignedFlowSql, liveFlowSql } from './flow-provenance.mjs';
 
-const CLASS_KEYS = ['doc_fara_flux', 'alop_fara_flux', 'alop_fara_document', 'fluxuri_paralele', 'pointer_alt_flux'];
+const CLASS_KEYS = ['doc_fara_flux', 'alop_fara_flux', 'alop_fara_document', 'fluxuri_paralele', 'pointer_alt_flux', 'document_alt_dosar'];
 
 /**
  * Găsește divergențele document↔flux, opțional scopate pe o organizație.
@@ -172,6 +176,36 @@ export async function findFlowLinkDivergences(pool, { orgId = null, limit = 200 
        WHERE d.deleted_at IS NULL AND d.flow_id IS NOT NULL
          AND (${validSignedFlowSql('fm')}) IS NOT TRUE
          AND ${validSignedFlowSql('fv')}${orgCond('d')}` },
+    // ── F — document_alt_dosar (#219) ────────────────────────────────────────
+    // Documentul curent al unui dosar activ provine din ALT dosar, sau (fără proveniență) e pe
+    // mai multe dosare active. Doar dosarele GREȘITE apar când proveniența decide.
+    // Incidentul ORD 47842 (16.09.2026).
+    { clasa: 'document_alt_dosar', sql: `
+      SELECT 'document_alt_dosar'::text AS clasa, 'ord'::text AS tip, d.id::text AS doc_id,
+             d.nr_ordonant_pl AS doc_nr, a.id::text AS alop_id, a.ord_flow_id AS flux,
+             (CASE WHEN d.source_alop_id IS NOT NULL
+                   THEN 'ORD legat de un dosar ALOP diferit de cel din care provine'
+                   ELSE 'ORD fără proveniență legat de mai multe dosare ALOP active' END)::text AS detaliu
+        FROM formulare_ord d
+        JOIN alop_instances a ON a.ord_id = d.id AND a.cancelled_at IS NULL
+       WHERE d.deleted_at IS NULL
+         AND (   (d.source_alop_id IS NOT NULL AND d.source_alop_id <> a.id)
+              OR (d.source_alop_id IS NULL AND EXISTS (
+                    SELECT 1 FROM alop_instances a2
+                     WHERE a2.ord_id = d.id AND a2.id <> a.id AND a2.cancelled_at IS NULL)))${orgCond('d')}` },
+    { clasa: 'document_alt_dosar', sql: `
+      SELECT 'document_alt_dosar'::text AS clasa, 'df'::text AS tip, d.id::text AS doc_id,
+             d.nr_unic_inreg AS doc_nr, a.id::text AS alop_id, a.df_flow_id AS flux,
+             (CASE WHEN d.source_alop_id IS NOT NULL
+                   THEN 'DF legat de un dosar ALOP diferit de cel din care provine'
+                   ELSE 'DF fără proveniență legat de mai multe dosare ALOP active' END)::text AS detaliu
+        FROM formulare_df d
+        JOIN alop_instances a ON a.df_id = d.id AND a.cancelled_at IS NULL
+       WHERE d.deleted_at IS NULL
+         AND (   (d.source_alop_id IS NOT NULL AND d.source_alop_id <> a.id)
+              OR (d.source_alop_id IS NULL AND EXISTS (
+                    SELECT 1 FROM alop_instances a2
+                     WHERE a2.df_id = d.id AND a2.id <> a.id AND a2.cancelled_at IS NULL)))${orgCond('d')}` },
   ];
 
   const byClass = Object.fromEntries(CLASS_KEYS.map((k) => [k, 0]));

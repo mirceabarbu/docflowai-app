@@ -305,6 +305,7 @@ function validateOrdCol5(rows) {
  * potrivea nimic ⇒ cicluriArhivate = 0 ⇒ plafonul 422 ignora tot ce se ordonanțase.
  * Ordinea = descrescătoare după încredere; fallback-ul pe pointer e doar pentru
  * documentele vechi, fără `source_alop_id`.
+ * #219 — la mai multe dosare pe același ORD (stare coruptă), câștigă cel din proveniență.
  * Întoarce id-ul ALOP sau null.
  */
 export async function resolveAlopIdForBudget({ ordId, dfId, orgId }, db = pool) {
@@ -313,6 +314,8 @@ export async function resolveAlopIdForBudget({ ordId, dfId, orgId }, db = pool) 
     const cur = await db.query(
       `SELECT a.id FROM alop_instances a
         WHERE a.ord_id = $1 AND a.org_id = $2 AND a.cancelled_at IS NULL
+        ORDER BY (a.id = (SELECT fo.source_alop_id FROM formulare_ord fo WHERE fo.id = $1)) DESC NULLS LAST,
+                 a.created_at
         LIMIT 1`, [ordId, orgId]);
     if (cur.rows.length) return cur.rows[0].id;
     // …apoi ciclurile ARHIVATE.
@@ -320,6 +323,8 @@ export async function resolveAlopIdForBudget({ ordId, dfId, orgId }, db = pool) 
       `SELECT a.id FROM alop_ord_cicluri c
          JOIN alop_instances a ON a.id = c.alop_id
         WHERE c.ord_id = $1 AND a.org_id = $2 AND a.cancelled_at IS NULL
+        ORDER BY (a.id = (SELECT fo.source_alop_id FROM formulare_ord fo WHERE fo.id = $1)) DESC NULLS LAST,
+                 c.ciclu_nr DESC
         LIMIT 1`, [ordId, orgId]);
     if (arh.rows.length) return arh.rows[0].id;
   }

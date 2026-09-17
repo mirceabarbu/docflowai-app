@@ -598,10 +598,13 @@ const createFlow = async (req, res) => {
     }
     // PASUL 4: Auto link-df-flow / ord-flow pe alop_instances
     if (body.meta?.dfId && pool) {
+      // #219 — dacă documentul are proveniență, fluxul se leagă doar de dosarul din care
+      // provine; fără proveniență, ca înainte (COALESCE(…, id) ⇒ condiție mereu adevărată).
       await pool.query(
         `UPDATE alop_instances
          SET df_flow_id = $1, updated_at = NOW()
-         WHERE df_id = $2 AND df_flow_id IS NULL AND cancelled_at IS NULL`,
+         WHERE df_id = $2 AND df_flow_id IS NULL AND cancelled_at IS NULL
+           AND id = COALESCE((SELECT source_alop_id FROM formulare_df WHERE id = $2), id)`,
         [flowId, body.meta.dfId]
       ).catch(e => logger.warn({ err: e }, 'alop link df_flow_id non-fatal'));
       // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la lichidare
@@ -625,10 +628,13 @@ const createFlow = async (req, res) => {
       } catch(e) { logger.warn({ err: e }, 'alop edge-case completed transition non-fatal'); }
     }
     if (body.meta?.ordId && pool) {
+      // #219 — dacă documentul are proveniență, fluxul se leagă doar de dosarul din care
+      // provine; fără proveniență, ca înainte (COALESCE(…, id) ⇒ condiție mereu adevărată).
       await pool.query(
         `UPDATE alop_instances
          SET ord_flow_id = $1, updated_at = NOW()
-         WHERE ord_id = $2 AND ord_flow_id IS NULL AND cancelled_at IS NULL`,
+         WHERE ord_id = $2 AND ord_flow_id IS NULL AND cancelled_at IS NULL
+           AND id = COALESCE((SELECT source_alop_id FROM formulare_ord WHERE id = $2), id)`,
         [flowId, body.meta.ordId]
       ).catch(e => logger.warn({ err: e }, 'alop link ord_flow_id non-fatal'));
       // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la plata
