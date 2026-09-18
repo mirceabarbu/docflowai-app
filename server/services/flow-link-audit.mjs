@@ -29,8 +29,9 @@
  */
 
 import { validSignedFlowSql, liveFlowSql } from './flow-provenance.mjs';
+import { generatedDocNameSql } from './flow-doc-name.mjs';
 
-const CLASS_KEYS = ['doc_fara_flux', 'alop_fara_flux', 'alop_fara_document', 'fluxuri_paralele', 'pointer_alt_flux', 'document_alt_dosar'];
+const CLASS_KEYS = ['doc_fara_flux', 'alop_fara_flux', 'alop_fara_document', 'fluxuri_paralele', 'pointer_alt_flux', 'document_alt_dosar', 'flux_fara_document'];
 
 /**
  * Găsește divergențele document↔flux, opțional scopate pe o organizație.
@@ -206,6 +207,28 @@ export async function findFlowLinkDivergences(pool, { orgId = null, limit = 200 
               OR (d.source_alop_id IS NULL AND EXISTS (
                     SELECT 1 FROM alop_instances a2
                      WHERE a2.df_id = d.id AND a2.id <> a.id AND a2.cancelled_at IS NULL)))${orgCond('d')}` },
+
+    // ── G — flux_fara_document (#222) ────────────────────────────────────────
+    // Un flux VIU pe un document generat de platformă (docName pe tipar) care nu
+    // declară nici `dfId`, nici `ordId`. Complementara tuturor celorlalte clase:
+    // acelea compară două legături, aici a doua legătură nu s-a născut. Invizibil
+    // altfel pentru orice detector, fiindcă toate fac JOIN pe `meta`.
+    // `liveFlowSql` (nu `validSignedFlowSql`): un flux orfan ÎNCĂ ÎN SEMNARE e la
+    // fel de rupt ca unul finalizat, iar excluderea anulat/refuzat ține cardul
+    // capabil să ajungă la 0 (fluxurile anulate cu meta gol sunt inofensive).
+    { clasa: 'flux_fara_document', sql: `
+      SELECT 'flux_fara_document'::text AS clasa,
+             (CASE WHEN f.data->>'docName' ILIKE 'Ordonantare%' THEN 'ord' ELSE 'df' END)::text AS tip,
+             NULL::text AS doc_id,
+             (f.data->>'docName')::text AS doc_nr,
+             NULL::text AS alop_id,
+             f.id AS flux,
+             'Flux pe un document generat de platforma, dar care nu declara niciun DF/ORD (meta gol)'::text AS detaliu
+        FROM flows f
+       WHERE f.data->'meta'->>'dfId'  IS NULL
+         AND f.data->'meta'->>'ordId' IS NULL
+         AND ${generatedDocNameSql('f')}
+         AND ${liveFlowSql('f')}${orgCond('f')}` },
   ];
 
   const byClass = Object.fromEntries(CLASS_KEYS.map((k) => [k, 0]));

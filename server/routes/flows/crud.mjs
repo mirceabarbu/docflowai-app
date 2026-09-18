@@ -16,6 +16,7 @@ import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-acces
 import { sendFlowSignedPdf } from '../../services/flow-signed-pdf.mjs';
 import { liveFlowSql } from '../../services/flow-provenance.mjs';
 import { DOC_KINDS } from '../../services/flow-doc-claim.mjs';
+import { parseGeneratedDocName } from '../../services/flow-doc-name.mjs';
 import { resolveActorOr } from '../../services/actor-identity.mjs';
 import { classifySignerEmail } from '../../services/signer-identity.mjs';
 
@@ -172,6 +173,69 @@ const createFlow = async (req, res) => {
       );
       return rows[0] || null;
     };
+    // ── #222 — ADOPȚIA META pentru documentele generate de platformă ──────────
+    // Un flux creat din ecranul de semnare FĂRĂ contextul de prefill (tab nou, alt
+    // calculator, refresh, drumul prin „Renunță") ajunge cu `meta = {}`. Un astfel de
+    // flux e ORFAN: nu îl vede nici poarta de mai jos, nici PASUL 3/4, nici garda de
+    // reinițiere, nici auditul #120 — toate citesc `meta`. Documentul rămâne semnat
+    // fără să știe (ORD 45301, 21.08–18.09.2026), iar dosarul ALOP stă blocat.
+    //
+    // Soluția NU e o a doua poartă, ci punerea cererii pe drumul porților existente:
+    // recunoaștem tiparul de nume pe care tot serverul îl generează, identificăm
+    // documentul și scriem `body.meta` AICI, înaintea porții #170. De la linia
+    // următoare încolo, cererea e indistinctibilă de una venită cu prefill corect.
+    //
+    // ⛔ Fail-CLOSED: zero sau mai multe potriviri ⇒ 409, niciodată „lansează oricum".
+    //    `nr_unic_inreg` ARE duplicate în producție între dosare (#126) ⇒ ramura ≥2 e reală.
+    // ⛔ Adopția se face la LANSARE, înainte de orice semnătură. NU re-leagă un
+    //    document semnat — regula „un document semnat nu se re-leagă tăcut" e intactă.
+    let _metaAdoptat = null;
+    if (pool && !body.meta?.dfId && !body.meta?.ordId) {
+      const _gen = parseGeneratedDocName(body.docName);
+      if (_gen) {
+        // Whitelist închisă, ca la `col` din _fluxViuPeDoc — nu interpolare liberă.
+        const _tbl = _gen.formType === 'ord' ? 'formulare_ord'   : 'formulare_df';
+        const _col = _gen.formType === 'ord' ? 'nr_ordonant_pl'  : 'nr_unic_inreg';
+        let _cand;
+        try {
+          const { rows } = await pool.query(
+            `SELECT id FROM ${_tbl}
+              WHERE ${_col} = $1 AND org_id = $2 AND deleted_at IS NULL
+              LIMIT 2`,
+            [_gen.nr, orgId]
+          );
+          _cand = rows;
+        } catch (e) {
+          logger.error({ err: e, docName: body.docName }, '[flux] adoptia meta: interogare esuata — fail-closed');
+          return res.status(503).json({
+            error: 'poarta_flux_indisponibila',
+            message: 'Nu am putut identifica documentul din fișierul încărcat. Încearcă din nou.',
+          });
+        }
+        if (_cand.length !== 1) {
+          logger.warn({ docName: body.docName, formType: _gen.formType, nr: _gen.nr, gasite: _cand.length },
+            '[flux] adoptia meta: document neidentificat — lansare refuzata (409)');
+          return res.status(409).json({
+            error: 'document_generat_neidentificat',
+            formType: _gen.formType,
+            nr: _gen.nr,
+            gasite: _cand.length,
+            message: _cand.length === 0
+              ? 'Fișierul pare a fi un document generat de platformă, dar numărul din denumirea lui nu corespunde niciunui document al instituției tale. Pornește semnarea din ecranul documentului.'
+              : 'Numărul din denumirea fișierului corespunde mai multor documente. Pornește semnarea din ecranul documentului, ca legătura să fie fără dubiu.',
+          });
+        }
+        const _docId = String(_cand[0].id);
+        body.meta = {
+          ...(body.meta || {}),
+          docType: _gen.formType === 'ord' ? 'ordnt' : 'notafd',
+          ...(_gen.formType === 'ord' ? { ordId: _docId } : { dfId: _docId }),
+        };
+        _metaAdoptat = { formType: _gen.formType, nr: _gen.nr, docId: _docId };
+        logger.warn({ docName: body.docName, ..._metaAdoptat },
+          '[flux] meta ADOPTATA din docName — contextul de prefill lipsea la client');
+      }
+    }
     // #171 — lista de tipuri vine din services/flow-doc-claim.mjs (sursă unică, partajată
     // cu garda de reinițiere din lifecycle.mjs). Comportamentul porții rămâne IDENTIC:
     // aceleași două tipuri, aceeași ordine, aceeași citire din `body.meta`.
@@ -656,7 +720,7 @@ const createFlow = async (req, res) => {
       } catch(e) { logger.warn({ err: e }, 'alop ord edge-case completed transition non-fatal'); }
     }
     // R-02: audit_log
-    writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorIp: _getIp(req), actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent } });
+    writeAuditEvent({ flowId, orgId, eventType: 'FLOW_CREATED', actorIp: _getIp(req), actorEmail: initEmail, payload: { docName: data.docName, signersCount: normalizedSigners.length, urgent: data.urgent, metaAdoptat: _metaAdoptat || undefined } });
 
     if (first?.email && !initIsSigner) {
       await _notify({ userEmail: first.email, flowId, type: 'YOUR_TURN', title: 'Document de semnat',

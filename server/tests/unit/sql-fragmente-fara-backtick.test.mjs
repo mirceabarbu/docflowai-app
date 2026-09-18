@@ -31,6 +31,7 @@ const MODULES = [
   'alop-link.mjs',
   'authz-scope.mjs',
   'df-aprobat-sql.mjs',
+  'flow-doc-name.mjs',
   'flow-link-audit.mjs',
   'flow-provenance.mjs',
 ];
@@ -54,6 +55,8 @@ const INVOCATIONS = [
   { module: 'df-aprobat-sql.mjs', export: 'dfAprobatSql', args: ['fd', 'f'] },
   { module: 'df-aprobat-sql.mjs', export: 'dfAprobatExistsSql', args: ['fx.flow_id', 'fx'] },
 
+  { module: 'flow-doc-name.mjs', export: 'generatedDocNameSql', args: ['f'] },   // #222
+
   { module: 'flow-provenance.mjs', export: 'validSignedFlowSql', args: ['f'] },
   { module: 'flow-provenance.mjs', export: 'liveFlowSql', args: ['f'] },
 ];
@@ -72,6 +75,10 @@ const EXCLUSIONS = [
   { module: 'authz-scope.mjs', export: 'isPlatformAdmin', reason: 'predicat boolean pe actor, nu SQL' },
   { module: 'authz-scope.mjs', export: 'isAdminOrOrgAdmin', reason: 'predicat boolean pe actor, nu SQL' },
   { module: 'authz-scope.mjs', export: 'actorCanAccessOrg', reason: 'poartă pe obiect deja încărcat, nu SQL (vezi docblock-ul funcției)' },
+
+  // flow-doc-name.mjs (#222) — parser JS pe string, întoarce obiect/null, nu SQL.
+  // (GENERATED_DOC_NAME_RE e RegExp, nu funcție ⇒ meta-testul o ignoră prin `typeof`.)
+  { module: 'flow-doc-name.mjs', export: 'parseGeneratedDocName', reason: 'parser pur JS pe docName — întoarce { formType, nr } | null, nu SQL' },
 
   // flow-link-audit.mjs — necesită pool DB real.
   { module: 'flow-link-audit.mjs', export: 'findFlowLinkDivergences', reason: 'async, necesită pool DB real — execută query-uri, nu întoarce SQL' },
