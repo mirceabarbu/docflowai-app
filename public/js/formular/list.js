@@ -962,7 +962,7 @@ function _renderLstTable(rows,type){
       <td>${row.p2_compartiment
         ? `<span title="Atribuit întregului compartiment — oricine din el poate completa">👥 ${esc(row.p2_compartiment)}</span>`
         : esc(row.p2||'—')}${row.p2_ultim_cab
-        ? `<div style="font-size:.75rem;color:var(--df-text-3);margin-top:2px" title="Ultimul utilizator din compartimentul CAB care a lucrat pe document">ultim: ${esc(row.p2_ultim_cab)}${row.p2_ultim_cab_at?' · '+_fmtDate(row.p2_ultim_cab_at):''}</div>`
+        ? `<div style="font-size:.75rem;color:var(--df-text-3);margin-top:2px" title="Ultimul utilizator din compartimentul CAB care a lucrat pe document">${esc(row.p2_ultim_cab)}${row.p2_ultim_cab_at?' · '+_fmtDate(row.p2_ultim_cab_at):''}</div>`
         : ''}</td>
       <td class="lst-col-ord" style="text-align:right;white-space:nowrap">${_lstBani(row.ord_valoare)}</td>
       <td class="lst-col-ord" style="text-align:right;white-space:nowrap">${_lstPlata(row.plata_suma,row.ord_valoare)}</td>
