@@ -21,7 +21,7 @@
 import { Router } from 'express';
 import { csrfMiddleware } from '../../middleware/csrf.mjs';
 import crypto from 'crypto';
-import { emailResetPassword, emailCredentials } from '../../emailTemplates.mjs';
+import { emailResetPassword, emailCredentials, emailVerifyAccount } from '../../emailTemplates.mjs';
 import { requireAuth, hashPassword, generatePassword, escHtml } from '../../middleware/auth.mjs';
 import { pool, requireDb, invalidateOrgUserCache, writeAuditEvent } from '../../db/index.mjs';
 import {
@@ -314,17 +314,10 @@ router.post('/admin/users', csrfMiddleware, async (req, res) => {
       const verifyLink = `${appUrl}/auth/verify-email/${verificationToken}`;
       sendSignerEmail({
         to: credsDest,
-        subject: '✅ Verificare adresă email — DocFlowAI',
-        html: `<div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;background:#0f1731;color:#eaf0ff;border-radius:16px;padding:36px;">
-  <h2 style="color:#7c5cff;margin:0 0 16px;">✅ Verificare adresă email</h2>
-  <p>Bună <strong>${escHtml(numeComplet)}</strong>,</p>
-  <p>Contul tău DocFlowAI a fost creat de un administrator.</p>
-  <div style="text-align:center;margin:28px 0;">
-    <a href="${verifyLink}" style="background:#7c5cff;color:#fff;padding:14px 32px;border-radius:10px;text-decoration:none;font-weight:700;font-size:1rem;">Verifică adresa email</a>
-  </div>
-  <p style="font-size:.82rem;color:#5a6a8a;">Sau copiază: <code style="color:#9db0ff;">${verifyLink}</code></p>
-  <p style="font-size:.82rem;color:#5a6a8a;">Link expiră în 72h.</p>
-</div>`,
+        // #221 — același șablon alb ca emailul cu credențiale (emailTemplates.mjs). Varianta
+        // inline, pe fundal închis, devenea ilizibilă în Outlook (fundalul div-ului ignorat,
+        // textul gri rămânea pe alb sau pe negru, după client).
+        ...emailVerifyAccount({ verifyUrl: verifyLink, numeUser: numeComplet, expiraOre: 72 }),
       }).catch(e => logger.warn({ err: e, credsDest }, 'R-06: verificare email esuat'));
     }
 

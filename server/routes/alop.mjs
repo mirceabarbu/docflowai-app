@@ -39,7 +39,7 @@ import { recordFormularAudit } from '../db/queries/formulare-audit.mjs';
 import {
   sqlDosarAreFluxActiv, sqlDosarAreAprobat,
   sqlRevizieInLucruId, sqlRevizieInLucruNr,
-  sqlRevizieInVigoareNr,
+  sqlRevizieInVigoareNr, sqlRevizieInVigoareFlowId,
 } from '../services/alop-dosar-sql.mjs';
 // Pachet B: hook lazy de auto-confirm OPME la tranziții către 'plata'.
 // Import indirect (cycle cu opme-matcher) — folosit doar în handlers, nu la top-level.
@@ -73,6 +73,7 @@ const SQL_ALOP_REVIZIE_LUCRU_NR = sqlRevizieInLucruNr('a');
 // ca frontend-ul să deducă „în vigoare" din pointer (df.revizie_nr) — singura
 // sursă din care se putea naște contradicția „în vigoare Rn / în lucru Rn".
 const SQL_ALOP_REVIZIE_VIGOARE_NR = sqlRevizieInVigoareNr('a');
+const SQL_ALOP_REVIZIE_VIGOARE_FLOW = sqlRevizieInVigoareFlowId('a');   // #220 — doar detaliul
 
 // ⚠️ #134f — prima condiție a ramurii „revizie_flux" era `SQL_ALOP_DF_ARE_REVIZIE`, adică
 // „revizia POINTATĂ de a.df_id are revizie_nr > 0". Sub noua semantică (`df_id` = revizia ÎN
@@ -779,7 +780,9 @@ router.get('/api/alop/:id', async (req, res) => {
         df.revizie_nr                AS df_revizie_nr,
         df.este_revizie_an_urmator   AS df_este_revizie_an_urmator,
         df.flow_id                   AS df_authoritative_flow_id,
+        df.source_alop_id            AS df_source_alop_id,
         fo.flow_id                   AS ord_authoritative_flow_id,
+        fo.source_alop_id            AS ord_source_alop_id,
         fo.status                    AS ord_status,
         f1.id AS df_flow_exists,
         f2.id AS ord_flow_exists,
@@ -790,6 +793,7 @@ router.get('/api/alop/:id', async (req, res) => {
         ${SQL_ALOP_REVIZIE_LUCRU_ID} AS df_revizie_lucru_id,
         ${SQL_ALOP_REVIZIE_LUCRU_NR} AS df_revizie_lucru_nr,
         ${SQL_ALOP_REVIZIE_VIGOARE_NR} AS df_revizie_vigoare_nr,
+        ${SQL_ALOP_REVIZIE_VIGOARE_FLOW} AS df_revizie_vigoare_flow_id,
         CASE WHEN COALESCE(fo.flow_id, a.ord_flow_id) IS NOT NULL AND (
           f2.data->>'status' = 'completed' OR (f2.data->>'completed')::boolean = true
         ) THEN true ELSE false END AS ord_aprobat,
@@ -892,7 +896,13 @@ router.get('/api/alop/:id', async (req, res) => {
     // Cazul 'draft' acoperă scenarii rare în care propagarea normală a eșuat silent
     // (P2 /complete sau link-df-flow → catch silentioase). Idempotent: UPDATE limitat
     // la stările eligibile, logger pentru audit dacă se declanșează.
-    if (alop.df_aprobat && ['draft', 'angajare'].includes(alop.status)) {
+    // #219 — un DF aprobat care provine din ALT dosar nu mută acest dosar în lichidare.
+    const _dfDinDosar = alop.df_source_alop_id == null || String(alop.df_source_alop_id) === String(alop.id);
+    if (!_dfDinDosar && alop.df_aprobat) {
+      logger.error({ alopId: alop.id, dfSourceAlopId: alop.df_source_alop_id },
+        '[ALOP] DF aprobat din ALT dosar pe acest dosar — tranziție leneșă oprită (#219)');
+    }
+    if (_dfDinDosar && alop.df_aprobat && ['draft', 'angajare'].includes(alop.status)) {
       try {
         const fromStatus = alop.status;
         // Resync df_flow_id când pointerul de pe ALOP a rămas pe un flux zombi
@@ -1019,7 +1029,17 @@ router.get('/api/alop/:id', async (req, res) => {
     // Scenariu: status='ordonantare' AND ord_id setat AND ord_flow_id NULL, dar
     // formulare_ord.flow_id e setat (link-ord-flow s-a ratat). Idempotent prin
     // guard `AND ord_flow_id IS NULL` în WHERE.
-    if (alop.status === 'ordonantare' && alop.ord_id && !alop.ord_flow_id) {
+    // #219 — un ORD aprobat care provine din ALT dosar nu mută acest dosar în plată și nu îi
+    // resincronizează ord_flow_id (incidentul ORD 47842: dosarul greșit ar fi trecut în plată).
+    // Gardează AMBELE căi leneșe spre `plata`: self-heal #2 (back-fill ord_flow_id + plata,
+    // rulează primul) și lazy auto-tranziția de mai jos. `ord_source_alop_id` vine din JOIN-ul
+    // `fo` pe a.ord_id; după self-heal #1 (pornit din ord_id NULL) rămâne null ⇒ true, ca înainte.
+    const _ordDinDosar = alop.ord_source_alop_id == null || String(alop.ord_source_alop_id) === String(alop.id);
+    if (!_ordDinDosar && alop.ord_aprobat) {
+      logger.error({ alopId: alop.id, ordSourceAlopId: alop.ord_source_alop_id },
+        '[ALOP] ORD aprobat din ALT dosar pe acest dosar — tranziție leneșă oprită (#219)');
+    }
+    if (_ordDinDosar && alop.status === 'ordonantare' && alop.ord_id && !alop.ord_flow_id) {
       try {
         const { rows: fo } = await pool.query(`
           SELECT fo.flow_id,
@@ -1084,7 +1104,7 @@ router.get('/api/alop/:id', async (req, res) => {
     // Robustețe (paritate cu DF): ord_aprobat se bazează pe fluxul autoritar al
     // ORD-ului (formulare_ord.flow_id), nu pe ord_flow_id-ul potențial stale de pe ALOP.
     // Resync ord_flow_id când pointerul a rămas pe un flux zombi diferit de cel autoritar.
-    if (alop.ord_aprobat && alop.status === 'ordonantare') {
+    if (_ordDinDosar && alop.ord_aprobat && alop.status === 'ordonantare') {
       try {
         const authoritativeOrdFlow = alop.ord_authoritative_flow_id || null;
         const needsResync = authoritativeOrdFlow && authoritativeOrdFlow !== alop.ord_flow_id;

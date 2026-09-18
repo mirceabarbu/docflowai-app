@@ -239,3 +239,42 @@ export async function backfillAlopFlowPointers(pool, alopId) {
     return null;
   }
 }
+
+/**
+ * #219 — Alege dosarul ALOP de tranziționat la finalizarea unui flux, dintre rândurile găsite pe
+ * `df_flow_id`/`ord_flow_id`. Un flux ar trebui să fie pe UN SINGUR dosar; dacă sunt mai multe
+ * (stare coruptă — incidentul ORD 47842), decide proveniența documentului semnat.
+ *
+ *   0 rânduri                 ⇒ undefined (apelantul își poate continua fallback-ul)
+ *   1 rând                    ⇒ acel rând (comportamentul dinainte, fără filtrare)
+ *   >1, proveniența potrivită ⇒ rândul din proveniență
+ *   >1, altfel                ⇒ null + logger.error (NICIO tranziție: mai bine blocat decât greșit)
+ *
+ * @param {{ query: Function }} pool
+ * @param {Array<{id:string,status:string}>} rows
+ * @param {{ flowId: string, formType: 'df'|'ord' }} ctx
+ */
+export async function pickAlopForFlow(pool, rows, { flowId, formType }) {
+  if (!rows || rows.length === 0) return undefined;
+  if (rows.length === 1) return rows[0];
+  const table = formType === 'ord' ? 'formulare_ord' : 'formulare_df';
+  let src = null;
+  try {
+    const { rows: d } = await pool.query(
+      `SELECT source_alop_id FROM ${table} WHERE flow_id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [flowId]
+    );
+    src = d?.[0]?.source_alop_id || null;
+  } catch (e) {
+    logger.error({ err: e, flowId, formType }, '[ALOP] pickAlopForFlow: proveniența nu a putut fi citită');
+  }
+  const hit = src ? rows.find(r => String(r.id) === String(src)) : null;
+  if (hit) {
+    logger.error({ flowId, formType, alopIds: rows.map(r => r.id), ales: hit.id },
+      '[ALOP] fluxul e pe MAI MULTE dosare — ales dosarul din proveniență (#219)');
+    return hit;
+  }
+  logger.error({ flowId, formType, alopIds: rows.map(r => r.id), sourceAlopId: src },
+    '[ALOP] fluxul e pe MAI MULTE dosare și proveniența nu decide — NICIO tranziție (#219)');
+  return null;
+}

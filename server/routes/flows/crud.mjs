@@ -13,6 +13,7 @@ import { copyFormularAttachmentsToFlow } from '../../services/formular-flow-atta
 import { pdfLooksSigned, computeSignerRectsReadOnly } from '../../utils/pdf-signed-placement.mjs';
 import { normalizeRecipients } from '../../services/flow-transmit.mjs';
 import { canActorReadFlow, isFlowAccessAllowed } from '../../services/flow-access.mjs';
+import { sendFlowSignedPdf } from '../../services/flow-signed-pdf.mjs';
 import { liveFlowSql } from '../../services/flow-provenance.mjs';
 import { DOC_KINDS } from '../../services/flow-doc-claim.mjs';
 import { resolveActorOr } from '../../services/actor-identity.mjs';
@@ -598,10 +599,13 @@ const createFlow = async (req, res) => {
     }
     // PASUL 4: Auto link-df-flow / ord-flow pe alop_instances
     if (body.meta?.dfId && pool) {
+      // #219 — dacă documentul are proveniență, fluxul se leagă doar de dosarul din care
+      // provine; fără proveniență, ca înainte (COALESCE(…, id) ⇒ condiție mereu adevărată).
       await pool.query(
         `UPDATE alop_instances
          SET df_flow_id = $1, updated_at = NOW()
-         WHERE df_id = $2 AND df_flow_id IS NULL AND cancelled_at IS NULL`,
+         WHERE df_id = $2 AND df_flow_id IS NULL AND cancelled_at IS NULL
+           AND id = COALESCE((SELECT source_alop_id FROM formulare_df WHERE id = $2), id)`,
         [flowId, body.meta.dfId]
       ).catch(e => logger.warn({ err: e }, 'alop link df_flow_id non-fatal'));
       // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la lichidare
@@ -625,10 +629,13 @@ const createFlow = async (req, res) => {
       } catch(e) { logger.warn({ err: e }, 'alop edge-case completed transition non-fatal'); }
     }
     if (body.meta?.ordId && pool) {
+      // #219 — dacă documentul are proveniență, fluxul se leagă doar de dosarul din care
+      // provine; fără proveniență, ca înainte (COALESCE(…, id) ⇒ condiție mereu adevărată).
       await pool.query(
         `UPDATE alop_instances
          SET ord_flow_id = $1, updated_at = NOW()
-         WHERE ord_id = $2 AND ord_flow_id IS NULL AND cancelled_at IS NULL`,
+         WHERE ord_id = $2 AND ord_flow_id IS NULL AND cancelled_at IS NULL
+           AND id = COALESCE((SELECT source_alop_id FROM formulare_ord WHERE id = $2), id)`,
         [flowId, body.meta.ordId]
       ).catch(e => logger.warn({ err: e }, 'alop link ord_flow_id non-fatal'));
       // Edge case: fluxul tocmai creat e deja completed → tranziție ALOP la plata
@@ -679,22 +686,8 @@ router.get('/flows/:flowId/signed-pdf', _readRateLimit, async (req, res) => {
       return res.status(403).json({ error: 'forbidden', message: 'Acces interzis la acest document.' });
     }
     const safeName = safeDocName(data.docName, req.params.flowId || data.flowId || '');
-    const b64 = data.signedPdfB64;
-    if (!b64 || typeof b64 !== 'string') {
-      if (data.storage === 'drive' && data.driveFileIdFinal) {
-        try {
-          const { streamFromDrive } = await import('../../drive.mjs');
-          res.setHeader('Content-Type', 'application/pdf');
-          res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
-          await streamFromDrive(data.driveFileIdFinal, res); return;
-        } catch(driveErr) { return res.status(502).json({ error: 'drive_unavailable' }); }
-      }
-      return res.status(404).json({ error: 'signed_pdf_missing' });
-    }
-    const raw = b64.includes('base64,') ? b64.split('base64,')[1] : b64;
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="DocFlowAI_${req.params.flowId}_signed.pdf"`);
-    return res.status(200).send(Buffer.from(raw, 'base64'));
+    // #220 — livrarea (bază / Drive) e în services/flow-signed-pdf.mjs, partajată cu ruta DF din ORD.
+    return await sendFlowSignedPdf(res, data, req.params.flowId);
   } catch(e) { return res.status(500).json({ error: 'server_error' }); }
 });
 

@@ -46,6 +46,7 @@ const INVOCATIONS = [
   { module: 'alop-dosar-sql.mjs', export: 'sqlRevizieInLucruNr', args: ['a'] },
   { module: 'alop-dosar-sql.mjs', export: 'sqlRevizieInVigoareId', args: ['a'] },
   { module: 'alop-dosar-sql.mjs', export: 'sqlRevizieInVigoareNr', args: ['a'] },
+  { module: 'alop-dosar-sql.mjs', export: 'sqlRevizieInVigoareFlowId', args: ['a'] },   // #220
 
   { module: 'authz-scope.mjs', export: 'orgScopeSql', args: [{ role: 'user', orgId: 7 }, 'a', []] },
 
@@ -59,12 +60,13 @@ const INVOCATIONS = [
 
 // ── 2. Excluderi explicite, CU motiv ─────────────────────────────────────────
 const EXCLUSIONS = [
-  // alop-link.mjs — toate patru sunt operații async care primesc `pool` (client DB
+  // alop-link.mjs — toate cinci sunt operații async care primesc `pool` (client DB
   // real) ca prim argument și execută query-uri; nu întorc fragmente SQL sincrone.
   { module: 'alop-link.mjs', export: 'selfHealAlopDfLink', reason: 'async, necesită pool DB real — execută query-uri, nu întoarce SQL' },
   { module: 'alop-link.mjs', export: 'finalizeDfOnFlowCompleted', reason: 'async, necesită pool DB real — execută query-uri, nu întoarce SQL' },
   { module: 'alop-link.mjs', export: 'selfHealAlopDfLinkByAlop', reason: 'async, necesită pool DB real — execută query-uri, nu întoarce SQL' },
   { module: 'alop-link.mjs', export: 'backfillAlopFlowPointers', reason: 'async, necesită pool DB real — execută query-uri, nu întoarce SQL' },
+  { module: 'alop-link.mjs', export: 'pickAlopForFlow', reason: 'async, necesită pool DB real — execută query-uri, nu întoarce SQL' },
 
   // authz-scope.mjs — predicate boolean pe obiect deja încărcat, nu SQL.
   { module: 'authz-scope.mjs', export: 'isPlatformAdmin', reason: 'predicat boolean pe actor, nu SQL' },

@@ -11,7 +11,8 @@ import { isPlatformAdmin, isAdminOrOrgAdmin } from '../../services/authz-scope.m
 import { csrfMiddleware } from '../../middleware/csrf.mjs';
 import { requireModule } from '../../middleware/require-module.mjs';
 import { logger } from '../../middleware/logger.mjs';
-import { pool } from '../../db/index.mjs';
+import { pool, getFlowData } from '../../db/index.mjs';
+import { sendFlowSignedPdf } from '../../services/flow-signed-pdf.mjs';
 import { loadActorCompAndCab, canEditFormular, canViewFormular, canDestroyOnly } from '../../services/authz-formular.mjs';
 import { computeDocCapabilities } from '../../services/formular-capabilities.mjs';
 import { recordFormularAudit } from '../../db/queries/formulare-audit.mjs';
@@ -127,6 +128,60 @@ router.get('/api/formulare-ord/buget-context', async (req, res) => {
   }
 });
 
+// #220 — PDF-ul SEMNAT al DF-ului pe baza căruia s-a emis ordonanțarea (revizia înghețată în
+// formulare_ord.df_id). Decizie de acces (Mircea, 17.09.2026): dreptul vine din ORD — cine vede
+// ordonanțarea vede și DF-ul ei, fiindcă sunt același dosar. Gărzi: DF-ul e cel legat de ORD, din
+// aceeași organizație, din același dosar (când ambele au proveniență) și APROBAT.
+// Înregistrat ÎNAINTEA lui /:id (aceeași convenție ca buget-context); fără limitator de rată —
+// niciun GET din acest fișier nu are unul.
+router.get('/api/formulare-ord/:id/df-aprobat.pdf', async (req, res) => {
+  if (requireDb(res)) return;
+  const actor = requireAuth(req, res); if (!actor) return;
+  try {
+    const isGlobalAdmin = actor.role === 'admin' && !actor.orgId;
+    const orgCond = isGlobalAdmin ? '' : 'AND fo.org_id = $2';
+    const params  = isGlobalAdmin ? [req.params.id] : [req.params.id, actor.orgId];
+    const { rows: oRows } = await pool.query(
+      `SELECT fo.* FROM formulare_ord fo WHERE fo.id = $1 ${orgCond} AND fo.deleted_at IS NULL`,
+      params
+    );
+    if (!oRows.length) return res.status(404).json({ error: 'not_found' });
+    const ord = oRows[0];
+
+    const { actorComp, cabComp } = await loadActorCompAndCab(pool, actor.userId, actor.orgId);
+    const view = await canViewFormular(pool, actor, ord, actorComp, { cabComp });
+    if (!view.allowed) return res.status(403).json({ error: view.reason });
+
+    if (!ord.df_id) return res.status(404).json({ error: 'fara_df' });
+
+    const { rows: dRows } = await pool.query(
+      `SELECT fd.id, fd.org_id, fd.nr_unic_inreg, fd.revizie_nr, fd.flow_id, fd.source_alop_id,
+              COALESCE(${docAprobatSql('fd', 'f')}, false) AS aprobat
+         FROM formulare_df fd
+         LEFT JOIN flows f ON f.id = fd.flow_id
+        WHERE fd.id = $1 AND fd.deleted_at IS NULL`,
+      [ord.df_id]
+    );
+    const df = dRows[0];
+    if (!df || String(df.org_id) !== String(ord.org_id)) return res.status(404).json({ error: 'fara_df' });
+    if (df.source_alop_id && ord.source_alop_id
+        && String(df.source_alop_id) !== String(ord.source_alop_id)) {
+      logger.warn({ ordId: ord.id, dfId: df.id }, '[ORD] df-aprobat.pdf: DF din alt dosar decât ORD-ul (#220)');
+      return res.status(409).json({ error: 'df_alt_dosar' });
+    }
+    if (!df.aprobat || !df.flow_id) return res.status(409).json({ error: 'df_neaprobat' });
+
+    const data = await getFlowData(df.flow_id);
+    if (!data) return res.status(404).json({ error: 'signed_pdf_missing' });
+    const nr = String(df.nr_unic_inreg || 'fara-nr').replace(/[^\w.-]+/g, '_');
+    return await sendFlowSignedPdf(res, data, df.flow_id,
+      { filename: `DF_${nr}_R${df.revizie_nr || 0}_semnat.pdf` });
+  } catch (e) {
+    logger.error({ err: e }, 'GET /api/formulare-ord/:id/df-aprobat.pdf error');
+    return res.status(500).json({ error: 'server_error' });
+  }
+});
+
 // GET /api/formulare-ord/:id — detaliu document
 router.get('/api/formulare-ord/:id', async (req, res) => {
   if (requireDb(res)) return;
@@ -140,6 +195,9 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
         p1.nume AS created_by_nume, p1.email AS created_by_email,
         p2.nume AS assigned_to_nume, p2.email AS assigned_to_email,
         fd.nr_unic_inreg AS df_nr, fd.rows_ctrl AS df_rows_ctrl,
+        fd.revizie_nr AS df_revizie_nr,
+        -- #220 — chip-ul „DF aprobat" din formular: aceeași regulă ca ruta df-aprobat.pdf.
+        COALESCE(${docAprobatSql('fd', 'fdf')}, false) AS df_aprobat_semnat,
         -- #166 — sursa unica; forma veche rata anularea OBISNUITA (status cancelled
         -- fara soft-delete), fiindca verifica doar deleted_at.
         COALESCE(${docAprobatSql('fo', 'f')}, false) AS aprobat,
@@ -163,6 +221,7 @@ router.get('/api/formulare-ord/:id', async (req, res) => {
       LEFT JOIN users p2 ON p2.id = fo.assigned_to
       LEFT JOIN formulare_df fd ON fd.id = fo.df_id
       LEFT JOIN flows f ON f.id = fo.flow_id
+      LEFT JOIN flows fdf ON fdf.id = fd.flow_id
       WHERE fo.id = $1 ${orgCond} AND fo.deleted_at IS NULL
     `, params);
     if (!rows.length) return res.status(404).json({ error: 'not_found' });

@@ -6,7 +6,7 @@ import { Router, json as expressJson } from 'express';
 import { AUTH_COOKIE, JWT_SECRET, requireAuth, requireAdmin, sha256Hex, escHtml, getOptionalActor } from '../../middleware/auth.mjs';
 import { pool, DB_READY, requireDb, saveFlow, getFlowData, getDefaultOrgId, getUserMapForOrg, writeAuditEvent } from '../../db/index.mjs';
 import { getActiveSigner, getLeaveInfo } from '../../services/user-leave.mjs';
-import { selfHealAlopDfLink } from '../../services/alop-link.mjs';
+import { selfHealAlopDfLink, pickAlopForFlow } from '../../services/alop-link.mjs';
 import { recordFormularAudit } from '../../db/queries/formulare-audit.mjs';
 import { createRateLimiter } from '../../middleware/rateLimiter.mjs';
 import { logger } from '../../middleware/logger.mjs';
@@ -491,14 +491,18 @@ router.post('/flows/:flowId/upload-signed-pdf', _largePdf, async (req, res) => {
               pool.query(`SELECT id, status FROM alop_instances WHERE df_flow_id=$1 AND cancelled_at IS NULL`, [flowId]),
               pool.query(`SELECT id, status FROM alop_instances WHERE ord_flow_id=$1 AND cancelled_at IS NULL`, [flowId])
             ]);
-            if (alopDf.rows[0]) {
-              const al = alopDf.rows[0];
+            // #219 — un flux pe mai multe dosare nu mai tranziționează un dosar arbitrar.
+            const al = await pickAlopForFlow(pool, alopDf.rows, { flowId, formType: 'df' });
+            if (al) {
               if (['draft','angajare'].includes(al.status)) {
                 await pool.query(`UPDATE alop_instances SET status='lichidare', df_completed_at=NOW(), updated_at=NOW() WHERE id=$1`, [al.id]);
                 logger.info(`[ALOP] df_flow semnat → lichidare, id=${al.id}`);
               }
             }
-            const alopOrdRow = alopOrd.rows[0] || (await pool.query(
+            // #219 — `undefined` (niciun dosar pe ord_flow_id) păstrează fallback-ul pe ciclurile
+            // arhivate; `null` (ambiguitate nerezolvată) înseamnă NICIO tranziție.
+            const _ordPick = await pickAlopForFlow(pool, alopOrd.rows, { flowId, formType: 'ord' });
+            const alopOrdRow = _ordPick !== undefined ? _ordPick : (await pool.query(
               `SELECT a.id, a.status FROM alop_instances a
                JOIN alop_ord_cicluri c ON c.alop_id = a.id
                WHERE c.ord_flow_id = $1 AND a.cancelled_at IS NULL

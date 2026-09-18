@@ -151,6 +151,34 @@ export function emailCredentials({ appUrl, numeUser, email, newPwd }) {
   return { subject, html };
 }
 
+// ── 6b. VERIFICARE EMAIL — cont creat de administrator (#221) ─────────────────
+// Același design ca emailCredentials / emailVerifyGws: fundal alb, text închis, buton violet.
+// Nu folosi fundaluri închise în emailuri: Outlook desktop ignoră de multe ori `background`
+// pe <div>, iar textul deschis/gri devine ilizibil.
+export function emailVerifyAccount({ verifyUrl, numeUser, expiraOre = 72 }) {
+  const subject = '✅ Verificare adresă email — DocFlowAI';
+  const url = esc(verifyUrl);
+  const ore = Number.isFinite(+expiraOre) && +expiraOre > 0 ? Math.trunc(+expiraOre) : 72;
+  const html = `
+<div style="font-family:Arial,sans-serif;max-width:540px;margin:0 auto;background:#ffffff;color:#1a1a1a;padding:32px;border:1px solid #dde4f5;border-radius:10px;">
+  <div style="text-align:center;margin-bottom:24px;">
+    <strong style="display:inline-block;background:#7c5cff;color:#ffffff;padding:10px 20px;border-radius:6px;font-size:1.05rem;letter-spacing:.3px;">DocFlowAI</strong>
+  </div>
+  <h2 style="margin:0 0 8px;font-size:1.05rem;color:#1a1a1a;">Bună${numeUser ? ', ' + esc(numeUser) : ''},</h2>
+  <p style="margin:0 0 20px;color:#4a5568;line-height:1.6;">Contul tău în <strong style="color:#1a1a1a;">DocFlowAI</strong> a fost creat de un administrator. Pentru a-l activa, verifică adresa de email apăsând butonul de mai jos.</p>
+  <div style="text-align:center;margin:0 0 24px;">
+    <a href="${url}" style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:.95rem;">Verifică adresa de email</a>
+  </div>
+  <div style="background:#f7f9fc;border:1px solid #dde4f5;border-radius:8px;padding:14px 18px;margin-bottom:20px;">
+    <div style="color:#5a6a9a;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Dacă butonul nu funcționează, copiază linkul în browser</div>
+    <a href="${url}" style="color:#3d5299;font-size:.82rem;font-family:monospace;word-break:break-all;text-decoration:underline;">${url}</a>
+  </div>
+  <p style="color:#5a6a9a;font-size:.85rem;margin:0 0 8px;">Linkul este valabil ${ore} de ore.</p>
+  <p style="color:#7a8ab0;font-size:.78rem;margin:0;">Dacă nu te așteptai la acest email, îl poți ignora.</p>
+</div>`;
+  return { subject, html };
+}
+
 // ── 6. VERIFICARE EMAIL GWS ───────────────────────────────────────────────────
 export function emailVerifyGws({ verifyUrl, numeUser }) {
   const subject = '✅ Verificare adresă email — DocFlowAI';
