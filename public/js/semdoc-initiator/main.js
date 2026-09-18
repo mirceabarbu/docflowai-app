@@ -2458,6 +2458,16 @@ async function signFromFluxuri(flowId) {
               + `</div>`;
             return;
           }
+          // #222 — fișierul e un document generat de platformă, dar nu l-am putut
+          // identifica după numărul din denumire. Nu creăm un flux orfan.
+          if (r.status === 409 && j?.error === "document_generat_neidentificat") {
+            $("createResult").innerHTML =
+              `<div style="margin-top:10px;padding:12px 14px;border:1px solid var(--df-warning-bd);background:var(--df-warning-bg);border-radius:var(--df-radius-md);color:var(--df-warning);line-height:1.5;font-size:13px;">`
+              + `⚠️ <strong>Nu am putut identifica documentul.</strong> ${esc(String(j.message || ""))}`
+              + `<br><strong>Ce ai de făcut:</strong> deschide documentul în tabul <strong>${j.formType === "ord" ? "ORD" : "DF"}</strong> și pornește semnarea de acolo — așa legătura document↔flux se face automat.`
+              + `</div>`;
+            return;
+          }
           if (!r.ok) throw new Error(j?.error || "server_error");
 
           localStorage.setItem("lastInitName", $("initName").value.trim());
